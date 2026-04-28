@@ -70,6 +70,20 @@ class Source(Base):
     kind: Mapped[str] = mapped_column(String)
     s3_key: Mapped[str | None] = mapped_column(String, nullable=True)
     extracted_text: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String, default="done")
+    markdown_s3_key: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class SourcePage(Base):
+    __tablename__ = "source_pages"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    source_id: Mapped[str] = mapped_column(ForeignKey("sources.id"))
+    page_num: Mapped[int] = mapped_column(nullable=False)
+    markdown: Mapped[str] = mapped_column(Text, default="")
+    preview: Mapped[str] = mapped_column(Text, default="")
+    image_s3_keys: Mapped[list] = mapped_column(JSONB, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

@@ -23,6 +23,7 @@ import pytest
 import pytest_asyncio
 
 from app.database import Base, engine
+import app.models  # noqa: F401
 
 
 @pytest_asyncio.fixture(autouse=True)
