@@ -60,7 +60,7 @@ export default function IngestModal({ onClose }: { onClose: () => void }) {
               borderRadius: 6, color: '#e6edf3', fontSize: 13 }} />
         )}
         {tab === 'file' && (
-          <input type="file" accept=".pdf,.docx" onChange={handleFile}
+          <input type="file" accept=".pdf,.docx,.md,.markdown,.txt" onChange={handleFile}
             style={{ color: '#e6edf3', fontSize: 13 }} />
         )}
         {status && <div style={{ marginTop: 12, fontSize: 13, color: '#58a6ff' }}>{status}</div>}

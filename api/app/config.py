@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     s3_secret_key: str = "minioadmin"
     single_user_email: str = "user@example.com"
     single_user_password: str = "changeme"
+    # Hybrid search: call embedding API for the query vector. Set false to use FTS only.
+    vector_search_enabled: bool = True
 
     class Config:
         env_file = ".env"

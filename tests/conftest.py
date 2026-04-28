@@ -15,7 +15,7 @@ os.environ.setdefault("LITELLM_MODEL", "gemini/gemini-2.0-flash")
 os.environ.setdefault("S3_ENDPOINT", "http://localhost:9000")
 os.environ.setdefault("S3_BUCKET", "wiki")
 os.environ.setdefault("S3_ACCESS_KEY", "minioadmin")
-os.environ.setdefault("S3_SECRET_KEY", "minioadmin")
+os.environ.setdefault("VECTOR_SEARCH_ENABLED", "true")
 
 import pytest
 import pytest_asyncio

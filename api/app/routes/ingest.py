@@ -51,8 +51,18 @@ async def ingest_file(
         text = extract_docx(data)
         s3_key = f"{ws.id}/{uuid.uuid4()}.docx"
         upload_file(s3_key, data, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    elif suffix in ("md", "markdown", "txt", "text"):
+        kind = "text"
+        text = data.decode("utf-8", errors="replace")
+        ext = "md" if suffix in ("md", "markdown") else "txt"
+        content_type = "text/markdown" if ext == "md" else "text/plain"
+        s3_key = f"{ws.id}/{uuid.uuid4()}.{ext}"
+        upload_file(s3_key, data, content_type)
     else:
-        raise HTTPException(status_code=400, detail="Unsupported file type. Upload PDF or DOCX.")
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported file type. Upload PDF, DOCX, Markdown (.md), or plain text (.txt).",
+        )
     source = Source(workspace_id=ws.id, kind=kind, s3_key=s3_key, extracted_text=text[:50000])
     db.add(source)
     await db.commit()

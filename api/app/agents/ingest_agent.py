@@ -3,6 +3,7 @@ import json
 import litellm
 from sqlalchemy import select
 
+from app.agents.assistant_message import assistant_message_for_litellm
 from app.agents.tools import AgentTools
 from app.config import settings
 from app.database import AsyncSessionLocal
@@ -64,7 +65,7 @@ async def run(source_id: str, workspace_id: str):
                 break
 
             msg = resp.choices[0].message
-            messages.append(msg.model_dump(exclude_none=True))
+            messages.append(assistant_message_for_litellm(msg))
 
             if not msg.tool_calls:
                 break
