@@ -27,3 +27,9 @@ def upload_file(key: str, data: bytes, content_type: str = "application/octet-st
     ensure_bucket()
     s3.put_object(Bucket=settings.s3_bucket, Key=key, Body=data, ContentType=content_type)
     return key
+
+
+def download_file(key: str) -> bytes:
+    s3 = _client()
+    response = s3.get_object(Bucket=settings.s3_bucket, Key=key)
+    return response["Body"].read()
