@@ -200,16 +200,102 @@ This is the trickiest prompt-engineering problem in the product. Expect to itera
 
 ---
 
-## 8. Build plan
+## 8. Docker setup
+
+The entire stack runs via `docker compose up`. No local dependency installation required beyond Docker itself.
+
+### Services
+
+```yaml
+services:
+  api:       # FastAPI app + asyncio background workers
+  frontend:  # React (Vite dev server in dev, nginx in prod)
+  db:        # Postgres 16 with pgvector extension
+  minio:     # S3-compatible local storage (replaces real S3 in dev)
+```
+
+### docker-compose.yml (outline)
+
+```yaml
+version: "3.9"
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: wiki
+      POSTGRES_USER: wiki
+      POSTGRES_PASSWORD: wiki
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  api:
+    build: ./api
+    depends_on: [db, minio]
+    environment:
+      DATABASE_URL: postgresql://wiki:wiki@db:5432/wiki
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+      LITELLM_MODEL: gemini/gemini-2.0-flash
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api:/app  # hot reload in dev
+
+  frontend:
+    build: ./frontend
+    depends_on: [api]
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app  # hot reload in dev
+    environment:
+      VITE_API_URL: http://localhost:8000
+
+volumes:
+  pgdata:
+  minio_data:
+```
+
+### Environment
+
+A single `.env` file at repo root holds secrets (`GEMINI_API_KEY`, etc.). docker-compose reads it automatically. `.env.example` is committed; `.env` is gitignored.
+
+### Dev vs prod
+
+- **Dev:** `docker compose up` — hot reload on both api and frontend, MinIO for local S3
+- **Prod:** `docker compose -f docker-compose.prod.yml up` — gunicorn workers, built React bundle served by nginx, real S3 bucket via env var swap
+
+---
+
+## 9. Build plan
 
 ### Weeks 1–2 — Skeleton
-- Postgres schema, FastAPI setup, auth (single user JWT)
+- Docker compose stack: db + api + frontend + minio all running with `docker compose up`
+- Postgres schema + pgvector extension, migrations via Alembic
+- FastAPI setup, auth (single user JWT)
 - Wiki CRUD + markdown editor
 - `[[wikilinks]]` parsing + `page_links` materialisation
-- S3 upload + PDF/Word/URL extraction
+- S3 upload (to MinIO locally) + PDF/Word/URL extraction
 - Hybrid search: `tsvector` FTS + pgvector
 
 ### Weeks 3–5 — Ingest agent
+
 - LiteLLM integration (Gemini default)
 - Ingest agent loop with shared tool surface
 - Background worker (asyncio or Celery)
@@ -231,7 +317,7 @@ This is the trickiest prompt-engineering problem in the product. Expect to itera
 
 ---
 
-## 9. Open questions before week 1
+## 10. Open questions before week 1
 
 1. **Gemini model variant** — `gemini-2.0-flash` for speed/cost or `gemini-2.5-pro` for quality? Start with flash, switch if quality is poor.
 2. **Worker strategy** — asyncio background tasks (simplest) vs Celery + Redis (more robust). Start with asyncio, add Celery if job reliability becomes an issue.
@@ -240,7 +326,7 @@ This is the trickiest prompt-engineering problem in the product. Expect to itera
 
 ---
 
-## 10. Success criteria
+## 11. Success criteria
 
 | Metric | Target |
 |---|---|
