@@ -16,6 +16,8 @@ os.environ.setdefault("S3_ENDPOINT", "http://localhost:9000")
 os.environ.setdefault("S3_BUCKET", "wiki")
 os.environ.setdefault("S3_ACCESS_KEY", "minioadmin")
 os.environ.setdefault("VECTOR_SEARCH_ENABLED", "true")
+os.environ.setdefault("MARKER_URL", "http://marker:8001")
+os.environ.setdefault("VISION_MODEL", "")
 
 import pytest
 import pytest_asyncio

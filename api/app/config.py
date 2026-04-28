@@ -14,6 +14,14 @@ class Settings(BaseSettings):
     single_user_password: str = "changeme"
     # Hybrid search: call embedding API for the query vector. Set false to use FTS only.
     vector_search_enabled: bool = True
+    marker_url: str = "http://marker:8001"
+    marker_use_llm: bool = False
+    marker_llm_service: str = "marker.services.gemini.GoogleGeminiService"
+    marker_llm_model: str = ""
+    marker_llm_api_key: str = ""
+    vision_model: str = ""  # empty = vision disabled
+    openai_api_key: str = ""
+    anthropic_api_key: str = ""
 
     class Config:
         env_file = ".env"
