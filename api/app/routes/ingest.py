@@ -88,16 +88,19 @@ async def _run_pipeline(source_id: str, workspace_id: str, data: bytes, filename
                 ]
                 combined_md = "\n\n".join(p["markdown"] for p in pages_data)
 
+            # Upload combined markdown to S3
             md_key = f"{workspace_id}/{source_id}/converted.md"
             upload_file(md_key, combined_md.encode("utf-8"), "text/markdown")
 
+            # Upload images and save SourcePage rows
             for p in pages_data:
                 image_s3_keys = []
                 for img in p["images"]:
                     ext = img["filename"].rsplit(".", 1)[-1] if "." in img["filename"] else "png"
                     img_key = f"{workspace_id}/{source_id}/p{p['page_num']}-{img['filename']}"
                     img_bytes = base64.b64decode(img["b64"])
-                    upload_file(img_key, img_bytes, f"image/{ext}")
+                    image_content_type = "image/jpeg" if ext.lower() == "jpg" else f"image/{ext}"
+                    upload_file(img_key, img_bytes, image_content_type)
                     image_s3_keys.append(img_key)
 
                 session.add(
