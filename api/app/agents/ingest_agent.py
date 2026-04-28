@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import litellm
@@ -5,61 +6,116 @@ from sqlalchemy import select
 
 from app.agents.assistant_message import assistant_message_for_litellm
 from app.agents.tools import AgentTools
+from app.agents import sub_agent
 from app.config import settings
 from app.database import AsyncSessionLocal
-from app.models import ActivityLog, Source
+from app.models import ActivityLog, Source, SourcePage
 from app.sse import broadcaster
 
-SYSTEM_PROMPT = """You are an agent that maintains a personal knowledge wiki.
-You have been given a new source document. Your job is to integrate its knowledge into the wiki.
+SMALL_DOC_THRESHOLD = 20
+COST_CEILING_USD = 2.0
+
+SYSTEM_PROMPT_SMALL = """You are an agent that maintains a personal knowledge wiki.
+You have been given a source document split into pages. Integrate its knowledge into the wiki.
 
 Process:
-1. Call list_pages() to see what exists.
-2. Call search_pages() to find pages related to the source content.
-3. Read the most relevant pages with read_page().
-4. Decide: does this content belong in an existing page, or does it need a new page?
-   - Update an existing page if the source adds to, refines, or contradicts something already there.
-   - Create a new page if the topic has no home yet, or if the content is substantial enough to stand alone.
-   - Prefer updating over creating — a wiki with 50 developed pages beats 200 stubs.
-5. Write changes using write_page(). You may update multiple pages.
-6. When done, stop calling tools.
+1. Call list_source_pages() to see the document structure and previews.
+2. Read pages with read_source_page(). Read all pages - they are manageable in size.
+3. Call list_pages() and search_pages() to find related wiki pages.
+4. Write changes using write_page() or create_page(). Prefer updating existing pages.
+5. When done, stop calling tools.
 
-Write in clear markdown. Use [[wikilinks]] to link related pages. Keep summaries to one sentence."""
+Write clear markdown. Use [[wikilinks]] to link related pages."""
 
-COST_CEILING_USD = 2.0
+SYSTEM_PROMPT_LARGE = """You are an agent that maintains a personal knowledge wiki.
+You have been given a large source document split into pages. Integrate its knowledge into the wiki.
+
+Process:
+1. Call list_source_pages() to see the full document structure with previews.
+2. Call spawn_page_reader() MULTIPLE TIMES IN THE SAME RESPONSE to read sections concurrently.
+   Each call assigns a page range to a sub-agent that reads and summarises it.
+   Group related pages together. Use focus_hint to guide each sub-agent.
+3. After receiving all summaries, integrate knowledge into the wiki:
+   - Call list_pages() and search_pages() to find related pages.
+   - Write changes using write_page() or create_page(). Prefer updating existing pages.
+4. When done, stop calling tools.
+
+Write clear markdown. Use [[wikilinks]] to link related pages."""
+
+SPAWN_PAGE_READER_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "spawn_page_reader",
+        "description": (
+            "Spawn a sub-agent to read and summarise a page range concurrently. "
+            "Call multiple times in the SAME response to process sections in parallel."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "page_start": {"type": "integer", "description": "First page (1-indexed)"},
+                "page_end": {"type": "integer", "description": "Last page (inclusive)"},
+                "focus_hint": {"type": "string", "description": "What to focus on"},
+            },
+            "required": ["page_start", "page_end"],
+        },
+    },
+}
 
 
 async def run(source_id: str, workspace_id: str):
     async with AsyncSessionLocal() as session:
-        result = await session.execute(select(Source).where(Source.id == source_id))
-        source = result.scalar_one_or_none()
+        src_result = await session.execute(select(Source).where(Source.id == source_id))
+        source = src_result.scalar_one_or_none()
         if not source:
             return
 
-        tools = AgentTools(
-            session=session, workspace_id=workspace_id, broadcaster=broadcaster
+        pages_result = await session.execute(
+            select(SourcePage)
+            .where(SourcePage.source_id == source_id)
+            .order_by(SourcePage.page_num)
         )
-        tool_defs = tools.as_litellm_tools()
+        pages = pages_result.scalars().all()
+        page_count = len(pages)
+
+        is_large = page_count > SMALL_DOC_THRESHOLD
+
+        tools = AgentTools(
+            session=session,
+            workspace_id=workspace_id,
+            broadcaster=broadcaster,
+            source_id=source_id,
+        )
+
+        wiki_tool_names = ["list_pages", "search_pages", "read_page", "write_page", "create_page"]
+        source_tool_names = ["list_source_pages", "read_source_page"]
+
+        if is_large:
+            tool_defs = tools.as_litellm_tools(allowed=wiki_tool_names + ["list_source_pages"])
+            tool_defs.append(SPAWN_PAGE_READER_TOOL)
+            system_prompt = SYSTEM_PROMPT_LARGE
+        else:
+            tool_defs = tools.as_litellm_tools(allowed=wiki_tool_names + source_tool_names)
+            system_prompt = SYSTEM_PROMPT_SMALL
 
         messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {
                 "role": "user",
-                "content": f"New source to integrate:\n\n{source.extracted_text[:12000]}",
+                "content": f"Integrate the source document (source_id={source_id}, {page_count} pages) into the wiki.",
             },
         ]
 
         total_cost = 0.0
         pages_touched: list[str] = []
 
-        for _ in range(20):  # max iterations
+        for _ in range(30):
             resp = await litellm.acompletion(
                 model=settings.litellm_model,
                 messages=messages,
                 tools=tool_defs,
                 tool_choice="auto",
             )
-            # litellm 1.52.0 returns cost via completion_cost(ModelResponse)
             total_cost += litellm.completion_cost(resp) or 0.0
             if total_cost > COST_CEILING_USD:
                 break
@@ -70,19 +126,31 @@ async def run(source_id: str, workspace_id: str):
             if not msg.tool_calls:
                 break
 
-            for tc in msg.tool_calls:
+            spawn_calls = [tc for tc in msg.tool_calls if tc.function.name == "spawn_page_reader"]
+            other_calls = [tc for tc in msg.tool_calls if tc.function.name != "spawn_page_reader"]
+
+            if spawn_calls:
+                tasks = [
+                    sub_agent.run(
+                        source_id=source_id,
+                        workspace_id=workspace_id,
+                        page_start=json.loads(tc.function.arguments)["page_start"],
+                        page_end=json.loads(tc.function.arguments)["page_end"],
+                        focus_hint=json.loads(tc.function.arguments).get("focus_hint", ""),
+                    )
+                    for tc in spawn_calls
+                ]
+                results = await asyncio.gather(*tasks)
+                for tc, result in zip(spawn_calls, results):
+                    messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
+
+            for tc in other_calls:
                 name = tc.function.name
-                args = json.loads(tc.function.arguments)
+                args = json.loads(tc.function.arguments or "{}")
                 result_str = await tools.dispatch(name, args)
                 if name in ("write_page", "create_page") and "slug" in args:
                     pages_touched.append(args["slug"])
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tc.id,
-                        "content": result_str,
-                    }
-                )
+                messages.append({"role": "tool", "tool_call_id": tc.id, "content": result_str})
 
         session.add(
             ActivityLog(
@@ -92,10 +160,9 @@ async def run(source_id: str, workspace_id: str):
                     "source_id": source_id,
                     "pages_touched": pages_touched,
                     "cost_usd": round(total_cost, 4),
+                    "page_count": page_count,
                 },
             )
         )
         await session.commit()
-        await broadcaster.publish(
-            {"event": "agent:done", "pages_touched": pages_touched}
-        )
+        await broadcaster.publish({"event": "agent:done", "pages_touched": pages_touched})

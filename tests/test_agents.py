@@ -159,3 +159,97 @@ async def test_dispatch_list_source_pages():
 
     result = await tools.dispatch("list_source_pages", {})
     assert "page_num" in result
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_reads_directly_for_small_docs():
+    """Docs with <=20 pages go direct - no spawn_page_reader tool offered."""
+    from app.agents import ingest_agent
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    final_resp = MagicMock()
+    final_resp.choices[0].message.content = "done"
+    final_resp.choices[0].message.tool_calls = []
+
+    with (
+        patch(
+            "app.agents.ingest_agent.litellm.acompletion",
+            new_callable=AsyncMock,
+            return_value=final_resp,
+        ) as mock_acompletion,
+        patch("app.agents.ingest_agent.litellm.completion_cost", return_value=0.001),
+        patch("app.agents.ingest_agent.AsyncSessionLocal") as MockSession,
+        patch("app.agents.ingest_agent.broadcaster") as mock_broadcaster,
+    ):
+        mock_session = AsyncMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+        mock_session.add = MagicMock()
+        mock_broadcaster.publish = AsyncMock(return_value=None)
+
+        # Simulate 5 source pages in DB
+        from app.models import SourcePage
+
+        pages = [MagicMock(spec=SourcePage, page_num=i) for i in range(1, 6)]
+        page_result = MagicMock()
+        page_result.scalars.return_value.all.return_value = pages
+
+        source_result = MagicMock()
+        source_result.scalar_one_or_none.return_value = MagicMock(id="src-1")
+
+        mock_session.execute = AsyncMock(side_effect=[source_result, page_result])
+        MockSession.return_value = mock_session
+
+        await ingest_agent.run("src-1", "ws-1")
+
+    call_args = mock_acompletion.call_args
+    tools_passed = call_args.kwargs.get("tools", [])
+    tool_names = [t["function"]["name"] for t in tools_passed]
+    assert "spawn_page_reader" not in tool_names
+    assert "read_source_page" in tool_names
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_offers_spawn_for_large_docs():
+    """Docs with >20 pages get the spawn_page_reader tool."""
+    from app.agents import ingest_agent
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    final_resp = MagicMock()
+    final_resp.choices[0].message.content = "done"
+    final_resp.choices[0].message.tool_calls = []
+
+    with (
+        patch(
+            "app.agents.ingest_agent.litellm.acompletion",
+            new_callable=AsyncMock,
+            return_value=final_resp,
+        ) as mock_acompletion,
+        patch("app.agents.ingest_agent.litellm.completion_cost", return_value=0.001),
+        patch("app.agents.ingest_agent.AsyncSessionLocal") as MockSession,
+        patch("app.agents.ingest_agent.broadcaster") as mock_broadcaster,
+    ):
+        mock_session = AsyncMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+        mock_session.add = MagicMock()
+        mock_broadcaster.publish = AsyncMock(return_value=None)
+
+        from app.models import SourcePage
+
+        pages = [MagicMock(spec=SourcePage, page_num=i) for i in range(1, 25)]  # 24 pages
+        page_result = MagicMock()
+        page_result.scalars.return_value.all.return_value = pages
+
+        source_result = MagicMock()
+        source_result.scalar_one_or_none.return_value = MagicMock(id="src-1")
+
+        mock_session.execute = AsyncMock(side_effect=[source_result, page_result])
+        MockSession.return_value = mock_session
+
+        await ingest_agent.run("src-1", "ws-1")
+
+    call_args = mock_acompletion.call_args
+    tools_passed = call_args.kwargs.get("tools", [])
+    tool_names = [t["function"]["name"] for t in tools_passed]
+    assert "spawn_page_reader" in tool_names
