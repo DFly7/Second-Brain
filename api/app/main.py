@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.auth import router as auth_router
+from app.routes.wiki import router as wiki_router
 
 app = FastAPI(title="LLM Wiki")
 
@@ -13,6 +14,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(wiki_router)
 
 
 @app.get("/health")
