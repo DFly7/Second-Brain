@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     database_url: str
     jwt_secret: str = "dev-secret"
     litellm_model: str = "gemini/gemini-2.0-flash"
+    gemini_api_key: str | None = None
     s3_endpoint: str = "http://minio:9000"
     s3_bucket: str = "wiki"
     s3_access_key: str = "minioadmin"
