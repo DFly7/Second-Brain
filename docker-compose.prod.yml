@@ -26,6 +26,18 @@ services:
       timeout: 5s
       retries: 3
 
+  marker:
+    build:
+      context: ./marker_service
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    volumes:
+      - marker_models:/root/.cache
+
   api:
     build:
       context: ./api
@@ -35,9 +47,12 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      marker:
+        condition: service_healthy
     env_file: .env
     environment:
       S3_ENDPOINT: http://minio:9000
+      MARKER_URL: http://marker:8001
     restart: unless-stopped
 
   frontend:
@@ -53,3 +68,4 @@ services:
 volumes:
   pgdata:
   minio_data:
+  marker_models:

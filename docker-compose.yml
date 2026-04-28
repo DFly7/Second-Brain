@@ -33,6 +33,16 @@ services:
       timeout: 5s
       retries: 3
 
+  marker:
+    build: ./marker_service
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    volumes:
+      - marker_models:/root/.cache
+
   api:
     build: ./api
     depends_on:
@@ -40,10 +50,13 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      marker:
+        condition: service_healthy
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://wiki:wiki@db:5432/wiki
       S3_ENDPOINT: http://minio:9000
+      MARKER_URL: http://marker:8001
     ports:
       - "8000:8000"
     volumes:
@@ -66,3 +79,4 @@ services:
 volumes:
   pgdata:
   minio_data:
+  marker_models:
