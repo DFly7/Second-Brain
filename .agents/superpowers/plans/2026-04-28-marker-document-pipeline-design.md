@@ -36,6 +36,8 @@ Models are loaded **once at startup** (`create_model_dict()`) and reused for eve
 
 `TORCH_DEVICE` is left unset — Marker auto-detects MPS on M2 Mac, CPU on cloud.
 
+**LLM enhancement config** is passed through from the API container to the Marker container via the `/convert` request body. When `MARKER_USE_LLM=true`, the API includes `llm_service`, `llm_model`, and `llm_api_key` in the request. The Marker container builds a `ConfigParser` with these values and passes it to the converter. This keeps all secrets in the API container — the Marker container holds no keys itself.
+
 ### Pipeline stages
 
 Upload triggers two sequential async background stages:
@@ -158,11 +160,33 @@ The ingest agent never interacts with `VISION_MODEL` directly — it just gets e
 
 ```bash
 # Existing
-LITELLM_MODEL=...           # chat agent + orchestrator ingest agent
+LITELLM_MODEL=...                # chat agent + orchestrator ingest agent
 
-# New
-MARKER_URL=http://marker:8001   # swap to Datalab hosted API URL to go managed
-VISION_MODEL=gpt-4o             # must be vision-capable; used only for pages with images
+# Marker service
+MARKER_URL=http://marker:8001    # swap to Datalab hosted API URL to go managed
+
+# Marker LLM enhancement (off by default)
+MARKER_USE_LLM=false             # set true to enable Marker's second-pass LLM accuracy boost
+MARKER_LLM_SERVICE=marker.services.gemini.GoogleGeminiService
+                                 # which provider Marker uses for its enhancement pass:
+                                 #   marker.services.gemini.GoogleGeminiService  (default)
+                                 #   marker.services.claude.ClaudeService
+                                 #   marker.services.openai.OpenAIService
+                                 #   marker.services.ollama.OllamaService
+MARKER_LLM_MODEL=                # optional model override (e.g. gemini-2.0-flash, claude-3-5-haiku)
+MARKER_LLM_API_KEY=              # API key for the chosen MARKER_LLM_SERVICE
+
+# Vision model (for pages with extracted images)
+VISION_MODEL=gpt-4o              # must be vision-capable; used only when a page has images
+                                 # litellm routes by prefix — also set the matching provider key:
+                                 #   gpt-4o            → OPENAI_API_KEY
+                                 #   claude-3-5-sonnet → ANTHROPIC_API_KEY
+                                 #   gemini/gemini-...  → GEMINI_API_KEY
+
+# Provider keys (set whichever your VISION_MODEL and MARKER_LLM_SERVICE need)
+OPENAI_API_KEY=
+ANTHROPIC_API_KEY=
+GEMINI_API_KEY=
 ```
 
 ---
@@ -225,6 +249,6 @@ alembic/                    # new migration for SourcePage + Source columns
 
 ## Out of Scope
 
-- Marker `--use_llm` mode (hybrid accuracy boost) — can be added later via config
 - Per-page embeddings for semantic search within a source document
 - Frontend progress UI for the converting stage (SSE events are emitted; UI wiring is separate)
+- Frontend config UI for switching MARKER_USE_LLM / VISION_MODEL (env-var only for now)
