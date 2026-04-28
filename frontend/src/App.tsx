@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import type React from 'react'
 import { login } from './api/client'
+import Layout from './components/Layout'
 
 export default function App() {
   const [authed, setAuthed] = useState(!!localStorage.getItem('token'))
@@ -20,10 +22,11 @@ export default function App() {
     </div>
   )
 
-  return <div style={{ padding: 24 }}>Logged in — UI coming next.</div>
+  return <Layout />
 }
 
-const inputStyle = { width: '100%', marginBottom: 12, padding: '8px 12px', background: '#0d1117',
-  border: '1px solid #30363d', borderRadius: 6, color: '#e6edf3', fontSize: 14, display: 'block' }
-const btnStyle = { width: '100%', padding: '10px 0', background: '#238636', border: 'none',
-  borderRadius: 6, color: '#fff', fontSize: 14, cursor: 'pointer' }
+const inputStyle: React.CSSProperties = { width: '100%', marginBottom: 12, padding: '8px 12px',
+  background: '#0d1117', border: '1px solid #30363d', borderRadius: 6, color: '#e6edf3',
+  fontSize: 14, display: 'block' }
+const btnStyle: React.CSSProperties = { width: '100%', padding: '10px 0', background: '#238636',
+  border: 'none', borderRadius: 6, color: '#fff', fontSize: 14, cursor: 'pointer' }
