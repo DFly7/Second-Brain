@@ -70,3 +70,40 @@ async def test_update_page():
         )
         assert resp.status_code == 200
         assert resp.json()["title"] == "New"
+
+
+@pytest.mark.asyncio
+async def test_folder_slug_create_and_get():
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        token = await _token(client)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        create = await client.post(
+            "/wiki/pages",
+            json={
+                "slug": "people/alice-jones",
+                "title": "Alice Jones",
+                "body_md": "# Alice Jones\n\nFounder.",
+                "summary": "Co-founder of Acme Corp",
+            },
+            headers=headers,
+        )
+        assert create.status_code == 201
+
+        get = await client.get("/wiki/pages/people/alice-jones", headers=headers)
+        assert get.status_code == 200
+        assert get.json()["slug"] == "people/alice-jones"
+
+        update = await client.put(
+            "/wiki/pages/people/alice-jones",
+            json={"summary": "Updated summary"},
+            headers=headers,
+        )
+        assert update.status_code == 200
+
+        delete = await client.delete(
+            "/wiki/pages/people/alice-jones", headers=headers
+        )
+        assert delete.status_code == 204

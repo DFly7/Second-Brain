@@ -3,7 +3,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_user
@@ -100,7 +100,7 @@ async def create_page(
     return page
 
 
-@router.get("/pages/{slug}", response_model=PageOut)
+@router.get("/pages/{slug:path}", response_model=PageOut)
 async def get_page(
     slug: str,
     db: AsyncSession = Depends(get_db),
@@ -116,7 +116,7 @@ async def get_page(
     return page
 
 
-@router.put("/pages/{slug}", response_model=PageOut)
+@router.put("/pages/{slug:path}", response_model=PageOut)
 async def update_page(
     slug: str,
     body: PageUpdate,
@@ -152,7 +152,7 @@ async def update_page(
     return page
 
 
-@router.delete("/pages/{slug}", status_code=204)
+@router.delete("/pages/{slug:path}", status_code=204)
 async def delete_page(
     slug: str,
     db: AsyncSession = Depends(get_db),
@@ -165,5 +165,6 @@ async def delete_page(
     page = result.scalar_one_or_none()
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
+    await db.execute(delete(Revision).where(Revision.page_id == page.id))
     await db.delete(page)
     await db.commit()
