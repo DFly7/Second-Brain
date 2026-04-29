@@ -1,4 +1,5 @@
 import base64
+import re
 from datetime import datetime
 
 import litellm
@@ -95,12 +96,66 @@ class AgentTools:
                 )
             )
         await self.session.commit()
+        await self.update_index(slug, title or slug.replace("-", " ").title(), summary)
         return f"Page '{slug}' saved."
 
     async def create_page(
         self, slug: str, title: str, body_md: str, summary: str = ""
     ) -> str:
         return await self.write_page(slug, body_md, summary, title=title)
+
+    async def update_index(self, slug: str, title: str, summary: str) -> None:
+        """Patch meta/index with the entry for the given page. No-op for meta/index itself."""
+        if slug == "meta/index":
+            return
+
+        folder = (slug.rsplit("/", 1)[0] + "/") if "/" in slug else "misc/"
+        entry_line = f"- [[{slug}]] — {summary or title}"
+
+        raw = await self.read_page("meta/index")
+        if raw.startswith("[Page 'meta/index' not found]"):
+            raw = "# Wiki Index\n\n"
+
+        # Parse existing sections into dict[folder_header -> list[entry_line]]
+        sections: dict[str, list[str]] = {}
+        current_folder: str | None = None
+        preamble: list[str] = []
+        in_preamble = True
+
+        for line in raw.split("\n"):
+            m = re.match(r"^## (.+?)\s*\(\d+ pages?\)$", line)
+            if m:
+                in_preamble = False
+                current_folder = m.group(1)
+                if current_folder not in sections:
+                    sections[current_folder] = []
+            elif in_preamble:
+                preamble.append(line)
+            elif current_folder is not None and line.startswith("- [["):
+                sections[current_folder].append(line)
+
+        # Update or add entry for this slug
+        if folder not in sections:
+            sections[folder] = []
+        sections[folder] = sorted(
+            [e for e in sections[folder] if not e.startswith(f"- [[{slug}]]")]
+            + [entry_line]
+        )
+
+        # Rebuild body — meta/ section always last
+        date_str = datetime.utcnow().strftime("%Y-%m-%d")
+        lines: list[str] = [f"# Wiki Index", "", f"_Last updated: {date_str}_", ""]
+        for f in sorted(sections.keys(), key=lambda x: (x == "meta/", x)):
+            lines.append(f"## {f} ({len(sections[f])} pages)")
+            lines.extend(sections[f])
+            lines.append("")
+
+        await self.write_page(
+            "meta/index",
+            "\n".join(lines),
+            summary="Wiki table of contents",
+            title="Index",
+        )
 
     async def list_source_pages(self) -> list[dict]:
         result = await self.session.execute(

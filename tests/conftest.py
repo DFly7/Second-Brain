@@ -21,14 +21,31 @@ os.environ.setdefault("VISION_MODEL", "")
 
 import pytest
 import pytest_asyncio
+from sqlalchemy import text
 
-from app.database import Base, engine
+from app.database import AsyncSessionLocal, Base, engine
 import app.models  # noqa: F401
+from app.models import Workspace
 
 
-@pytest_asyncio.fixture(autouse=True)
+@pytest_asyncio.fixture(loop_scope="function")
+async def db_session():
+    async with AsyncSessionLocal() as session:
+        yield session
+
+
+@pytest_asyncio.fixture(loop_scope="function")
+async def workspace_id(db_session):
+    ws = Workspace(user_id="test-user")
+    db_session.add(ws)
+    await db_session.flush()
+    return ws.id
+
+
+@pytest_asyncio.fixture(autouse=True, loop_scope="function")
 async def clean_db():
     async with engine.begin() as conn:
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     yield
