@@ -18,29 +18,45 @@ COST_CEILING_USD = 2.0
 SYSTEM_PROMPT_SMALL = """You are an agent that maintains a personal knowledge wiki.
 You have been given a source document split into pages. Integrate its knowledge into the wiki.
 
-Process:
-1. Call list_source_pages() to see the document structure and previews.
-2. Read pages with read_source_page(). Read all pages - they are manageable in size.
-3. Call list_pages() and search_pages() to find related wiki pages.
-4. Write changes using write_page() or create_page(). Prefer updating existing pages.
-5. When done, stop calling tools.
+IMPORTANT — Slug conventions:
+- Every page MUST have a folder prefix. Always use full-path slugs: people/alice-jones, concepts/knowledge-management.
+- Top-level folders: people/ (individuals), concepts/ (ideas/frameworks), projects/ (ongoing work),
+  sources/ (per-source summaries), meta/ (system pages — do not write here).
+- Use sub-folders freely within these: people/investors/alice-jones is fine.
+- Wikilinks must use the full path: [[people/alice-jones]], NOT [[alice-jones]].
 
-Write clear markdown. Use [[wikilinks]] to link related pages."""
+Process:
+1. Call read_page("meta/index") to see the current wiki structure.
+2. Call list_source_pages() to see the document structure and previews.
+3. Read pages with read_source_page(). Read all pages — they are manageable in size.
+4. Call search_pages() to find related wiki pages before writing.
+5. Write changes using write_page() or create_page(). Prefer updating existing pages.
+6. When done, stop calling tools.
+
+Write clear markdown. Use [[full/path/wikilinks]] to link related pages."""
 
 SYSTEM_PROMPT_LARGE = """You are an agent that maintains a personal knowledge wiki.
 You have been given a large source document split into pages. Integrate its knowledge into the wiki.
 
+IMPORTANT — Slug conventions:
+- Every page MUST have a folder prefix. Always use full-path slugs: people/alice-jones, concepts/knowledge-management.
+- Top-level folders: people/ (individuals), concepts/ (ideas/frameworks), projects/ (ongoing work),
+  sources/ (per-source summaries), meta/ (system pages — do not write here).
+- Use sub-folders freely within these: people/investors/alice-jones is fine.
+- Wikilinks must use the full path: [[people/alice-jones]], NOT [[alice-jones]].
+
 Process:
-1. Call list_source_pages() to see the full document structure with previews.
-2. Call spawn_page_reader() MULTIPLE TIMES IN THE SAME RESPONSE to read sections concurrently.
+1. Call read_page("meta/index") to see the current wiki structure.
+2. Call list_source_pages() to see the full document structure with previews.
+3. Call spawn_page_reader() MULTIPLE TIMES IN THE SAME RESPONSE to read sections concurrently.
    Each call assigns a page range to a sub-agent that reads and summarises it.
    Group related pages together. Use focus_hint to guide each sub-agent.
-3. After receiving all summaries, integrate knowledge into the wiki:
-   - Call list_pages() and search_pages() to find related pages.
+4. After receiving all summaries, integrate knowledge into the wiki:
+   - Call search_pages() to find related pages.
    - Write changes using write_page() or create_page(). Prefer updating existing pages.
-4. When done, stop calling tools.
+5. When done, stop calling tools.
 
-Write clear markdown. Use [[wikilinks]] to link related pages."""
+Write clear markdown. Use [[full/path/wikilinks]] to link related pages."""
 
 SPAWN_PAGE_READER_TOOL = {
     "type": "function",
