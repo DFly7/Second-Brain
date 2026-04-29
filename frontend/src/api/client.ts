@@ -78,3 +78,12 @@ export function createSSE(onEvent: (data: unknown) => void): () => void {
   es.onmessage = (e) => { try { onEvent(JSON.parse(e.data)) } catch {} }
   return () => es.close()
 }
+
+export async function runHealthCheck() {
+  const r = await fetch(`${BASE}/health/run`, {
+    method: 'POST',
+    headers: headers(),
+  })
+  if (!r.ok) throw new Error('Health check failed to start')
+  return r.json()
+}

@@ -466,3 +466,30 @@ def test_describe_image_in_tool_schema():
     tools = AgentTools(session=None, workspace_id="ws-1", broadcaster=None)
     names = [t["function"]["name"] for t in tools.as_litellm_tools()]
     assert "describe_image" in names
+
+
+@pytest.mark.asyncio
+async def test_write_page_updates_meta_index(db_session, workspace_id):
+    tools = AgentTools(session=db_session, workspace_id=workspace_id, broadcaster=None)
+    await tools.write_page(
+        slug="people/alice-jones",
+        body_md="# Alice Jones\n\nFounder.",
+        summary="Co-founder of Acme Corp",
+        title="Alice Jones",
+    )
+    index_content = await tools.read_page("meta/index")
+    assert "[[people/alice-jones]]" in index_content
+    assert "Co-founder of Acme Corp" in index_content
+
+
+@pytest.mark.asyncio
+async def test_write_meta_index_does_not_recurse(db_session, workspace_id):
+    tools = AgentTools(session=db_session, workspace_id=workspace_id, broadcaster=None)
+    await tools.write_page(
+        slug="meta/index",
+        body_md="# Wiki Index\n",
+        summary="Index",
+        title="Index",
+    )
+    content = await tools.read_page("meta/index")
+    assert content == "# Wiki Index\n"
