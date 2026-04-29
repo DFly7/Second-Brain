@@ -3,7 +3,7 @@ import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_user
@@ -18,6 +18,21 @@ router = APIRouter(prefix="/ingest", tags=["ingest"])
 MARKER_TYPES = {"pdf", "docx", "doc", "pptx", "ppt", "xlsx", "xls", "png", "jpg", "jpeg", "webp"}
 TEXT_TYPES = {"md", "markdown", "txt", "text"}
 CHUNK_SIZE = 4000
+
+
+async def _maybe_auto_health(
+    background_tasks: BackgroundTasks,
+    db: AsyncSession,
+    ws: Workspace,
+) -> None:
+    count_result = await db.execute(
+        select(func.count(Source.id)).where(Source.workspace_id == ws.id)
+    )
+    source_count = count_result.scalar() or 0
+    if source_count > 0 and source_count % 10 == 0:
+        from app.agents import health_agent
+
+        background_tasks.add_task(health_agent.run, ws.id)
 
 
 class URLIngest(BaseModel):
@@ -164,6 +179,7 @@ async def ingest_file(
     await db.refresh(source)
 
     background_tasks.add_task(_run_pipeline, source.id, ws.id, data, file.filename or f"file.{suffix}")
+    await _maybe_auto_health(background_tasks, db, ws)
     return {"source_id": source.id, "status": "converting"}
 
 
@@ -185,6 +201,7 @@ async def ingest_url(
 
     fake_data = text.encode("utf-8")
     background_tasks.add_task(_run_pipeline, source.id, ws.id, fake_data, "content.txt")
+    await _maybe_auto_health(background_tasks, db, ws)
     return {"source_id": source.id, "status": "converting"}
 
 
@@ -203,4 +220,5 @@ async def ingest_text(
 
     fake_data = body.text.encode("utf-8")
     background_tasks.add_task(_run_pipeline, source.id, ws.id, fake_data, "note.txt")
+    await _maybe_auto_health(background_tasks, db, ws)
     return {"source_id": source.id, "status": "converting"}
