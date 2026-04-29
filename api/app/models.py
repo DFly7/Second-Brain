@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from pgvector.sqlalchemy import Vector
@@ -84,7 +84,12 @@ class SourcePage(Base):
     markdown: Mapped[str] = mapped_column(Text, default="")
     preview: Mapped[str] = mapped_column(Text, default="")
     image_s3_keys: Mapped[list] = mapped_column(JSONB, default=list)
+    vision_processed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("vision_processed", False)
+        super().__init__(**kwargs)
 
 
 class ActivityLog(Base):
