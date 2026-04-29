@@ -1,4 +1,5 @@
 import base64
+import re
 from datetime import datetime
 
 import litellm
@@ -11,6 +12,68 @@ from app.search import search_pages as _search
 from app.sse import SSEBroadcaster
 from app.storage import download_file
 from app.wikilinks import sync_links
+
+
+async def _ensure_vision_captions(page: SourcePage, session: AsyncSession) -> None:
+    if page.vision_processed:
+        return
+    if not page.image_s3_keys or not settings.vision_model:
+        return
+
+    markdown = page.markdown
+
+    for s3_key in page.image_s3_keys:
+        basename = s3_key.rsplit("/", 1)[-1]
+        original_filename = re.sub(r"^p\d+-", "", basename)
+
+        try:
+            img_bytes = download_file(s3_key)
+            b64 = base64.b64encode(img_bytes).decode()
+            ext = s3_key.rsplit(".", 1)[-1].lower()
+            mime = {
+                "png": "image/png",
+                "jpg": "image/jpeg",
+                "jpeg": "image/jpeg",
+                "webp": "image/webp",
+            }.get(ext, "image/png")
+            resp = await litellm.acompletion(
+                model=settings.vision_model,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": f"Describe this image in the context of the surrounding document text:\n\n{markdown[:500]}",
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:{mime};base64,{b64}"},
+                            },
+                        ],
+                    }
+                ],
+            )
+            caption = resp.choices[0].message.content or ""
+            caption_block = f"\n> **[AI-generated caption — {settings.vision_model}]** {caption}"
+        except Exception:
+            caption_block = (
+                f"\n> **[AI-generated caption — {settings.vision_model}]**"
+                f" *(caption unavailable — image: `{s3_key}`)*"
+            )
+
+        pattern = re.compile(
+            r"(!\[.*?\]\([^)]*" + re.escape(original_filename) + r"[^)]*\))"
+        )
+        if pattern.search(markdown):
+            markdown = pattern.sub(r"\1" + caption_block, markdown, count=1)
+        else:
+            markdown += caption_block
+
+    page.markdown = markdown
+    page.vision_processed = True
+    session.add(page)
+    await session.commit()
 
 
 class AgentTools:
