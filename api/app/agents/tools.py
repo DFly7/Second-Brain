@@ -96,7 +96,8 @@ class AgentTools:
                 )
             )
         await self.session.commit()
-        await self.update_index(slug, title or slug.replace("-", " ").title(), summary)
+        await self.session.refresh(page)
+        await self.update_index(slug, page.title, page.summary)
         return f"Page '{slug}' saved."
 
     async def create_page(
