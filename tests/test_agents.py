@@ -391,3 +391,78 @@ async def test_ensure_vision_captions_appends_orphaned_image():
     assert "> **[AI-generated caption — gpt-4o-mini]** A diagram." in page.markdown
     assert page.vision_processed is True
     mock_session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_describe_image_returns_caption():
+    mock_vision_resp = MagicMock()
+    mock_vision_resp.choices[0].message.content = "A scatter plot of user retention."
+
+    with (
+        patch("app.agents.tools.download_file", return_value=b"\x89PNG\r\n"),
+        patch("app.agents.tools.settings") as mock_settings,
+        patch(
+            "app.agents.tools.litellm.acompletion",
+            new_callable=AsyncMock,
+            return_value=mock_vision_resp,
+        ),
+    ):
+        mock_settings.vision_model = "gpt-4o-mini"
+        tools = AgentTools(session=AsyncMock(), workspace_id="ws-1", broadcaster=None)
+        result = await tools.describe_image("ws/src/p2-chart.png")
+
+    assert result == "A scatter plot of user retention."
+
+
+@pytest.mark.asyncio
+async def test_describe_image_returns_error_on_failure():
+    with (
+        patch("app.agents.tools.download_file", side_effect=Exception("S3 error")),
+        patch("app.agents.tools.settings") as mock_settings,
+    ):
+        mock_settings.vision_model = "gpt-4o-mini"
+        tools = AgentTools(session=AsyncMock(), workspace_id="ws-1", broadcaster=None)
+        result = await tools.describe_image("ws/src/p2-chart.png")
+
+    assert "error" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_describe_image_does_not_write_to_db():
+    mock_session = MagicMock(spec=AsyncSession)
+    mock_session.commit = AsyncMock()
+    mock_vision_resp = MagicMock()
+    mock_vision_resp.choices[0].message.content = "A pie chart."
+
+    with (
+        patch("app.agents.tools.download_file", return_value=b"\x89PNG\r\n"),
+        patch("app.agents.tools.settings") as mock_settings,
+        patch(
+            "app.agents.tools.litellm.acompletion",
+            new_callable=AsyncMock,
+            return_value=mock_vision_resp,
+        ),
+    ):
+        mock_settings.vision_model = "gpt-4o-mini"
+        tools = AgentTools(session=mock_session, workspace_id="ws-1", broadcaster=None)
+        await tools.describe_image("ws/src/p1-img0.png")
+
+    mock_session.add.assert_not_called()
+    mock_session.commit.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_dispatch_describe_image():
+    tools = AgentTools(session=AsyncMock(), workspace_id="ws-1", broadcaster=None)
+    tools.describe_image = AsyncMock(return_value="A chart.")
+
+    result = await tools.dispatch("describe_image", {"s3_key": "ws/src/p1-img0.png"})
+
+    tools.describe_image.assert_awaited_once_with("ws/src/p1-img0.png")
+    assert result == "A chart."
+
+
+def test_describe_image_in_tool_schema():
+    tools = AgentTools(session=None, workspace_id="ws-1", broadcaster=None)
+    names = [t["function"]["name"] for t in tools.as_litellm_tools()]
+    assert "describe_image" in names

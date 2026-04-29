@@ -195,6 +195,39 @@ class AgentTools:
         await _ensure_vision_captions(page, self.session)
         return page.markdown
 
+    async def describe_image(self, s3_key: str) -> str:
+        try:
+            img_bytes = download_file(s3_key)
+            b64 = base64.b64encode(img_bytes).decode()
+            ext = s3_key.rsplit(".", 1)[-1].lower()
+            mime = {
+                "png": "image/png",
+                "jpg": "image/jpeg",
+                "jpeg": "image/jpeg",
+                "webp": "image/webp",
+            }.get(ext, "image/png")
+            resp = await litellm.acompletion(
+                model=settings.vision_model,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:{mime};base64,{b64}"},
+                            },
+                            {
+                                "type": "text",
+                                "text": "Describe this image in detail.",
+                            },
+                        ],
+                    }
+                ],
+            )
+            return resp.choices[0].message.content or ""
+        except Exception as exc:
+            return f"[describe_image error: {exc}]"
+
     def as_litellm_tools(self, allowed: list[str] | None = None) -> list[dict]:
         all_tools = [
             {
@@ -297,6 +330,27 @@ class AgentTools:
                     },
                 },
             },
+            {
+                "type": "function",
+                "function": {
+                    "name": "describe_image",
+                    "description": (
+                        "Describe a specific image from the source document by its S3 key. "
+                        "Use this when a page shows '(caption unavailable — image: `<key>`)' "
+                        "to get a fresh vision description of that image."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "s3_key": {
+                                "type": "string",
+                                "description": "The S3 key of the image, as shown in the caption unavailable notice.",
+                            }
+                        },
+                        "required": ["s3_key"],
+                    },
+                },
+            },
         ]
         if allowed:
             return [t for t in all_tools if t["function"]["name"] in allowed]
@@ -327,4 +381,6 @@ class AgentTools:
             return str(pages)
         if name == "read_source_page":
             return await self.read_source_page(args["page_num"])
+        if name == "describe_image":
+            return await self.describe_image(args["s3_key"])
         return f"Unknown tool: {name}"
