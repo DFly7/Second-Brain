@@ -192,43 +192,8 @@ class AgentTools:
         if not page:
             return f"[Page {page_num} not found]"
 
-        markdown = page.markdown
-
-        if page.image_s3_keys and settings.vision_model:
-            descriptions = []
-            for s3_key in page.image_s3_keys:
-                img_bytes = download_file(s3_key)
-                b64 = base64.b64encode(img_bytes).decode()
-                ext = s3_key.rsplit(".", 1)[-1].lower()
-                mime = {
-                    "png": "image/png",
-                    "jpg": "image/jpeg",
-                    "jpeg": "image/jpeg",
-                    "webp": "image/webp",
-                }.get(ext, "image/png")
-                resp = await litellm.acompletion(
-                    model=settings.vision_model,
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": f"Describe this image in the context of the surrounding document text:\n\n{markdown[:500]}",
-                                },
-                                {
-                                    "type": "image_url",
-                                    "image_url": {"url": f"data:{mime};base64,{b64}"},
-                                },
-                            ],
-                        }
-                    ],
-                )
-                descriptions.append(resp.choices[0].message.content or "")
-            for i, desc in enumerate(descriptions):
-                markdown += f"\n\n> [Figure {i + 1}] {desc}"
-
-        return markdown
+        await _ensure_vision_captions(page, self.session)
+        return page.markdown
 
     def as_litellm_tools(self, allowed: list[str] | None = None) -> list[dict]:
         all_tools = [

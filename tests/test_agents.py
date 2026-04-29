@@ -92,6 +92,7 @@ async def test_read_source_page_no_images_returns_markdown():
     page = MagicMock(spec=SourcePage)
     page.markdown = "# Hello\n\nWorld"
     page.image_s3_keys = []
+    page.vision_processed = False
 
     mock_session = AsyncMock()
     scalar_result = MagicMock()
@@ -107,44 +108,30 @@ async def test_read_source_page_no_images_returns_markdown():
 
 
 @pytest.mark.asyncio
-async def test_read_source_page_with_images_calls_vision_model():
+async def test_read_source_page_calls_ensure_vision_captions():
     from unittest.mock import AsyncMock, MagicMock, patch
 
     from app.agents.tools import AgentTools
     from app.models import SourcePage
 
     page = MagicMock(spec=SourcePage)
-    page.markdown = "## Results"
+    page.markdown = "## Results\n\n![Figure 1](img0.png)\n\n> **[AI-generated caption — gpt-4o-mini]** A chart."
     page.image_s3_keys = ["ws/src/p1-img0.png"]
+    page.vision_processed = True  # already processed — helper is a no-op
 
     mock_session = AsyncMock()
     scalar_result = MagicMock()
     scalar_result.scalar_one_or_none.return_value = page
     mock_session.execute = AsyncMock(return_value=scalar_result)
 
-    mock_vision_resp = MagicMock()
-    mock_vision_resp.choices[0].message.content = "A bar chart showing revenue."
-
-    with (
-        patch("app.agents.tools.download_file", return_value=b"\x89PNG\r\n"),
-        patch("app.agents.tools.settings") as mock_settings,
-        patch(
-            "app.agents.tools.litellm.acompletion",
-            new_callable=AsyncMock,
-            return_value=mock_vision_resp,
-        ),
-    ):
-        mock_settings.vision_model = "gpt-4o"
+    with patch("app.agents.tools._ensure_vision_captions", new_callable=AsyncMock) as mock_helper:
         tools = AgentTools(
-            session=mock_session,
-            workspace_id="ws-1",
-            broadcaster=None,
-            source_id="src-1",
+            session=mock_session, workspace_id="ws-1", broadcaster=None, source_id="src-1"
         )
         result = await tools.read_source_page(1)
+        mock_helper.assert_awaited_once_with(page, mock_session)
 
-    assert "## Results" in result
-    assert "A bar chart showing revenue." in result
+    assert "> **[AI-generated caption" in result
 
 
 @pytest.mark.asyncio
