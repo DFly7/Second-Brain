@@ -1,4 +1,5 @@
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.agents.tools import AgentTools
@@ -264,7 +265,8 @@ async def test_ensure_vision_captions_skips_if_already_processed():
     page.vision_processed = True
     page.image_s3_keys = ["ws/src/p1-img0.png"]
 
-    mock_session = AsyncMock()
+    mock_session = MagicMock(spec=AsyncSession)
+    mock_session.commit = AsyncMock()
 
     with patch("app.agents.tools.litellm.acompletion", new_callable=AsyncMock) as mock_vision:
         await _ensure_vision_captions(page, mock_session)
@@ -282,7 +284,8 @@ async def test_ensure_vision_captions_skips_if_no_images():
     page.vision_processed = False
     page.image_s3_keys = []
 
-    mock_session = AsyncMock()
+    mock_session = MagicMock(spec=AsyncSession)
+    mock_session.commit = AsyncMock()
 
     with patch("app.agents.tools.litellm.acompletion", new_callable=AsyncMock) as mock_vision:
         await _ensure_vision_captions(page, mock_session)
@@ -300,7 +303,8 @@ async def test_ensure_vision_captions_skips_if_no_vision_model():
     page.vision_processed = False
     page.image_s3_keys = ["ws/src/p1-img0.png"]
 
-    mock_session = AsyncMock()
+    mock_session = MagicMock(spec=AsyncSession)
+    mock_session.commit = AsyncMock()
 
     with (
         patch("app.agents.tools.litellm.acompletion", new_callable=AsyncMock) as mock_vision,
@@ -323,7 +327,8 @@ async def test_ensure_vision_captions_inserts_caption_inline():
     page.image_s3_keys = ["ws/src/p1-img0.png"]
     page.markdown = "## Results\n\n![Figure 1](img0.png)\n\nSome text."
 
-    mock_session = AsyncMock()
+    mock_session = MagicMock(spec=AsyncSession)
+    mock_session.commit = AsyncMock()
 
     mock_vision_resp = MagicMock()
     mock_vision_resp.choices[0].message.content = "A bar chart showing quarterly revenue."
@@ -355,7 +360,8 @@ async def test_ensure_vision_captions_inserts_fallback_on_failure():
     page.image_s3_keys = ["ws/src/p1-img0.png"]
     page.markdown = "## Results\n\n![Figure 1](img0.png)\n\nSome text."
 
-    mock_session = AsyncMock()
+    mock_session = MagicMock(spec=AsyncSession)
+    mock_session.commit = AsyncMock()
 
     with (
         patch("app.agents.tools.download_file", return_value=b"\x89PNG\r\n"),
@@ -381,7 +387,8 @@ async def test_ensure_vision_captions_appends_orphaned_image():
     page.image_s3_keys = ["ws/src/p1-img0.png"]
     page.markdown = "## Results\n\nNo image tag here."
 
-    mock_session = AsyncMock()
+    mock_session = MagicMock(spec=AsyncSession)
+    mock_session.commit = AsyncMock()
 
     mock_vision_resp = MagicMock()
     mock_vision_resp.choices[0].message.content = "A diagram."
@@ -396,3 +403,4 @@ async def test_ensure_vision_captions_appends_orphaned_image():
 
     assert "> **[AI-generated caption — gpt-4o-mini]** A diagram." in page.markdown
     assert page.vision_processed is True
+    mock_session.commit.assert_awaited_once()

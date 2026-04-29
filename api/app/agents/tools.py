@@ -66,7 +66,7 @@ async def _ensure_vision_captions(page: SourcePage, session: AsyncSession) -> No
             r"(!\[.*?\]\([^)]*" + re.escape(original_filename) + r"[^)]*\))"
         )
         if pattern.search(markdown):
-            markdown = pattern.sub(r"\1" + caption_block, markdown, count=1)
+            markdown = pattern.sub(lambda m: m.group(1) + caption_block, markdown, count=1)
         else:
             markdown += caption_block
 
