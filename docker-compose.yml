@@ -35,6 +35,9 @@ services:
 
   marker:
     build: ./marker_service
+    environment:
+      # Surya default is 10; parallel shards + shutil.move races on duplicate layout pulls to the same volume.
+      PARALLEL_DOWNLOAD_WORKERS: "1"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s

@@ -1,8 +1,90 @@
+import os
+
+# Surya Settings() reads this when imported; must be set before Marker/surya load.
+os.environ.setdefault("PARALLEL_DOWNLOAD_WORKERS", "1")
+
 import base64
 import io
+import logging
 import re
+import shutil
 import tempfile
+import time
 from pathlib import Path
+
+_log = logging.getLogger(__name__)
+
+import surya.common.s3 as surya_s3
+
+_orig_download_directory = surya_s3.download_directory
+
+
+def _download_directory(remote_path: str, local_dir: str) -> None:
+    """Serialize datalab checkpoint downloads. flock(F_SETLK) is flaky on virtiofs-backed
+    Docker Desktop volumes — use atomic posix O_CREAT|O_EXCL for mutual exclusion."""
+
+    lock_root = Path(
+        os.environ.get(
+            "SURYA_MODEL_DOWNLOAD_EXCLUSIVE_ROOT",
+            "/root/.cache/datalab/surya_download_exclusive",
+        )
+    )
+    lock_root.mkdir(parents=True, exist_ok=True)
+    safe_remote = "".join(c if c.isalnum() or c in "._-" else "_" for c in remote_path)
+    lock_path = lock_root / f"{safe_remote}.lock"
+    stale_after = float(
+        os.environ.get("SURYA_DOWNLOAD_STALE_LOCK_SECONDS", str(7200))
+    )
+    poll_s = float(os.environ.get("SURYA_DOWNLOAD_LOCK_POLL_SECONDS", "0.35"))
+
+    while True:
+        if surya_s3.check_manifest(local_dir):
+            return
+
+        try:
+            fd = os.open(
+                lock_path,
+                os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                0o644,
+            )
+        except FileExistsError:
+            other_stale_removed = False
+            if stale_after > 0 and lock_path.exists():
+                try:
+                    if time.time() - lock_path.stat().st_mtime > stale_after:
+                        lock_path.unlink(missing_ok=True)
+                        other_stale_removed = True
+                except OSError:
+                    pass
+            if not other_stale_removed:
+                if surya_s3.check_manifest(local_dir):
+                    return
+                time.sleep(poll_s)
+            continue
+
+        try:
+            if surya_s3.check_manifest(local_dir):
+                return
+            local = Path(local_dir)
+            if local.exists() and not surya_s3.check_manifest(local_dir):
+                _log.warning("Clearing incomplete download at %s", local_dir)
+                if local.is_file():
+                    local.unlink()
+                else:
+                    shutil.rmtree(local, ignore_errors=True)
+            return _orig_download_directory(remote_path, local_dir)
+        finally:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+            try:
+                os.unlink(lock_path)
+            except OSError:
+                pass
+
+
+surya_s3.download_directory = _download_directory
 
 from fastapi import FastAPI, File, Form, UploadFile
 from marker.config.parser import ConfigParser
@@ -13,7 +95,6 @@ from PIL import Image
 
 app = FastAPI(title="Marker Service")
 
-# Models load once at startup — intentionally module-level
 _models = create_model_dict()
 
 _PAGE_SEP = re.compile(r"\n\n\d+\n-{48}\n\n")
