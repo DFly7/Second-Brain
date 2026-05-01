@@ -23,9 +23,26 @@ function hrefToSlug(href: string): string | null {
 
 interface ChatPanelProps {
   onNavigate: (slug: string) => void
+  activeSseEvent: { event: string; slug?: string } | null
 }
 
-export default function ChatPanel({ onNavigate }: ChatPanelProps) {
+function sseStatusLabel(active: { event: string; slug?: string } | null): string {
+  if (!active) return 'Thinking…'
+  if (active.event === 'agent:reading') {
+    return active.slug ? `⟳ Reading ${active.slug}…` : '⟳ Reading…'
+  }
+  if (active.event === 'agent:writing') {
+    return active.slug ? `⟳ Writing ${active.slug}…` : '⟳ Writing…'
+  }
+  return 'Thinking…'
+}
+
+function sseStatusAnimKey(active: { event: string; slug?: string } | null): string {
+  if (!active) return 'thinking'
+  return active.slug ?? active.event
+}
+
+export default function ChatPanel({ onNavigate, activeSseEvent }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [sessionId, setSessionId] = useState<string | undefined>()
@@ -55,6 +72,12 @@ export default function ChatPanel({ onNavigate }: ChatPanelProps) {
       display: 'flex', flexDirection: 'column', height: '100%',
       background: '#0d1117', borderLeft: '1px solid #30363d',
     }}>
+      <style>{`
+        @keyframes fadeSlide {
+          from { opacity: 0; transform: translateY(4px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
       <div style={{
         padding: '12px 16px', borderBottom: '1px solid #30363d',
         fontSize: 13, color: '#8b949e', background: '#161b22',
@@ -104,6 +127,11 @@ export default function ChatPanel({ onNavigate }: ChatPanelProps) {
                 m.content
               )}
             </div>
+            {m.role === 'assistant' && m.cited && m.cited.length > 0 && (
+              <div style={{ fontSize: 11, color: '#6e7681', marginTop: 6, paddingLeft: 4 }}>
+                searched {m.cited.length} page{m.cited.length === 1 ? '' : 's'}
+              </div>
+            )}
             {m.cited && m.cited.length > 0 && (
               <div style={{ fontSize: 11, color: '#8b949e', marginTop: 4, paddingLeft: 4 }}>
                 Sources: {m.cited.map((slug) => (
@@ -120,7 +148,25 @@ export default function ChatPanel({ onNavigate }: ChatPanelProps) {
           </div>
         ))}
         {loading && (
-          <div style={{ color: '#8b949e', fontSize: 13, alignSelf: 'flex-start' }}>Thinking…</div>
+          <div
+            style={{
+              alignSelf: 'flex-start',
+              padding: '8px 12px',
+              borderRadius: 8,
+              fontSize: 13,
+              lineHeight: 1.6,
+              background: '#21262d',
+              color: '#8b949e',
+              border: '1px solid #30363d',
+            }}
+          >
+            <span
+              key={sseStatusAnimKey(activeSseEvent)}
+              style={{ display: 'inline-block', animation: 'fadeSlide 200ms ease' }}
+            >
+              {sseStatusLabel(activeSseEvent)}
+            </span>
+          </div>
         )}
         <div ref={bottomRef} />
       </div>
