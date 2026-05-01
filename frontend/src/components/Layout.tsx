@@ -23,6 +23,7 @@ export default function Layout() {
   const [showActivity, setShowActivity] = useState(false)
   const [showIngest, setShowIngest] = useState(false)
   const [queue, setQueue] = useState<QueueState>(() => loadQueueState(window.localStorage))
+  const [chatSseEvent, setChatSseEvent] = useState<{ event: string; slug?: string } | null>(null)
   const qc = useQueryClient()
 
   useEffect(() => {
@@ -60,6 +61,16 @@ export default function Layout() {
         slug?: string
         source_id?: string
         pages_touched?: string[]
+        context?: string
+      }
+      if (event.context === 'chat') {
+        if (event.event === 'agent:done') {
+          qc.invalidateQueries({ queryKey: ['pages'] })
+          qc.invalidateQueries({ queryKey: ['activity'] })
+        } else {
+          setChatSseEvent({ event: event.event, slug: event.slug })
+        }
+        return
       }
       const STATUS_MAP: Partial<Record<string, QueueItem['status']>> = {
         'agent:queued': 'queued',
@@ -157,7 +168,7 @@ export default function Layout() {
         <PanelResizeHandle style={resizeHandleStyle} />
 
         <Panel defaultSize={30} minSize={15}>
-          <ChatPanel onNavigate={setSelectedSlug} />
+          <ChatPanel onNavigate={setSelectedSlug} activeSseEvent={chatSseEvent} />
         </Panel>
       </PanelGroup>
 
