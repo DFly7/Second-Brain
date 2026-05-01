@@ -4,6 +4,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_user
@@ -25,10 +26,20 @@ async def _ensure_workspace(session: AsyncSession, user: str) -> Workspace:
         select(Workspace).where(Workspace.id == ws_id)
     )
     ws = result.scalar_one_or_none()
-    if not ws:
-        ws = Workspace(id=ws_id, user_id=user)
-        session.add(ws)
+    if ws:
+        return ws
+    ws = Workspace(id=ws_id, user_id=user)
+    session.add(ws)
+    try:
         await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        result = await session.execute(select(Workspace).where(Workspace.id == ws_id))
+        ws = result.scalar_one_or_none()
+        if ws is None:
+            raise
+        return ws
+    await session.refresh(ws)
     return ws
 
 

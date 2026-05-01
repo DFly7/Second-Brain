@@ -7,6 +7,9 @@ from app.config import settings
 
 _log = logging.getLogger(__name__)
 
+# Marker can run for a long time on large PDFs; keep read timeout well above typical conversions.
+MARKER_HTTP_TIMEOUT = httpx.Timeout(connect=60.0, read=7200.0, write=600.0, pool=60.0)
+
 
 @dataclass
 class ImageData:
@@ -60,9 +63,19 @@ class MarkerClient:
             len(data),
             self.use_llm,
         )
-        async with httpx.AsyncClient(timeout=1800.0) as client:
+        async with httpx.AsyncClient(timeout=MARKER_HTTP_TIMEOUT) as client:
             try:
                 resp = await client.post(url, data=form, files=files)
+            except httpx.ReadTimeout as e:
+                _log.error(
+                    "marker HTTP read timed out after %ss (increase MARKER_HTTP_TIMEOUT.read if "
+                    "needed); source_id=%s filename=%s err=%s",
+                    MARKER_HTTP_TIMEOUT.read,
+                    source_id or "-",
+                    filename,
+                    e,
+                )
+                raise
             except httpx.RemoteProtocolError as e:
                 _log.error(
                     "marker closed connection without a response (often OOM kill or crash in "

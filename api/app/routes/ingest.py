@@ -170,7 +170,8 @@ async def _run_pipeline(source_id: str, workspace_id: str, data: bytes, filename
             _log.exception("ingest pipeline failed source_id=%s filename=%s", source_id, filename)
             source.status = "error"
             await session.commit()
-            raise
+            await broadcaster.publish({"event": "agent:error", "source_id": source_id})
+            return
 
     await broadcaster.publish({"event": "agent:ingesting", "source_id": source_id})
     await run_ingest(source_id, workspace_id)

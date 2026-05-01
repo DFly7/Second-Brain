@@ -77,10 +77,15 @@ export default function Layout() {
         'agent:converting': 'converting',
         'agent:ingesting': 'processing',
         'agent:done': 'done',
+        'agent:error': 'error',
       }
       const queueStatus = STATUS_MAP[event.event]
       if (queueStatus && event.source_id) {
         queueActions.patchBySource(event.source_id, { status: queueStatus })
+      }
+      if (event.event === 'agent:error') {
+        setHighlightedSlug(null)
+        setAgentStatus(null)
       }
       if (event.event === 'agent:queued') {
         setAgentStatus(

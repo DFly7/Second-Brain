@@ -1,7 +1,13 @@
+import asyncio
+
 import pytest
 from httpx import AsyncClient, ASGITransport
+from sqlalchemy import func, select
 
+from app.database import AsyncSessionLocal
 from app.main import app
+from app.models import Workspace
+from app.routes.wiki import _ensure_workspace
 
 
 async def _token(client: AsyncClient) -> str:
@@ -107,3 +113,23 @@ async def test_folder_slug_create_and_get():
             "/wiki/pages/people/alice-jones", headers=headers
         )
         assert delete.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_concurrent_ensure_workspace_no_duplicate_rows():
+    user = "concurrent-ws@example.com"
+
+    async def ensure_once():
+        async with AsyncSessionLocal() as session:
+            return await _ensure_workspace(session, user)
+
+    workspaces = await asyncio.gather(*(ensure_once() for _ in range(20)))
+    assert len({w.id for w in workspaces}) == 1
+
+    async with AsyncSessionLocal() as session:
+        n = (
+            await session.execute(
+                select(func.count()).select_from(Workspace).where(Workspace.user_id == user)
+            )
+        ).scalar_one()
+        assert n == 1
