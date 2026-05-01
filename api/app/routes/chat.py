@@ -1,4 +1,5 @@
 import json
+from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response
 from fastapi.responses import StreamingResponse
@@ -21,6 +22,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 class MessageRequest(BaseModel):
     message: str
     session_id: str | None = None
+    mode: Literal["query", "edit"] = "query"
 
 
 @router.post("/message")
@@ -57,7 +59,12 @@ async def send_message(
     )
     history = [{"role": m.role, "content": m.content} for m in history_result.scalars()]
 
-    answer, cited = await run_query(ws.id, body.message, history[:-1], db)
+    if body.mode == "edit":
+        from app.agents.edit_agent import run as run_edit
+
+        answer, cited = await run_edit(ws.id, body.message, history[:-1], db)
+    else:
+        answer, cited = await run_query(ws.id, body.message, history[:-1], db)
 
     assistant_msg = ChatMessage(
         session_id=session_obj.id, role="assistant", content=answer
