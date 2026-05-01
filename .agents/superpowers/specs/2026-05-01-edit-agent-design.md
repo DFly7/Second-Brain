@@ -42,7 +42,20 @@ Five changes:
 1. Remove page from DB.
 2. Remove slug entry from `meta/index`.
 3. Query the `PageLink` table for all pages where `target_slug = slug`. In each page's body, replace `[[slug]]` with `[[slug]] *(page deleted)*` — preserving the original link target so the user knows what it pointed to, while making the broken reference visually obvious.
-4. Broadcast `{"event": "agent:deleting", "slug": slug}`.
+4. Append an entry to `meta/deleted-log` (create the page if it doesn't exist): `| {timestamp} | [[slug]] | {title} |`. This gives a central audit trail of every deletion.
+5. Broadcast `{"event": "agent:deleting", "slug": slug}`.
+
+### `move_folder(old_prefix: str, new_prefix: str) -> str`
+
+**Pre-conditions (fail fast):**
+- Validate `new_prefix` against the slug regex.
+- Check at least one page exists with `old_prefix/` — return an error if the folder is empty or doesn't exist.
+- Check no page under `new_prefix/` would collide with a moved page — return an error listing conflicts if any exist.
+
+**Execution:**
+1. Query DB for all pages where `slug` starts with `old_prefix/`.
+2. For each page, call `move_page(slug, slug.replace(old_prefix, new_prefix, 1))` — reuses all existing move logic including backlink rewrites via `PageLink`.
+3. Broadcast a single coalesced event: `{"event": "agent:moved_folder", "from": old_prefix, "to": new_prefix, "count": N}` rather than N individual `agent:moving` events.
 
 ---
 
@@ -62,8 +75,9 @@ Extend the existing SSE event display to handle two new events:
 |---|---|---|
 | `agent:moving` | `{from, to}` | "Moving `from` → `to`" |
 | `agent:deleting` | `{slug}` | "Deleting `slug`" |
+| `agent:moved_folder` | `{from, to, count}` | "Moved `count` pages from `from` → `to`" |
 
-**Bulk move handling:** When the agent moves many pages in a loop, `agent:moving` events will fire rapidly. The frontend activity display should coalesce rapid-fire events — e.g. show "Moving pages..." with a running count rather than flickering individual slugs.
+**Bulk move handling:** `move_folder` emits a single coalesced `agent:moved_folder` event rather than N individual `agent:moving` events, so the frontend stays clean regardless of folder size.
 
 ---
 
@@ -86,6 +100,7 @@ EDIT_TOOLS = [
     "write_page",
     "create_page",
     "move_page",
+    "move_folder",
     "delete_page",
 ]
 ```
