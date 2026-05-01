@@ -245,3 +245,69 @@ async def test_delete_page_broadcasts_and_appends_log(tools):
         {"event": "agent:deleting", "slug": "people/alice"}
     )
     assert "deleted" in out.lower()
+
+
+@pytest.mark.asyncio
+async def test_move_folder_invalid_prefix_returns_error(tools):
+    result = await tools.move_folder("PROJECTS/2025", "archive/2025")
+    assert "invalid" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_move_folder_empty_source_returns_error(tools, session):
+    session.execute.return_value = MagicMock(
+        scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))
+    )
+    result = await tools.move_folder("projects/2025", "archive/2025")
+    assert "no pages" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_move_folder_collision_returns_error(tools, session):
+    from app.models import Page
+
+    src = MagicMock(spec=Page)
+    src.slug = "projects/2025/alpha"
+    conflict = MagicMock(spec=Page)
+    conflict.slug = "archive/2025/alpha"
+
+    session.execute.side_effect = [
+        MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[src])))),
+        MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[conflict])))),
+    ]
+    result = await tools.move_folder("projects/2025", "archive/2025")
+    assert "conflict" in result.lower() or "already" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_move_folder_moves_all_and_broadcasts(tools, session):
+    from app.models import Page
+
+    page_a = MagicMock(spec=Page)
+    page_a.slug = "projects/2025/alpha"
+    page_b = MagicMock(spec=Page)
+    page_b.slug = "projects/2025/beta"
+
+    session.execute.side_effect = [
+        MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[page_a, page_b])))),
+        MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))),  # no collisions
+    ]
+
+    tools._do_move_page = AsyncMock()
+    broadcaster = AsyncMock()
+    tools.broadcaster = broadcaster
+
+    result = await tools.move_folder("projects/2025", "archive/2025")
+
+    assert tools._do_move_page.call_count == 2
+    tools._do_move_page.assert_any_call("projects/2025/alpha", "archive/2025/alpha")
+    tools._do_move_page.assert_any_call("projects/2025/beta", "archive/2025/beta")
+    broadcaster.publish.assert_awaited_once_with(
+        {
+            "event": "agent:moved_folder",
+            "from": "projects/2025",
+            "to": "archive/2025",
+            "count": 2,
+        }
+    )
+    assert "2 pages" in result

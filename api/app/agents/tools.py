@@ -380,6 +380,56 @@ class AgentTools:
         await self._broadcast({"event": "agent:deleting", "slug": slug})
         return f"Page '{slug}' deleted."
 
+    async def move_folder(self, old_prefix: str, new_prefix: str) -> str:
+        if not _FOLDER_RE.match(old_prefix):
+            return (
+                f"Error: Invalid folder prefix '{old_prefix}'. "
+                "Use lowercase letters, digits, and hyphens (e.g. 'archive/2025')."
+            )
+        if not _FOLDER_RE.match(new_prefix):
+            return (
+                f"Error: Invalid folder prefix '{new_prefix}'. "
+                "Use lowercase letters, digits, and hyphens (e.g. 'archive/2025')."
+            )
+
+        result = await self.session.execute(
+            select(Page).where(
+                Page.slug.like(f"{old_prefix}/%"),
+                Page.workspace_id == self.workspace_id,
+            )
+        )
+        pages = result.scalars().all()
+        if not pages:
+            return f"Error: No pages found under '{old_prefix}/'."
+
+        new_slugs = [p.slug.replace(old_prefix, new_prefix, 1) for p in pages]
+        old_slugs = {p.slug for p in pages}
+
+        result = await self.session.execute(
+            select(Page).where(
+                Page.slug.in_(new_slugs),
+                Page.workspace_id == self.workspace_id,
+            )
+        )
+        collisions = [p for p in result.scalars().all() if p.slug not in old_slugs]
+        if collisions:
+            conflict_list = ", ".join(p.slug for p in collisions)
+            return f"Error: Destination already has conflicting pages: {conflict_list}."
+
+        for page, new_slug in zip(pages, new_slugs, strict=True):
+            await self._do_move_page(page.slug, new_slug)
+
+        count = len(pages)
+        await self._broadcast(
+            {
+                "event": "agent:moved_folder",
+                "from": old_prefix,
+                "to": new_prefix,
+                "count": count,
+            }
+        )
+        return f"Moved {count} pages from '{old_prefix}/' to '{new_prefix}/'."
+
     async def list_source_pages(self) -> list[dict]:
         result = await self.session.execute(
             select(SourcePage)
@@ -555,6 +605,31 @@ class AgentTools:
             {
                 "type": "function",
                 "function": {
+                    "name": "move_folder",
+                    "description": (
+                        "Move all pages under a folder prefix to a new prefix. "
+                        "E.g. move_folder('projects/2025', 'archive/2025') moves every page whose slug "
+                        "starts with 'projects/2025/'. Fails if any destination slug already exists."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "old_prefix": {
+                                "type": "string",
+                                "description": "Source folder prefix (e.g. 'projects/2025')",
+                            },
+                            "new_prefix": {
+                                "type": "string",
+                                "description": "Destination folder prefix (e.g. 'archive/2025')",
+                            },
+                        },
+                        "required": ["old_prefix", "new_prefix"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
                     "name": "list_source_pages",
                     "description": "List all pages of the source document with a short preview and whether each has images. Call this first to understand document structure.",
                     "parameters": {"type": "object", "properties": {}, "required": []},
@@ -627,6 +702,8 @@ class AgentTools:
             return await self.move_page(args["old_slug"], args["new_slug"])
         if name == "delete_page":
             return await self.delete_page(args["slug"])
+        if name == "move_folder":
+            return await self.move_folder(args["old_prefix"], args["new_prefix"])
         if name == "list_source_pages":
             pages = await self.list_source_pages()
             return str(pages)
