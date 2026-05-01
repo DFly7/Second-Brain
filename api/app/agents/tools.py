@@ -1,7 +1,9 @@
 import base64
 import re
 from datetime import datetime
+from pathlib import Path
 
+from jinja2 import Template
 import litellm
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +14,10 @@ from app.search import search_pages as _search
 from app.sse import SSEBroadcaster
 from app.storage import download_file
 from app.wikilinks import sync_links
+
+_PROMPTS = Path(__file__).parent / "prompts"
+_VISION_CAPTION_TEMPLATE = Template((_PROMPTS / "vision_caption.md").read_text())
+_VISION_DESCRIBE_PROMPT = (_PROMPTS / "vision_describe.md").read_text()
 
 
 async def _ensure_vision_captions(page: SourcePage, session: AsyncSession) -> None:
@@ -44,7 +50,7 @@ async def _ensure_vision_captions(page: SourcePage, session: AsyncSession) -> No
                         "content": [
                             {
                                 "type": "text",
-                                "text": f"Describe this image in the context of the surrounding document text:\n\n{markdown[:500]}",
+                                "text": _VISION_CAPTION_TEMPLATE.render(context=markdown[:500]),
                             },
                             {
                                 "type": "image_url",
@@ -273,7 +279,7 @@ class AgentTools:
                             },
                             {
                                 "type": "text",
-                                "text": "Describe this image in detail.",
+                                "text": _VISION_DESCRIBE_PROMPT,
                             },
                         ],
                     }

@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import litellm
 
@@ -7,14 +8,8 @@ from app.agents.tools import AgentTools
 from app.config import settings
 from app.database import AsyncSessionLocal
 
-SYSTEM_PROMPT = """You are a document reading assistant. You have been given a range of pages from a source document.
-
-Process:
-1. Read each page in your assigned range using read_source_page().
-2. You may read 1-2 pages beyond your range if something appears cut off.
-3. Return a comprehensive knowledge summary — key concepts, facts, data, arguments.
-
-Do not write to the wiki. Only read and summarise."""
+_PROMPTS = Path(__file__).parent / "prompts"
+SYSTEM_PROMPT = (_PROMPTS / "sub_agent.md").read_text()
 
 COST_CEILING_USD = 1.0
 
