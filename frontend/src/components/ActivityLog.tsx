@@ -71,7 +71,7 @@ export default function ActivityLog({
                 fontSize: 12,
               }}
             >
-              activity
+              Activity
             </button>
             <button
               type="button"
@@ -86,7 +86,7 @@ export default function ActivityLog({
                 fontSize: 12,
               }}
             >
-              queue
+              Queue
             </button>
           </div>
         </div>

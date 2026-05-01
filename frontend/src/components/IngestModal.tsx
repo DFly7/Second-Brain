@@ -40,7 +40,11 @@ export default function IngestModal(props: IngestModalProps) {
   const [orderedFileIds, setOrderedFileIds] = useState<string[]>([])
   const filesByIdRef = useRef<Map<string, File>>(new Map())
   const [uploading, setUploading] = useState(false)
+  const [textUrlSubmitting, setTextUrlSubmitting] = useState(false)
+  const onCloseRef = useRef(onClose)
   const qc = useQueryClient()
+
+  onCloseRef.current = onClose
 
   useEffect(() => {
     if (orderedFileIds.length === 0) return
@@ -50,20 +54,24 @@ export default function IngestModal(props: IngestModalProps) {
     })
     if (!allTerminal) return
     qc.invalidateQueries({ queryKey: ['pages'] })
-    const timer = setTimeout(onClose, 2000)
+    const timer = setTimeout(() => onCloseRef.current(), 2000)
     return () => clearTimeout(timer)
-  }, [orderedFileIds, queue, onClose, qc])
+  }, [orderedFileIds, queue, qc])
 
   async function submitTextOrUrl() {
+    if (textUrlSubmitting) return
+    setTextUrlSubmitting(true)
     setStatus('Ingesting…')
     try {
       if (tab === 'text') await ingestText(text)
       else if (tab === 'url') await ingestUrl(url)
       setStatus('Ingested! Agent is updating your wiki.')
       qc.invalidateQueries({ queryKey: ['activity'] })
-      setTimeout(onClose, 1500)
+      setTimeout(() => onCloseRef.current(), 1500)
     } catch {
       setStatus('Failed — check the console.')
+    } finally {
+      setTextUrlSubmitting(false)
     }
   }
 
@@ -227,10 +235,11 @@ export default function IngestModal(props: IngestModalProps) {
               <button
                 type="button"
                 onClick={() => void submitTextOrUrl()}
+                disabled={textUrlSubmitting}
                 style={{
                   width: '100%', padding: '10px 0',
-                  background: '#238636', border: 'none', borderRadius: 6,
-                  color: '#fff', cursor: 'pointer', fontSize: 14,
+                  background: textUrlSubmitting ? '#21262d' : '#238636', border: 'none', borderRadius: 6,
+                  color: textUrlSubmitting ? '#8b949e' : '#fff', cursor: textUrlSubmitting ? 'not-allowed' : 'pointer', fontSize: 14,
                 }}
               >
                 Ingest
