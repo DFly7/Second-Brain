@@ -49,7 +49,9 @@ async def run(
         if not msg.tool_calls:
             answer = msg.content or ""
             cited_pages = re.findall(r"\[\[([^\]]+)\]\]", answer)
-            await broadcaster.publish({"event": "agent:done", "pages_touched": cited_pages})
+            await broadcaster.publish(
+                {"event": "agent:done", "context": "chat", "pages_touched": cited_pages}
+            )
             return answer, cited_pages
 
         for tc in msg.tool_calls:
@@ -66,5 +68,7 @@ async def run(
                 }
             )
 
-    await broadcaster.publish({"event": "agent:done", "pages_touched": cited_pages})
+    await broadcaster.publish(
+        {"event": "agent:done", "context": "chat", "pages_touched": cited_pages}
+    )
     return "I wasn't able to find a good answer in your wiki.", cited_pages
