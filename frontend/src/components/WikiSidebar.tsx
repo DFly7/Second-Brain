@@ -37,7 +37,7 @@ function getCollapsed(): Record<string, boolean> {
 }
 
 function saveCollapsed(state: Record<string, boolean>) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)) } catch { /* storage unavailable */ }
 }
 
 interface FolderNodeProps {
@@ -158,7 +158,7 @@ export default function WikiSidebar({ selectedSlug, highlightedSlug, onSelect }:
     }
   }
 
-  const tree = buildTree(pages)
+  const tree = buildTree(Array.isArray(pages) ? pages : [])
 
   const sortedRootFolders = Object.entries(tree.children).sort(([a], [b]) => {
     if (a === 'meta') return 1
