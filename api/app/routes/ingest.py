@@ -1,5 +1,7 @@
+import asyncio
 import base64
 import logging
+import os
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
@@ -8,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_user
-from app.database import get_db
+from app.database import AsyncSessionLocal, get_db
 from app.models import Source, SourcePage, Workspace
 from app.routes.wiki import _ensure_workspace
 from app.sse import broadcaster
@@ -17,6 +19,7 @@ from app.storage import upload_file
 router = APIRouter(prefix="/ingest", tags=["ingest"])
 
 _log = logging.getLogger(__name__)
+_marker_sem = asyncio.Semaphore(int(os.environ.get("MARKER_CONCURRENCY", "1")))
 
 MARKER_TYPES = {"pdf", "docx", "doc", "pptx", "ppt", "xlsx", "xls", "png", "jpg", "jpeg", "webp"}
 TEXT_TYPES = {"md", "markdown", "txt", "text"}
@@ -71,7 +74,6 @@ def _chunk_text(text: str) -> list[str]:
 
 async def _run_pipeline(source_id: str, workspace_id: str, data: bytes, filename: str):
     from app.agents.ingest_agent import run as run_ingest
-    from app.database import AsyncSessionLocal
     from app.marker_client import MarkerClient
 
     suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
@@ -84,6 +86,8 @@ async def _run_pipeline(source_id: str, workspace_id: str, data: bytes, filename
         len(data),
     )
 
+    await broadcaster.publish({"event": "agent:queued", "source_id": source_id})
+
     async with AsyncSessionLocal() as session:
         src_result = await session.execute(select(Source).where(Source.id == source_id))
         source = src_result.scalar_one_or_none()
@@ -91,10 +95,9 @@ async def _run_pipeline(source_id: str, workspace_id: str, data: bytes, filename
             _log.warning("ingest pipeline aborted: source not found source_id=%s", source_id)
             return
 
-        await broadcaster.publish({"event": "agent:converting", "source_id": source_id})
-
         try:
             if suffix in TEXT_TYPES:
+                await broadcaster.publish({"event": "agent:converting", "source_id": source_id})
                 _log.info(
                     "ingest skipping marker (plain text) source_id=%s suffix=%s",
                     source_id,
@@ -108,9 +111,11 @@ async def _run_pipeline(source_id: str, workspace_id: str, data: bytes, filename
                     for i, chunk in enumerate(chunks)
                 ]
             else:
-                _log.info("ingest calling marker source_id=%s filename=%s", source_id, filename)
-                client = MarkerClient()
-                raw_pages = await client.convert(data, filename, source_id=source_id)
+                async with _marker_sem:
+                    await broadcaster.publish({"event": "agent:converting", "source_id": source_id})
+                    _log.info("ingest calling marker source_id=%s filename=%s", source_id, filename)
+                    client = MarkerClient()
+                    raw_pages = await client.convert(data, filename, source_id=source_id)
                 _log.info(
                     "ingest marker done source_id=%s pages=%d",
                     source_id,
