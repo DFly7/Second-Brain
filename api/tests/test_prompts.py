@@ -6,6 +6,7 @@ PROMPTS_DIR = Path(__file__).parent.parent / "app" / "agents" / "prompts"
 
 STATIC_PROMPTS = [
     "query.md",
+    "edit.md",
     "ingest_small.md",
     "ingest_large.md",
     "health.md",
@@ -34,11 +35,12 @@ def test_vision_caption_renders():
 
 
 def test_agent_modules_load_prompts():
-    from app.agents import query_agent, health_agent, chat_monitor, sub_agent
+    from app.agents import query_agent, health_agent, chat_monitor, sub_agent, edit_agent
     assert query_agent.SYSTEM_PROMPT.strip()
     assert health_agent.SYSTEM_PROMPT.strip()
     assert chat_monitor.SYSTEM_PROMPT.strip()
     assert sub_agent.SYSTEM_PROMPT.strip()
+    assert edit_agent.SYSTEM_PROMPT.strip()
 
 
 def test_ingest_agent_loads_both_prompts():
