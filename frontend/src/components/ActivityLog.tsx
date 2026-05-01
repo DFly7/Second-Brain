@@ -3,8 +3,6 @@ import { useQuery } from '@tanstack/react-query'
 import { getActivity } from '../api/client'
 import type { QueueState, QueueStatus } from '../state/ingestQueue'
 
-const EMPTY_QUEUE: QueueState = { items: [] }
-
 const labels: Record<string, string> = {
   page_created: 'Page created',
   page_updated: 'Page updated',
@@ -35,12 +33,12 @@ const QUEUE_STATUS_COLOR: Record<QueueStatus, string> = {
 
 export default function ActivityLog({
   onClose,
-  queue = EMPTY_QUEUE,
-  onClearQueue = () => {},
+  queue,
+  onClearQueue,
 }: {
   onClose: () => void
-  queue?: QueueState
-  onClearQueue?: () => void
+  queue: QueueState
+  onClearQueue: () => void
 }) {
   const [tab, setTab] = useState<'activity' | 'queue'>('activity')
   const { data: events = [] } = useQuery<{ id: string; event_type: string; payload: Record<string, unknown>; created_at: string }[]>({

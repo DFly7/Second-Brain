@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
 import { ingestText, ingestUrl, ingestFile } from '../api/client'
 import { useQueryClient } from '@tanstack/react-query'
-import { reduceQueue, type QueueItem, type QueueState, type QueueStatus } from '../state/ingestQueue'
+import type { QueueItem, QueueState, QueueStatus } from '../state/ingestQueue'
 
 const STATUS_LABEL: Record<QueueStatus, string> = {
   pending: 'Pending',
@@ -24,26 +24,15 @@ const STATUS_COLOR: Record<QueueStatus, string> = {
   error: '#f85149',
 }
 
-function isControlled(
-  props: IngestModalProps,
-): props is Required<Pick<IngestModalProps, 'queue' | 'onUpsertQueueItems' | 'onPatchQueueById'>> &
-  IngestModalProps {
-  return (
-    props.queue !== undefined &&
-    props.onUpsertQueueItems !== undefined &&
-    props.onPatchQueueById !== undefined
-  )
-}
-
 type IngestModalProps = {
   onClose: () => void
-  queue?: QueueState
-  onUpsertQueueItems?: (items: QueueItem[]) => void
-  onPatchQueueById?: (id: string, patch: Partial<QueueItem>) => void
+  queue: QueueState
+  onUpsertQueueItems: (items: QueueItem[]) => void
+  onPatchQueueById: (id: string, patch: Partial<QueueItem>) => void
 }
 
 export default function IngestModal(props: IngestModalProps) {
-  const { onClose } = props
+  const { onClose, queue, onUpsertQueueItems, onPatchQueueById } = props
   const [tab, setTab] = useState<'text' | 'url' | 'file'>('text')
   const [text, setText] = useState('')
   const [url, setUrl] = useState('')
@@ -51,18 +40,7 @@ export default function IngestModal(props: IngestModalProps) {
   const [orderedFileIds, setOrderedFileIds] = useState<string[]>([])
   const filesByIdRef = useRef<Map<string, File>>(new Map())
   const [uploading, setUploading] = useState(false)
-  const [localQueue, setLocalQueue] = useState<QueueState>(() => ({ items: [] }))
   const qc = useQueryClient()
-
-  const wired = isControlled(props)
-  const queue = wired ? props.queue : localQueue
-  const upsertMany = wired
-    ? props.onUpsertQueueItems!
-    : (items: QueueItem[]) => setLocalQueue(s => reduceQueue(s, { type: 'upsert_many', items }))
-  const patchById = wired
-    ? props.onPatchQueueById!
-    : (id: string, patch: Partial<QueueItem>) =>
-        setLocalQueue(s => reduceQueue(s, { type: 'patch_by_id', id, patch }))
 
   useEffect(() => {
     if (orderedFileIds.length === 0) return
@@ -96,7 +74,7 @@ export default function IngestModal(props: IngestModalProps) {
     files.forEach((file, i) => map.set(ids[i], file))
     filesByIdRef.current = map
     setOrderedFileIds(ids)
-    upsertMany(
+    onUpsertQueueItems(
       files.map((file, i) => ({
         id: ids[i],
         fileName: file.name,
@@ -111,14 +89,14 @@ export default function IngestModal(props: IngestModalProps) {
     if (uploading || orderedFileIds.length === 0) return
     setUploading(true)
     for (const id of orderedFileIds) {
-      patchById(id, { status: 'uploading' })
+      onPatchQueueById(id, { status: 'uploading' })
       const file = filesByIdRef.current.get(id)
       if (!file) continue
       try {
         const resp = await ingestFile(file)
-        patchById(id, { sourceId: resp.source_id, status: 'queued' })
+        onPatchQueueById(id, { sourceId: resp.source_id, status: 'queued' })
       } catch {
-        patchById(id, { status: 'error', error: 'Upload failed' })
+        onPatchQueueById(id, { status: 'error', error: 'Upload failed' })
       }
     }
     setUploading(false)
