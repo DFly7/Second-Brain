@@ -1,74 +1,80 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
-import { ingestText, ingestUrl, ingestFile, createSSE } from '../api/client'
+import { ingestText, ingestUrl, ingestFile } from '../api/client'
 import { useQueryClient } from '@tanstack/react-query'
+import { reduceQueue, type QueueItem, type QueueState, type QueueStatus } from '../state/ingestQueue'
 
-type FileStatus = 'pending' | 'uploading' | 'converting' | 'processing' | 'done' | 'error'
-
-interface FileEntry {
-  id: string
-  file: File
-  status: FileStatus
-  sourceId?: string
-}
-
-const STATUS_LABEL: Record<FileStatus, string> = {
+const STATUS_LABEL: Record<QueueStatus, string> = {
   pending: 'Pending',
   uploading: 'Uploading…',
+  queued: 'Queued…',
   converting: 'Converting…',
   processing: 'Processing…',
   done: 'Done ✓',
   error: 'Error ✗',
 }
 
-const STATUS_COLOR: Record<FileStatus, string> = {
+const STATUS_COLOR: Record<QueueStatus, string> = {
   pending: '#8b949e',
   uploading: '#58a6ff',
+  queued: '#a371f7',
   converting: '#d29922',
   processing: '#d29922',
   done: '#3fb950',
   error: '#f85149',
 }
 
-export default function IngestModal({ onClose }: { onClose: () => void }) {
+function isControlled(
+  props: IngestModalProps,
+): props is Required<Pick<IngestModalProps, 'queue' | 'onUpsertQueueItems' | 'onPatchQueueById'>> &
+  IngestModalProps {
+  return (
+    props.queue !== undefined &&
+    props.onUpsertQueueItems !== undefined &&
+    props.onPatchQueueById !== undefined
+  )
+}
+
+type IngestModalProps = {
+  onClose: () => void
+  queue?: QueueState
+  onUpsertQueueItems?: (items: QueueItem[]) => void
+  onPatchQueueById?: (id: string, patch: Partial<QueueItem>) => void
+}
+
+export default function IngestModal(props: IngestModalProps) {
+  const { onClose } = props
   const [tab, setTab] = useState<'text' | 'url' | 'file'>('text')
   const [text, setText] = useState('')
   const [url, setUrl] = useState('')
   const [status, setStatus] = useState('')
-  const [fileEntries, setFileEntries] = useState<FileEntry[]>([])
+  const [orderedFileIds, setOrderedFileIds] = useState<string[]>([])
+  const filesByIdRef = useRef<Map<string, File>>(new Map())
   const [uploading, setUploading] = useState(false)
+  const [localQueue, setLocalQueue] = useState<QueueState>(() => ({ items: [] }))
   const qc = useQueryClient()
 
-  // SSE subscription — update file entries as pipeline progresses
-  useEffect(() => {
-    const STATUS_MAP: Partial<Record<string, FileStatus>> = {
-      'agent:queued': 'converting',
-      'agent:converting': 'converting',
-      'agent:ingesting': 'processing',
-      'agent:done': 'done',
-    }
-    const unsub = createSSE((data: unknown) => {
-      const event = data as { event: string; source_id?: string }
-      const newStatus = STATUS_MAP[event.event]
-      if (!newStatus || !event.source_id) return
-      setFileEntries(entries =>
-        entries.map(e =>
-          e.sourceId === event.source_id ? { ...e, status: newStatus } : e
-        )
-      )
-    })
-    return unsub
-  }, [])
+  const wired = isControlled(props)
+  const queue = wired ? props.queue : localQueue
+  const upsertMany = wired
+    ? props.onUpsertQueueItems!
+    : (items: QueueItem[]) => setLocalQueue(s => reduceQueue(s, { type: 'upsert_many', items }))
+  const patchById = wired
+    ? props.onPatchQueueById!
+    : (id: string, patch: Partial<QueueItem>) =>
+        setLocalQueue(s => reduceQueue(s, { type: 'patch_by_id', id, patch }))
 
-  // Auto-close 2s after all files reach a terminal state
   useEffect(() => {
-    if (fileEntries.length === 0) return
-    const allDone = fileEntries.every(e => e.status === 'done' || e.status === 'error')
-    if (!allDone) return
+    if (orderedFileIds.length === 0) return
+    const allTerminal = orderedFileIds.every(id => {
+      const item = queue.items.find(i => i.id === id)
+      return item && (item.status === 'done' || item.status === 'error')
+    })
+    if (!allTerminal) return
     qc.invalidateQueries({ queryKey: ['pages'] })
     const timer = setTimeout(onClose, 2000)
     return () => clearTimeout(timer)
-  }, [fileEntries, onClose, qc])
+  }, [orderedFileIds, queue, onClose, qc])
 
   async function submitTextOrUrl() {
     setStatus('Ingesting…')
@@ -85,29 +91,34 @@ export default function IngestModal({ onClose }: { onClose: () => void }) {
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || [])
-    setFileEntries(files.map(file => ({
-      id: crypto.randomUUID(),
-      file,
-      status: 'pending',
-    })))
+    const ids = files.map(() => crypto.randomUUID())
+    const map = new Map<string, File>()
+    files.forEach((file, i) => map.set(ids[i], file))
+    filesByIdRef.current = map
+    setOrderedFileIds(ids)
+    upsertMany(
+      files.map((file, i) => ({
+        id: ids[i],
+        fileName: file.name,
+        fileSize: file.size,
+        createdAt: new Date().toISOString(),
+        status: 'pending',
+      })),
+    )
   }
 
   async function uploadAll() {
-    if (uploading || fileEntries.length === 0) return
+    if (uploading || orderedFileIds.length === 0) return
     setUploading(true)
-    for (const entry of fileEntries) {
-      setFileEntries(prev => prev.map(e =>
-        e.id === entry.id ? { ...e, status: 'uploading' } : e
-      ))
+    for (const id of orderedFileIds) {
+      patchById(id, { status: 'uploading' })
+      const file = filesByIdRef.current.get(id)
+      if (!file) continue
       try {
-        const resp = await ingestFile(entry.file)
-        setFileEntries(prev => prev.map(e =>
-          e.id === entry.id ? { ...e, status: 'converting', sourceId: resp.source_id } : e
-        ))
+        const resp = await ingestFile(file)
+        patchById(id, { sourceId: resp.source_id, status: 'queued' })
       } catch {
-        setFileEntries(prev => prev.map(e =>
-          e.id === entry.id ? { ...e, status: 'error' } : e
-        ))
+        patchById(id, { status: 'error', error: 'Upload failed' })
       }
     }
     setUploading(false)
@@ -123,84 +134,101 @@ export default function IngestModal({ onClose }: { onClose: () => void }) {
     >
       <div style={{
         background: '#161b22', border: '1px solid #30363d', borderRadius: 12,
-        padding: 24, width: 480, maxWidth: '90vw',
+        padding: 0, width: 520, maxWidth: '92vw',
+        maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden',
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <h3 style={{ color: '#e6edf3', margin: 0 }}>Ingest</h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', fontSize: 18 }}>✕</button>
-        </div>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h3 style={{ color: '#e6edf3', margin: 0 }}>Ingest</h3>
+            <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', fontSize: 18 }}>✕</button>
+          </div>
 
-        {/* Tabs */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          {(['text', 'url', 'file'] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{
-              padding: '4px 14px',
-              background: tab === t ? '#238636' : '#21262d',
-              border: '1px solid #30363d', borderRadius: 6,
-              color: '#e6edf3', cursor: 'pointer', fontSize: 13,
-            }}>{t}</button>
-          ))}
-        </div>
+          {/* Tabs */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+            {(['text', 'url', 'file'] as const).map(t => (
+              <button key={t} type="button" onClick={() => setTab(t)} style={{
+                padding: '4px 14px',
+                background: tab === t ? '#238636' : '#21262d',
+                border: '1px solid #30363d', borderRadius: 6,
+                color: '#e6edf3', cursor: 'pointer', fontSize: 13,
+              }}>{t}</button>
+            ))}
+          </div>
 
-        {/* Text tab */}
-        {tab === 'text' && (
-          <textarea
-            value={text}
-            onChange={e => setText(e.target.value)}
-            placeholder="Paste any text, note, or idea…"
-            rows={6}
-            style={{
-              width: '100%', padding: 12, background: '#0d1117',
-              border: '1px solid #30363d', borderRadius: 6,
-              color: '#e6edf3', fontSize: 13, resize: 'vertical',
-            }}
-          />
-        )}
-
-        {/* URL tab */}
-        {tab === 'url' && (
-          <input
-            value={url}
-            onChange={e => setUrl(e.target.value)}
-            placeholder="https://…"
-            style={{
-              width: '100%', padding: '8px 12px', background: '#0d1117',
-              border: '1px solid #30363d', borderRadius: 6, color: '#e6edf3', fontSize: 13,
-            }}
-          />
-        )}
-
-        {/* File tab */}
-        {tab === 'file' && (
-          <div>
-            <input
-              type="file"
-              multiple
-              accept=".pdf,.docx,.md,.markdown,.txt,.png,.jpg,.jpeg,.webp"
-              onChange={handleFileChange}
-              style={{ color: '#e6edf3', fontSize: 13, marginBottom: 12 }}
+          {/* Text tab */}
+          {tab === 'text' && (
+            <textarea
+              value={text}
+              onChange={e => setText(e.target.value)}
+              placeholder="Paste any text, note, or idea…"
+              rows={6}
+              style={{
+                width: '100%', padding: 12, background: '#0d1117',
+                border: '1px solid #30363d', borderRadius: 6,
+                color: '#e6edf3', fontSize: 13, resize: 'vertical',
+              }}
             />
-            {fileEntries.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
-                {fileEntries.map(entry => (
-                  <div key={entry.id} style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: '6px 10px', background: '#0d1117',
-                    border: '1px solid #30363d', borderRadius: 6,
-                  }}>
-                    <span style={{ fontSize: 12, color: '#e6edf3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 280 }}>
-                      {entry.file.name}
-                    </span>
-                    <span style={{ fontSize: 11, color: STATUS_COLOR[entry.status], flexShrink: 0, marginLeft: 8 }}>
-                      {STATUS_LABEL[entry.status]}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-            {fileEntries.length > 0 && (
+          )}
+
+          {/* URL tab */}
+          {tab === 'url' && (
+            <input
+              value={url}
+              onChange={e => setUrl(e.target.value)}
+              placeholder="https://…"
+              style={{
+                width: '100%', padding: '8px 12px', background: '#0d1117',
+                border: '1px solid #30363d', borderRadius: 6, color: '#e6edf3', fontSize: 13,
+              }}
+            />
+          )}
+
+          {/* File tab */}
+          {tab === 'file' && (
+            <div>
+              <input
+                type="file"
+                multiple
+                accept=".pdf,.docx,.md,.markdown,.txt,.png,.jpg,.jpeg,.webp"
+                onChange={handleFileChange}
+                style={{ color: '#e6edf3', fontSize: 13, marginBottom: 12 }}
+              />
+              {orderedFileIds.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+                  {orderedFileIds.map(fid => {
+                    const entry = queue.items.find(i => i.id === fid)
+                    const qs: QueueStatus = entry?.status ?? 'pending'
+                    const name =
+                      entry?.fileName ??
+                      filesByIdRef.current.get(fid)?.name ??
+                      fid
+                    return (
+                      <div key={fid} style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        padding: '6px 10px', background: '#0d1117',
+                        border: '1px solid #30363d', borderRadius: 6,
+                      }}>
+                        <span style={{ fontSize: 12, color: '#e6edf3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 320 }}>
+                          {name}
+                        </span>
+                        <span style={{ fontSize: 11, color: STATUS_COLOR[qs], flexShrink: 0, marginLeft: 8 }}>
+                          {STATUS_LABEL[qs]}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div style={{ flexShrink: 0, padding: '16px 24px', borderTop: '1px solid #30363d', background: '#161b22' }}>
+          {tab === 'file' ? (
+            orderedFileIds.length > 0 ? (
               <button
-                onClick={uploadAll}
+                type="button"
+                onClick={() => void uploadAll()}
                 disabled={uploading}
                 style={{
                   width: '100%', padding: '10px 0',
@@ -210,30 +238,28 @@ export default function IngestModal({ onClose }: { onClose: () => void }) {
                   cursor: uploading ? 'not-allowed' : 'pointer', fontSize: 14,
                 }}
               >
-                {uploading ? 'Uploading…' : `Upload ${fileEntries.length} file${fileEntries.length !== 1 ? 's' : ''}`}
+                {uploading ? 'Uploading…' : `Upload ${orderedFileIds.length} file${orderedFileIds.length !== 1 ? 's' : ''}`}
               </button>
-            )}
-          </div>
-        )}
-
-        {/* Text/URL status */}
-        {status && tab !== 'file' && (
-          <div style={{ marginTop: 12, fontSize: 13, color: '#58a6ff' }}>{status}</div>
-        )}
-
-        {/* Text/URL submit */}
-        {tab !== 'file' && (
-          <button
-            onClick={submitTextOrUrl}
-            style={{
-              marginTop: 16, width: '100%', padding: '10px 0',
-              background: '#238636', border: 'none', borderRadius: 6,
-              color: '#fff', cursor: 'pointer', fontSize: 14,
-            }}
-          >
-            Ingest
-          </button>
-        )}
+            ) : null
+          ) : (
+            <>
+              {status ? (
+                <div style={{ marginBottom: 12, fontSize: 13, color: '#58a6ff' }}>{status}</div>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => void submitTextOrUrl()}
+                style={{
+                  width: '100%', padding: '10px 0',
+                  background: '#238636', border: 'none', borderRadius: 6,
+                  color: '#fff', cursor: 'pointer', fontSize: 14,
+                }}
+              >
+                Ingest
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   )
