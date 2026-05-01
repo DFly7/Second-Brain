@@ -86,16 +86,15 @@ export default function WikiContent({ selectedSlug, onNavigate }: WikiContentPro
                 const slug = href ? hrefToSlug(href) : null
                 if (href && slug) {
                   return (
-                    <a
-                      href={href}
-                      onClick={(e) => {
-                        e.preventDefault()
-                        onNavigate(slug)
-                      }}
+                    <span
+                      role="link"
+                      tabIndex={0}
+                      onClick={() => onNavigate(slug)}
+                      onKeyDown={(e) => e.key === 'Enter' && onNavigate(slug)}
                       style={{ color: '#58a6ff', cursor: 'pointer', textDecoration: 'underline' }}
                     >
                       {children}
-                    </a>
+                    </span>
                   )
                 }
                 return <a href={href} target="_blank" rel="noreferrer">{children}</a>
