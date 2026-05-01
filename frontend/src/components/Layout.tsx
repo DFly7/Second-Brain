@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import type React from 'react'
-import WikiPanel from './WikiPanel'
+import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
+import WikiSidebar from './WikiSidebar'
+import WikiContent from './WikiContent'
 import ChatPanel from './ChatPanel'
 import IngestModal from './IngestModal'
 import ActivityLog from './ActivityLog'
@@ -8,6 +10,7 @@ import { createSSE } from '../api/client'
 import { useQueryClient } from '@tanstack/react-query'
 
 export default function Layout() {
+  const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
   const [highlightedSlug, setHighlightedSlug] = useState<string | null>(null)
   const [agentStatus, setAgentStatus] = useState<string | null>(null)
   const [showActivity, setShowActivity] = useState(false)
@@ -22,7 +25,13 @@ export default function Layout() {
         source_id?: string
         pages_touched?: string[]
       }
-      if (event.event === 'agent:converting') {
+      if (event.event === 'agent:queued') {
+        setAgentStatus(
+          event.source_id
+            ? `Queued (source ${event.source_id.slice(0, 8)}…)`
+            : 'Queued…',
+        )
+      } else if (event.event === 'agent:converting') {
         setAgentStatus(
           event.source_id
             ? `Converting document (source ${event.source_id.slice(0, 8)}…)…`
@@ -53,8 +62,11 @@ export default function Layout() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       {/* Topbar */}
-      <div style={{ display: 'flex', alignItems: 'center', padding: '8px 16px',
-        background: '#161b22', borderBottom: '1px solid #30363d', gap: 12, flexShrink: 0 }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', padding: '8px 16px',
+        background: '#161b22', borderBottom: '1px solid #30363d',
+        gap: 12, flexShrink: 0,
+      }}>
         <span style={{ fontWeight: 600, fontSize: 15, color: '#e6edf3' }}>LLM Wiki</span>
         {agentStatus && (
           <span style={{ fontSize: 12, color: '#58a6ff', marginLeft: 8 }}>⟳ {agentStatus}</span>
@@ -65,15 +77,28 @@ export default function Layout() {
         </div>
       </div>
 
-      {/* Main split view */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-          <WikiPanel highlightedSlug={highlightedSlug} />
-        </div>
-        <div style={{ width: 380, flexShrink: 0, overflow: 'hidden' }}>
-          <ChatPanel />
-        </div>
-      </div>
+      {/* Resizable panels */}
+      <PanelGroup orientation="horizontal" style={{ flex: 1, overflow: 'hidden' }}>
+        <Panel defaultSize={15} minSize={10}>
+          <WikiSidebar
+            selectedSlug={selectedSlug}
+            highlightedSlug={highlightedSlug}
+            onSelect={setSelectedSlug}
+          />
+        </Panel>
+
+        <PanelResizeHandle style={resizeHandleStyle} />
+
+        <Panel defaultSize={55} minSize={25}>
+          <WikiContent selectedSlug={selectedSlug} onNavigate={setSelectedSlug} />
+        </Panel>
+
+        <PanelResizeHandle style={resizeHandleStyle} />
+
+        <Panel defaultSize={30} minSize={15}>
+          <ChatPanel onNavigate={setSelectedSlug} />
+        </Panel>
+      </PanelGroup>
 
       {showActivity && <ActivityLog onClose={() => setShowActivity(false)} />}
       {showIngest && <IngestModal onClose={() => setShowIngest(false)} />}
@@ -83,5 +108,13 @@ export default function Layout() {
 
 const topBtnStyle: React.CSSProperties = {
   padding: '4px 12px', background: '#21262d', border: '1px solid #30363d',
-  borderRadius: 6, color: '#e6edf3', cursor: 'pointer', fontSize: 13
+  borderRadius: 6, color: '#e6edf3', cursor: 'pointer', fontSize: 13,
+}
+
+const resizeHandleStyle: React.CSSProperties = {
+  width: 4,
+  background: '#21262d',
+  cursor: 'col-resize',
+  flexShrink: 0,
+  transition: 'background 0.15s',
 }
