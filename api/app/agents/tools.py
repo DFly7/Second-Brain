@@ -301,6 +301,19 @@ class AgentTools:
         await self._remove_from_index(old_slug)
         await self.session.commit()
 
+    async def move_page(self, old_slug: str, new_slug: str) -> str:
+        if not _SLUG_RE.match(new_slug):
+            return (
+                f"Invalid new_slug '{new_slug}': use lowercase path segments with hyphens "
+                f"(e.g. people/alice-jones)."
+            )
+        try:
+            await self._do_move_page(old_slug, new_slug)
+        except ValueError as exc:
+            return str(exc)
+        await self._broadcast({"event": "agent:moving", "from": old_slug, "to": new_slug})
+        return f"Page moved from '{old_slug}' to '{new_slug}'."
+
     async def list_source_pages(self) -> list[dict]:
         result = await self.session.execute(
             select(SourcePage)
@@ -444,6 +457,21 @@ class AgentTools:
             {
                 "type": "function",
                 "function": {
+                    "name": "move_page",
+                    "description": "Move a wiki page to a new slug, rewriting backlinks.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "old_slug": {"type": "string", "description": "Current page slug"},
+                            "new_slug": {"type": "string", "description": "Destination slug"},
+                        },
+                        "required": ["old_slug", "new_slug"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
                     "name": "list_source_pages",
                     "description": "List all pages of the source document with a short preview and whether each has images. Call this first to understand document structure.",
                     "parameters": {"type": "object", "properties": {}, "required": []},
@@ -512,6 +540,8 @@ class AgentTools:
                 args["body_md"],
                 args.get("summary", ""),
             )
+        if name == "move_page":
+            return await self.move_page(args["old_slug"], args["new_slug"])
         if name == "list_source_pages":
             pages = await self.list_source_pages()
             return str(pages)

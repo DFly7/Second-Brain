@@ -128,3 +128,52 @@ async def test_do_move_page_rewrites_backlinks(tools, session):
 
     assert "[[people/alice-jones]]" in linking_page.body_md
     assert "[[people/alice]]" not in linking_page.body_md
+
+
+@pytest.mark.asyncio
+async def test_move_page_invalid_slug_returns_error(tools):
+    broadcaster = MagicMock()
+    broadcaster.publish = AsyncMock()
+    tools.broadcaster = broadcaster
+
+    out = await tools.dispatch(
+        "move_page",
+        {"old_slug": "people/alice", "new_slug": "Bad/Slug"},
+    )
+
+    assert "invalid" in out.lower() or "Invalid" in out
+    broadcaster.publish.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_move_page_collision_returns_error(tools, session):
+    from app.models import Page
+
+    existing = MagicMock(spec=Page)
+    session.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=existing))
+
+    out = await tools.dispatch(
+        "move_page",
+        {"old_slug": "people/alice", "new_slug": "people/bob"},
+    )
+
+    assert "already exists" in out
+
+
+@pytest.mark.asyncio
+async def test_move_page_broadcasts_and_returns_success(tools):
+    broadcaster = MagicMock()
+    broadcaster.publish = AsyncMock()
+    tools.broadcaster = broadcaster
+    tools._do_move_page = AsyncMock()
+
+    out = await tools.dispatch(
+        "move_page",
+        {"old_slug": "people/alice", "new_slug": "people/alice-jones"},
+    )
+
+    tools._do_move_page.assert_awaited_once_with("people/alice", "people/alice-jones")
+    broadcaster.publish.assert_awaited_once_with(
+        {"event": "agent:moving", "from": "people/alice", "to": "people/alice-jones"}
+    )
+    assert "moved" in out.lower()
