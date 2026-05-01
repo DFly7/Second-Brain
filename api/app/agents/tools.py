@@ -264,6 +264,43 @@ class AgentTools:
             "meta/index", "\n".join(lines), summary="Wiki table of contents", title="Index"
         )
 
+    async def _do_move_page(self, old_slug: str, new_slug: str) -> None:
+        result = await self.session.execute(
+            select(Page).where(Page.slug == new_slug, Page.workspace_id == self.workspace_id)
+        )
+        if result.scalar_one_or_none() is not None:
+            raise ValueError(f"Destination slug '{new_slug}' already exists.")
+
+        result = await self.session.execute(
+            select(Page).where(Page.slug == old_slug, Page.workspace_id == self.workspace_id)
+        )
+        old_page = result.scalar_one_or_none()
+        if old_page is None:
+            raise ValueError(f"Page '{old_slug}' not found.")
+
+        await self.write_page(new_slug, old_page.body_md, old_page.summary, title=old_page.title)
+
+        result = await self.session.execute(select(PageLink).where(PageLink.to_page_id == old_page.id))
+        incoming_links = result.scalars().all()
+        for link in incoming_links:
+            result = await self.session.execute(select(Page).where(Page.id == link.from_page_id))
+            linking_page = result.scalar_one_or_none()
+            if linking_page:
+                linking_page.body_md = linking_page.body_md.replace(
+                    f"[[{old_slug}]]", f"[[{new_slug}]]"
+                )
+                self.session.add(linking_page)
+                await sync_links(self.session, linking_page)
+
+        await self.session.execute(
+            delete(PageLink).where(
+                (PageLink.from_page_id == old_page.id) | (PageLink.to_page_id == old_page.id)
+            )
+        )
+        self.session.delete(old_page)
+        await self._remove_from_index(old_slug)
+        await self.session.commit()
+
     async def list_source_pages(self) -> list[dict]:
         result = await self.session.execute(
             select(SourcePage)
