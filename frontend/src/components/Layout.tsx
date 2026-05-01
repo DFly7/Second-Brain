@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import type React from 'react'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import WikiSidebar from './WikiSidebar'
@@ -8,6 +8,13 @@ import IngestModal from './IngestModal'
 import ActivityLog from './ActivityLog'
 import { createSSE } from '../api/client'
 import { useQueryClient } from '@tanstack/react-query'
+import {
+  loadQueueState,
+  saveQueueState,
+  reduceQueue,
+  type QueueItem,
+  type QueueState,
+} from '../state/ingestQueue'
 
 export default function Layout() {
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
@@ -15,7 +22,36 @@ export default function Layout() {
   const [agentStatus, setAgentStatus] = useState<string | null>(null)
   const [showActivity, setShowActivity] = useState(false)
   const [showIngest, setShowIngest] = useState(false)
+  const [queue, setQueue] = useState<QueueState>(() => loadQueueState(window.localStorage))
   const qc = useQueryClient()
+
+  useEffect(() => {
+    saveQueueState(window.localStorage, queue)
+  }, [queue])
+
+  const queueActions = useMemo(
+    () => ({
+      upsertMany(items: QueueItem[]) {
+        setQueue(s => reduceQueue(s, { type: 'upsert_many', items }))
+      },
+      patchBySource(sourceId: string, patch: Partial<QueueItem>) {
+        setQueue(s => reduceQueue(s, { type: 'patch_by_source', sourceId, patch }))
+      },
+      prune() {
+        setQueue(s => reduceQueue(s, { type: 'prune', nowMs: Date.now() }))
+      },
+      clear() {
+        setQueue(s => reduceQueue(s, { type: 'clear' }))
+      },
+    }),
+    [],
+  )
+
+  useEffect(() => {
+    queueActions.prune()
+    const t = setInterval(() => queueActions.prune(), 60_000)
+    return () => clearInterval(t)
+  }, [queueActions])
 
   useEffect(() => {
     const unsub = createSSE((data: unknown) => {
@@ -24,6 +60,16 @@ export default function Layout() {
         slug?: string
         source_id?: string
         pages_touched?: string[]
+      }
+      const STATUS_MAP: Partial<Record<string, QueueItem['status']>> = {
+        'agent:queued': 'queued',
+        'agent:converting': 'converting',
+        'agent:ingesting': 'processing',
+        'agent:done': 'done',
+      }
+      const queueStatus = STATUS_MAP[event.event]
+      if (queueStatus && event.source_id) {
+        queueActions.patchBySource(event.source_id, { status: queueStatus })
       }
       if (event.event === 'agent:queued') {
         setAgentStatus(
@@ -57,7 +103,7 @@ export default function Layout() {
       }
     })
     return unsub
-  }, [qc])
+  }, [qc, queueActions])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
@@ -72,8 +118,8 @@ export default function Layout() {
           <span style={{ fontSize: 12, color: '#58a6ff', marginLeft: 8 }}>⟳ {agentStatus}</span>
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <button onClick={() => setShowIngest(true)} style={topBtnStyle}>+ Ingest</button>
-          <button onClick={() => setShowActivity(!showActivity)} style={topBtnStyle}>Activity</button>
+          <button type="button" onClick={() => setShowIngest(true)} style={topBtnStyle}>+ Ingest</button>
+          <button type="button" onClick={() => setShowActivity(!showActivity)} style={topBtnStyle}>Activity</button>
         </div>
       </div>
 
@@ -100,8 +146,21 @@ export default function Layout() {
         </Panel>
       </PanelGroup>
 
-      {showActivity && <ActivityLog onClose={() => setShowActivity(false)} />}
-      {showIngest && <IngestModal onClose={() => setShowIngest(false)} />}
+      {showActivity && (
+        <ActivityLog
+          onClose={() => setShowActivity(false)}
+          queue={queue}
+          onClearQueue={() => queueActions.clear()}
+        />
+      )}
+      {showIngest && (
+        <IngestModal
+          onClose={() => setShowIngest(false)}
+          queue={queue}
+          onUpsertQueueItems={items => queueActions.upsertMany(items)}
+          onPatchQueueById={(id, patch) => setQueue(s => reduceQueue(s, { type: 'patch_by_id', id, patch }))}
+        />
+      )}
     </div>
   )
 }
