@@ -32,7 +32,9 @@ async def run(
     history: list[dict],
     session: AsyncSession,
 ) -> tuple[str, list[str]]:
-    tools = AgentTools(session=session, workspace_id=workspace_id, broadcaster=broadcaster)
+    tools = AgentTools(
+        session=session, workspace_id=workspace_id, broadcaster=broadcaster, context="chat"
+    )
     tool_defs = tools.as_litellm_tools(allowed=EDIT_TOOLS)
 
     messages = [
@@ -56,7 +58,9 @@ async def run(
         if not msg.tool_calls:
             answer = msg.content or ""
             touched_pages = re.findall(r"\[\[([^\]]+)\]\]", answer)
-            await broadcaster.publish({"event": "agent:done", "pages_touched": touched_pages})
+            await broadcaster.publish(
+                {"event": "agent:done", "context": "chat", "pages_touched": touched_pages}
+            )
             return answer, touched_pages
 
         for tc in msg.tool_calls:
@@ -67,5 +71,7 @@ async def run(
                 touched_pages.append(args.get("slug", ""))
             messages.append({"role": "tool", "tool_call_id": tc.id, "content": result_str})
 
-    await broadcaster.publish({"event": "agent:done", "pages_touched": touched_pages})
+    await broadcaster.publish(
+        {"event": "agent:done", "context": "chat", "pages_touched": touched_pages}
+    )
     return "I wasn't able to complete the edit operation.", touched_pages

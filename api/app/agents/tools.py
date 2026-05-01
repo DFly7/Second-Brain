@@ -92,17 +92,19 @@ class AgentTools:
         workspace_id: str,
         broadcaster: SSEBroadcaster | None,
         source_id: str | None = None,
+        context: str = "ingest",
     ):
         self.session = session
         self.workspace_id = workspace_id
         self.broadcaster = broadcaster
         self.source_id = source_id
+        self.context = context
         # Set True during move_folder so each _do_move_page does not spam agent:writing (and index updates).
         self._suppress_agent_writing_sse = False
 
     async def _broadcast(self, event: dict):
         if self.broadcaster:
-            await self.broadcaster.publish(event)
+            await self.broadcaster.publish({"context": self.context, **event})
 
     async def list_pages(self) -> list[dict]:
         result = await self.session.execute(

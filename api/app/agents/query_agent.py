@@ -23,7 +23,9 @@ async def run(
     history: list[dict],
     session: AsyncSession,
 ) -> tuple[str, list[str]]:
-    tools = AgentTools(session=session, workspace_id=workspace_id, broadcaster=broadcaster)
+    tools = AgentTools(
+        session=session, workspace_id=workspace_id, broadcaster=broadcaster, context="chat"
+    )
     tool_defs = tools.as_litellm_tools(allowed=READ_ONLY_TOOLS)
 
     messages = [

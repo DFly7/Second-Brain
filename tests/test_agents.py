@@ -28,6 +28,40 @@ async def test_list_pages_returns_list():
 
 
 @pytest.mark.asyncio
+async def test_broadcast_includes_context_ingest_default():
+    published = []
+
+    class FakeBroadcaster:
+        async def publish(self, event):
+            published.append(event)
+
+    tools = AgentTools(session=AsyncMock(), workspace_id="ws-1", broadcaster=FakeBroadcaster())
+    await tools._broadcast({"event": "agent:reading", "slug": "people/alice"})
+    assert len(published) == 1
+    assert published[0]["context"] == "ingest"
+    assert published[0]["event"] == "agent:reading"
+    assert published[0]["slug"] == "people/alice"
+
+
+@pytest.mark.asyncio
+async def test_broadcast_includes_context_chat():
+    published = []
+
+    class FakeBroadcaster:
+        async def publish(self, event):
+            published.append(event)
+
+    tools = AgentTools(
+        session=AsyncMock(),
+        workspace_id="ws-1",
+        broadcaster=FakeBroadcaster(),
+        context="chat",
+    )
+    await tools._broadcast({"event": "agent:reading", "slug": "people/bob"})
+    assert published[0]["context"] == "chat"
+
+
+@pytest.mark.asyncio
 async def test_dispatch_create_page_passes_title():
     tools = AgentTools(session=AsyncMock(), workspace_id="ws-1", broadcaster=None)
     tools.create_page = AsyncMock(return_value="ok")

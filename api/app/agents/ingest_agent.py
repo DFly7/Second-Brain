@@ -143,4 +143,6 @@ async def run(source_id: str, workspace_id: str):
             )
         )
         await session.commit()
-        await broadcaster.publish({"event": "agent:done", "pages_touched": pages_touched})
+        await broadcaster.publish(
+            {"event": "agent:done", "pages_touched": pages_touched, "source_id": source_id}
+        )
