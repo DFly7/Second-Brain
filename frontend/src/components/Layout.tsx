@@ -95,6 +95,21 @@ export default function Layout() {
       } else if (event.event === 'agent:writing') {
         setHighlightedSlug(event.slug || null)
         setAgentStatus(`Writing ${event.slug}…`)
+      } else if (event.event === 'agent:moving') {
+        const e = event as { event: string; from?: string; to?: string }
+        setHighlightedSlug(e.to || null)
+        setAgentStatus(e.from && e.to ? `Moving ${e.from} → ${e.to}…` : 'Moving page…')
+      } else if (event.event === 'agent:deleting') {
+        setHighlightedSlug(null)
+        setAgentStatus(event.slug ? `Deleting ${event.slug}…` : 'Deleting page…')
+      } else if (event.event === 'agent:moved_folder') {
+        const e = event as { event: string; from?: string; to?: string; count?: number }
+        setHighlightedSlug(null)
+        setAgentStatus(
+          e.from && e.to
+            ? `Moved ${e.count ?? '?'} pages: ${e.from} → ${e.to}`
+            : 'Folder move complete',
+        )
       } else if (event.event === 'agent:done') {
         setHighlightedSlug(null)
         setAgentStatus(null)
