@@ -1,4 +1,5 @@
 import base64
+import logging
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
@@ -14,6 +15,8 @@ from app.sse import broadcaster
 from app.storage import upload_file
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
+
+_log = logging.getLogger(__name__)
 
 MARKER_TYPES = {"pdf", "docx", "doc", "pptx", "ppt", "xlsx", "xls", "png", "jpg", "jpeg", "webp"}
 TEXT_TYPES = {"md", "markdown", "txt", "text"}
@@ -72,17 +75,31 @@ async def _run_pipeline(source_id: str, workspace_id: str, data: bytes, filename
     from app.marker_client import MarkerClient
 
     suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    _log.info(
+        "ingest pipeline start source_id=%s workspace_id=%s filename=%s suffix=%s bytes=%d",
+        source_id,
+        workspace_id,
+        filename,
+        suffix,
+        len(data),
+    )
 
     async with AsyncSessionLocal() as session:
         src_result = await session.execute(select(Source).where(Source.id == source_id))
         source = src_result.scalar_one_or_none()
         if not source:
+            _log.warning("ingest pipeline aborted: source not found source_id=%s", source_id)
             return
 
         await broadcaster.publish({"event": "agent:converting", "source_id": source_id})
 
         try:
             if suffix in TEXT_TYPES:
+                _log.info(
+                    "ingest skipping marker (plain text) source_id=%s suffix=%s",
+                    source_id,
+                    suffix,
+                )
                 text = data.decode("utf-8", errors="replace")
                 chunks = _chunk_text(text)
                 combined_md = text
@@ -91,8 +108,14 @@ async def _run_pipeline(source_id: str, workspace_id: str, data: bytes, filename
                     for i, chunk in enumerate(chunks)
                 ]
             else:
+                _log.info("ingest calling marker source_id=%s filename=%s", source_id, filename)
                 client = MarkerClient()
-                raw_pages = await client.convert(data, filename)
+                raw_pages = await client.convert(data, filename, source_id=source_id)
+                _log.info(
+                    "ingest marker done source_id=%s pages=%d",
+                    source_id,
+                    len(raw_pages),
+                )
                 pages_data = [
                     {
                         "page_num": p.page_num,
@@ -131,8 +154,15 @@ async def _run_pipeline(source_id: str, workspace_id: str, data: bytes, filename
             source.markdown_s3_key = md_key
             source.status = "ingesting"
             await session.commit()
+            _log.info(
+                "ingest convert stage done source_id=%s pages_written=%d md_key=%s",
+                source_id,
+                len(pages_data),
+                md_key,
+            )
 
         except Exception:
+            _log.exception("ingest pipeline failed source_id=%s filename=%s", source_id, filename)
             source.status = "error"
             await session.commit()
             raise
@@ -146,6 +176,7 @@ async def _run_pipeline(source_id: str, workspace_id: str, data: bytes, filename
         if source:
             source.status = "done"
             await session.commit()
+    _log.info("ingest pipeline complete source_id=%s", source_id)
 
 
 @router.post("/file")
@@ -179,6 +210,13 @@ async def ingest_file(
     await db.refresh(source)
 
     background_tasks.add_task(_run_pipeline, source.id, ws.id, data, file.filename or f"file.{suffix}")
+    _log.info(
+        "ingest file accepted source_id=%s workspace_id=%s filename=%s bytes=%d queued=pipeline",
+        source.id,
+        ws.id,
+        file.filename,
+        len(data),
+    )
     await _maybe_auto_health(background_tasks, db, ws)
     return {"source_id": source.id, "status": "converting"}
 

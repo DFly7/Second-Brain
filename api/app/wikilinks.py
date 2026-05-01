@@ -13,7 +13,7 @@ def extract_slugs(body_md: str) -> list[str]:
 
 
 async def sync_links(session: AsyncSession, page: Page) -> None:
-    slugs = extract_slugs(page.body_md)
+    slugs = list(dict.fromkeys(extract_slugs(page.body_md)))
     await session.execute(
         delete(PageLink).where(PageLink.from_page_id == page.id)
     )

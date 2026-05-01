@@ -16,8 +16,25 @@ export default function Layout() {
 
   useEffect(() => {
     const unsub = createSSE((data: unknown) => {
-      const event = data as { event: string; slug?: string; pages_touched?: string[] }
-      if (event.event === 'agent:reading') {
+      const event = data as {
+        event: string
+        slug?: string
+        source_id?: string
+        pages_touched?: string[]
+      }
+      if (event.event === 'agent:converting') {
+        setAgentStatus(
+          event.source_id
+            ? `Converting document (source ${event.source_id.slice(0, 8)}…)…`
+            : 'Converting document…',
+        )
+      } else if (event.event === 'agent:ingesting') {
+        setAgentStatus(
+          event.source_id
+            ? `Updating wiki from source ${event.source_id.slice(0, 8)}…`
+            : 'Updating wiki from ingested source…',
+        )
+      } else if (event.event === 'agent:reading') {
         setHighlightedSlug(event.slug || null)
         setAgentStatus(`Reading ${event.slug}…`)
       } else if (event.event === 'agent:writing') {
