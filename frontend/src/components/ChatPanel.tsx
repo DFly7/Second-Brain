@@ -30,6 +30,7 @@ export default function ChatPanel({ onNavigate }: ChatPanelProps) {
   const [input, setInput] = useState('')
   const [sessionId, setSessionId] = useState<string | undefined>()
   const [loading, setLoading] = useState(false)
+  const [editMode, setEditMode] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
@@ -41,7 +42,7 @@ export default function ChatPanel({ onNavigate }: ChatPanelProps) {
     setMessages(m => [...m, { role: 'user', content: text }])
     setLoading(true)
     try {
-      const resp = await sendMessage(text, sessionId)
+      const resp = await sendMessage(text, sessionId, editMode ? 'edit' : 'query')
       setSessionId(resp.session_id)
       setMessages(m => [...m, { role: 'assistant', content: resp.answer, cited: resp.cited_pages }])
     } finally {
@@ -123,7 +124,35 @@ export default function ChatPanel({ onNavigate }: ChatPanelProps) {
         )}
         <div ref={bottomRef} />
       </div>
-      <div style={{ padding: 12, borderTop: '1px solid #30363d', display: 'flex', gap: 8 }}>
+      <div style={{
+        padding: 12,
+        borderTop: '1px solid #30363d',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        ...(editMode ? {
+          boxShadow: 'inset 0 0 0 1px #d29922',
+          background: 'rgba(210, 153, 34, 0.06)',
+        } : {}),
+      }}>
+        <button
+          type="button"
+          onClick={() => setEditMode(v => !v)}
+          title={editMode ? 'Switch to read-only query' : 'Allow the agent to edit wiki pages'}
+          style={{
+            padding: '8px 12px',
+            borderRadius: 6,
+            fontSize: 13,
+            cursor: 'pointer',
+            flexShrink: 0,
+            border: editMode ? '1px solid #d29922' : '1px solid #30363d',
+            background: editMode ? 'rgba(210, 153, 34, 0.22)' : '#161b22',
+            color: editMode ? '#d29922' : '#8b949e',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Edit Mode
+        </button>
         <input
           value={input}
           onChange={e => setInput(e.target.value)}
@@ -140,7 +169,7 @@ export default function ChatPanel({ onNavigate }: ChatPanelProps) {
           style={{
             padding: '8px 16px', background: '#238636', border: 'none',
             borderRadius: 6, color: '#fff',
-            cursor: loading ? 'not-allowed' : 'pointer', fontSize: 13,
+            cursor: loading ? 'not-allowed' : 'pointer', fontSize: 13, flexShrink: 0,
           }}
         >
           Send
