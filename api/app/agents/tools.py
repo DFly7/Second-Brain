@@ -5,11 +5,11 @@ from pathlib import Path
 
 from jinja2 import Template
 import litellm
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models import ActivityLog, Page, Revision, SourcePage
+from app.models import ActivityLog, Page, PageLink, Revision, SourcePage
 from app.search import search_pages as _search
 from app.sse import SSEBroadcaster
 from app.storage import download_file
@@ -18,6 +18,9 @@ from app.wikilinks import sync_links
 _PROMPTS = Path(__file__).parent / "prompts"
 _VISION_CAPTION_TEMPLATE = Template((_PROMPTS / "vision_caption.md").read_text())
 _VISION_DESCRIBE_PROMPT = (_PROMPTS / "vision_describe.md").read_text()
+
+_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)+$")
+_FOLDER_RE = re.compile(r"^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$")
 
 
 async def _ensure_vision_captions(page: SourcePage, session: AsyncSession) -> None:
