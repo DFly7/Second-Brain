@@ -177,3 +177,71 @@ async def test_move_page_broadcasts_and_returns_success(tools):
         {"event": "agent:moving", "from": "people/alice", "to": "people/alice-jones"}
     )
     assert "moved" in out.lower()
+
+
+@pytest.mark.asyncio
+async def test_do_delete_page_removes_and_rewrites_backlinks(tools, session):
+    from app.models import Page, PageLink
+
+    page = MagicMock(spec=Page)
+    page.id = "del-id"
+    page.title = "Alice"
+    page.slug = "people/alice"
+
+    linking_page = MagicMock(spec=Page)
+    linking_page.id = "linker-id"
+    linking_page.slug = "projects/alpha"
+    linking_page.body_md = "See [[people/alice]] for details."
+    linking_page.workspace_id = "ws-1"
+
+    link = MagicMock(spec=PageLink)
+    link.from_page_id = "linker-id"
+
+    session.execute.side_effect = [
+        MagicMock(scalar_one_or_none=MagicMock(return_value=page)),
+        MagicMock(
+            scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[link])))
+        ),
+        MagicMock(scalar_one_or_none=MagicMock(return_value=linking_page)),
+        MagicMock(),  # delete PageLinks
+    ]
+
+    session.flush = AsyncMock()
+
+    with patch("app.agents.tools.sync_links", new_callable=AsyncMock):
+        title = await tools._do_delete_page("people/alice")
+
+    assert title == "Alice"
+    assert "[[people/alice]] *(page deleted)*" in linking_page.body_md
+    assert linking_page.body_md.count("[[people/alice]]") == 1
+    session.delete.assert_called_once_with(page)
+    session.commit.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_delete_page_not_found_returns_error(tools, session):
+    session.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=None))
+
+    out = await tools.dispatch("delete_page", {"slug": "people/nobody"})
+
+    assert "not found" in out.lower()
+
+
+@pytest.mark.asyncio
+async def test_delete_page_broadcasts_and_appends_log(tools):
+    broadcaster = MagicMock()
+    broadcaster.publish = AsyncMock()
+    tools.broadcaster = broadcaster
+    tools._do_delete_page = AsyncMock(return_value="Gone Title")
+    tools._remove_from_index = AsyncMock()
+    tools._append_deleted_log = AsyncMock()
+
+    out = await tools.dispatch("delete_page", {"slug": "people/alice"})
+
+    tools._do_delete_page.assert_awaited_once_with("people/alice")
+    tools._remove_from_index.assert_awaited_once_with("people/alice")
+    tools._append_deleted_log.assert_awaited_once_with("people/alice", "Gone Title")
+    broadcaster.publish.assert_awaited_once_with(
+        {"event": "agent:deleting", "slug": "people/alice"}
+    )
+    assert "deleted" in out.lower()

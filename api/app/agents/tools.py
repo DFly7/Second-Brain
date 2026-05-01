@@ -314,6 +314,72 @@ class AgentTools:
         await self._broadcast({"event": "agent:moving", "from": old_slug, "to": new_slug})
         return f"Page moved from '{old_slug}' to '{new_slug}'."
 
+    async def _append_deleted_log(self, slug: str, title: str) -> None:
+        ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+        row = f"| {ts} | [[{slug}]] | {title} |\n"
+        raw = await self.read_page("meta/deleted-log")
+        if raw.startswith("[Page 'meta/deleted-log' not found]"):
+            body = (
+                "# Deleted pages log\n\n"
+                "| When | Page | Title |\n"
+                "| --- | --- | --- |\n"
+                f"{row}"
+            )
+        else:
+            body = raw.rstrip() + "\n" + row
+        await self.write_page(
+            "meta/deleted-log",
+            body,
+            summary="Audit trail of deleted wiki pages",
+            title="Deleted log",
+        )
+
+    async def _do_delete_page(self, slug: str) -> str:
+        result = await self.session.execute(
+            select(Page).where(Page.slug == slug, Page.workspace_id == self.workspace_id)
+        )
+        page = result.scalar_one_or_none()
+        if page is None:
+            raise ValueError(f"Page '{slug}' not found.")
+
+        title = page.title
+        replacement = f"[[{slug}]] *(page deleted)*"
+
+        result = await self.session.execute(select(PageLink).where(PageLink.to_page_id == page.id))
+        incoming_links = result.scalars().all()
+        linking_pages: list[Page] = []
+        for link in incoming_links:
+            result = await self.session.execute(select(Page).where(Page.id == link.from_page_id))
+            linking_page = result.scalar_one_or_none()
+            if linking_page:
+                linking_page.body_md = linking_page.body_md.replace(
+                    f"[[{slug}]]", replacement
+                )
+                self.session.add(linking_page)
+                linking_pages.append(linking_page)
+
+        await self.session.execute(
+            delete(PageLink).where(
+                (PageLink.from_page_id == page.id) | (PageLink.to_page_id == page.id)
+            )
+        )
+        self.session.delete(page)
+        await self.session.flush()
+        for linking_page in linking_pages:
+            await sync_links(self.session, linking_page)
+        await self.session.commit()
+        return title
+
+    async def delete_page(self, slug: str) -> str:
+        try:
+            title = await self._do_delete_page(slug)
+        except ValueError as exc:
+            return str(exc)
+        await self._remove_from_index(slug)
+        await self._append_deleted_log(slug, title)
+        await self._broadcast({"event": "agent:deleting", "slug": slug})
+        return f"Page '{slug}' deleted."
+
     async def list_source_pages(self) -> list[dict]:
         result = await self.session.execute(
             select(SourcePage)
@@ -472,6 +538,23 @@ class AgentTools:
             {
                 "type": "function",
                 "function": {
+                    "name": "delete_page",
+                    "description": (
+                        "Permanently delete a wiki page, mark backlinks as deleted, "
+                        "remove its index entry, and append to meta/deleted-log."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "slug": {"type": "string", "description": "Page slug to delete"},
+                        },
+                        "required": ["slug"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
                     "name": "list_source_pages",
                     "description": "List all pages of the source document with a short preview and whether each has images. Call this first to understand document structure.",
                     "parameters": {"type": "object", "properties": {}, "required": []},
@@ -542,6 +625,8 @@ class AgentTools:
             )
         if name == "move_page":
             return await self.move_page(args["old_slug"], args["new_slug"])
+        if name == "delete_page":
+            return await self.delete_page(args["slug"])
         if name == "list_source_pages":
             pages = await self.list_source_pages()
             return str(pages)
