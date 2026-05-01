@@ -100,6 +100,7 @@ export default function ChatPanel({ onNavigate, activeSseEvent }: ChatPanelProps
               {m.role === 'assistant' ? (
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
+                  urlTransform={(url) => url}
                   components={{
                     a({ href, children }) {
                       const slug = href ? hrefToSlug(href) : null
@@ -117,7 +118,16 @@ export default function ChatPanel({ onNavigate, activeSseEvent }: ChatPanelProps
                         )
                       }
                       return <a href={href} target="_blank" rel="noreferrer">{children}</a>
-                    }
+                    },
+                    ul({ children }) {
+                      return <ul style={{ margin: '4px 0', paddingLeft: 20 }}>{children}</ul>
+                    },
+                    ol({ children }) {
+                      return <ol style={{ margin: '4px 0', paddingLeft: 20 }}>{children}</ol>
+                    },
+                    p({ children }) {
+                      return <p style={{ margin: '4px 0' }}>{children}</p>
+                    },
                   }}
                 >
                   {processWikilinks(m.content)}

@@ -7,7 +7,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 # Force test credentials so docker-compose `env_file: .env` cannot override pytest.
-os.environ["DATABASE_URL"] = "postgresql+asyncpg://wiki:wiki@db:5432/wiki"
+os.environ["DATABASE_URL"] = "postgresql+asyncpg://wiki:wiki@db:5432/wiki_test"
 os.environ["JWT_SECRET"] = "test-secret"
 os.environ["SINGLE_USER_EMAIL"] = "user@example.com"
 os.environ["SINGLE_USER_PASSWORD"] = "changeme"

@@ -81,6 +81,7 @@ export default function WikiContent({ selectedSlug, onNavigate }: WikiContentPro
         <div style={{ lineHeight: 1.7, fontSize: 14 }}>
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
+            urlTransform={(url) => url}
             components={{
               a({ href, children }) {
                 const slug = href ? hrefToSlug(href) : null

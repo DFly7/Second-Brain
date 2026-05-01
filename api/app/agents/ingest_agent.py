@@ -94,7 +94,10 @@ async def run(source_id: str, workspace_id: str):
                 tools=tool_defs,
                 tool_choice="auto",
             )
-            total_cost += litellm.completion_cost(resp) or 0.0
+            try:
+                total_cost += litellm.completion_cost(resp) or 0.0
+            except Exception:
+                pass
             if total_cost > COST_CEILING_USD:
                 break
 
