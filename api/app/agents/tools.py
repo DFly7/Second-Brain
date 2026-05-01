@@ -229,6 +229,41 @@ class AgentTools:
             title="Index",
         )
 
+    async def _remove_from_index(self, slug: str) -> None:
+        raw = await self.read_page("meta/index")
+        if raw.startswith("[Page 'meta/index' not found]"):
+            return
+
+        sections: dict[str, list[str]] = {}
+        current_folder: str | None = None
+        in_preamble = True
+
+        for line in raw.split("\n"):
+            m = re.match(r"^## (.+?)\s*\(\d+ pages?\)$", line)
+            if m:
+                in_preamble = False
+                current_folder = m.group(1)
+                if current_folder not in sections:
+                    sections[current_folder] = []
+            elif not in_preamble and current_folder is not None and line.startswith("- [["):
+                sections[current_folder].append(line)
+
+        folder = (slug.rsplit("/", 1)[0] + "/") if "/" in slug else "misc/"
+        if folder in sections:
+            sections[folder] = [e for e in sections[folder] if not e.startswith(f"- [[{slug}]]")]
+
+        date_str = datetime.utcnow().strftime("%Y-%m-%d")
+        lines: list[str] = ["# Wiki Index", "", f"_Last updated: {date_str}_", ""]
+        for f in sorted(sections.keys(), key=lambda x: (x == "meta/", x)):
+            if sections[f]:
+                lines.append(f"## {f} ({len(sections[f])} pages)")
+                lines.extend(sections[f])
+                lines.append("")
+
+        await self.write_page(
+            "meta/index", "\n".join(lines), summary="Wiki table of contents", title="Index"
+        )
+
     async def list_source_pages(self) -> list[dict]:
         result = await self.session.execute(
             select(SourcePage)
