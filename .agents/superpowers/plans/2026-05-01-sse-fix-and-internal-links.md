@@ -17,6 +17,7 @@
 | `api/app/agents/ingest_agent.py:146` | Add `source_id` to `agent:done` broadcast |
 | `api/app/agents/tools.py:86-100` | Add `context` param to `AgentTools.__init__`; merge into `_broadcast` |
 | `api/app/agents/query_agent.py:26` | Pass `context="chat"` to `AgentTools` |
+| `api/app/agents/edit_agent.py:35,59,70` | Pass `context="chat"` to `AgentTools`; add `"context": "chat"` to both `agent:done` publishes |
 | `frontend/src/components/Layout.tsx:57-123` | Split SSE handler by `event.context`; add `chatSseEvent` state; pass to ChatPanel |
 | `frontend/src/components/ChatPanel.tsx` | Accept `activeSseEvent` prop; animated status bubble; "searched N pages" footnote |
 | `frontend/src/components/WikiContent.tsx:86-102` | Internal links: `<a href>` → `<span role="link">` |
@@ -107,7 +108,7 @@ async def _broadcast(self, event: dict):
         await self.broadcaster.publish({"context": self.context, **event})
 ```
 
-- [ ] **Step 4: Pass `context="chat"` in query_agent.py**
+- [ ] **Step 4: Pass `context="chat"` in query_agent.py and edit_agent.py**
 
 In `api/app/agents/query_agent.py`, line 26, replace:
 
@@ -119,6 +120,30 @@ with:
 
 ```python
 tools = AgentTools(session=session, workspace_id=workspace_id, broadcaster=broadcaster, context="chat")
+```
+
+In `api/app/agents/edit_agent.py`, line 35, replace:
+
+```python
+tools = AgentTools(session=session, workspace_id=workspace_id, broadcaster=broadcaster)
+```
+
+with:
+
+```python
+tools = AgentTools(session=session, workspace_id=workspace_id, broadcaster=broadcaster, context="chat")
+```
+
+Also in `edit_agent.py`, **both** `broadcaster.publish({"event": "agent:done", ...})` calls (one in the early-return branch, one after the loop) must carry `context: "chat"` so the Layout routes them to the wiki-refresh path. Replace both instances of:
+
+```python
+await broadcaster.publish({"event": "agent:done", "pages_touched": touched_pages})
+```
+
+with:
+
+```python
+await broadcaster.publish({"event": "agent:done", "context": "chat", "pages_touched": touched_pages})
 ```
 
 - [ ] **Step 5: Add `source_id` to `agent:done` in ingest_agent.py**
@@ -154,7 +179,7 @@ Expected: all previously passing tests still pass.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add api/app/agents/tools.py api/app/agents/query_agent.py api/app/agents/ingest_agent.py tests/test_agents.py
+git add api/app/agents/tools.py api/app/agents/query_agent.py api/app/agents/edit_agent.py api/app/agents/ingest_agent.py tests/test_agents.py
 git commit -m "fix: add context field to AgentTools broadcast and source_id to agent:done"
 ```
 
@@ -200,9 +225,15 @@ const event = data as {
   context?: string
 }
 
-// Chat-context events go to the ChatPanel bubble, not the topbar.
+// Chat-context events (query agent reading/writing, edit agent operations) go to the
+// ChatPanel bubble. agent:done from the edit agent also triggers a wiki refresh.
 if (event.context === 'chat') {
-  setChatSseEvent({ event: event.event, slug: event.slug })
+  if (event.event === 'agent:done') {
+    qc.invalidateQueries({ queryKey: ['pages'] })
+    qc.invalidateQueries({ queryKey: ['activity'] })
+  } else {
+    setChatSseEvent({ event: event.event, slug: event.slug })
+  }
   return
 }
 
@@ -241,6 +272,21 @@ if (event.event === 'agent:queued') {
 } else if (event.event === 'agent:writing') {
   setHighlightedSlug(event.slug || null)
   setAgentStatus(`Writing ${event.slug}…`)
+} else if (event.event === 'agent:moving') {
+  const e = event as { event: string; from?: string; to?: string }
+  setHighlightedSlug(e.to || null)
+  setAgentStatus(e.from && e.to ? `Moving ${e.from} → ${e.to}…` : 'Moving page…')
+} else if (event.event === 'agent:deleting') {
+  setHighlightedSlug(null)
+  setAgentStatus(event.slug ? `Deleting ${event.slug}…` : 'Deleting page…')
+} else if (event.event === 'agent:moved_folder') {
+  const e = event as { event: string; from?: string; to?: string; count?: number }
+  setHighlightedSlug(null)
+  setAgentStatus(
+    e.from && e.to
+      ? `Moved ${e.count ?? '?'} pages: ${e.from} → ${e.to}`
+      : 'Folder move complete',
+  )
 } else if (event.event === 'agent:done') {
   setHighlightedSlug(null)
   setAgentStatus(null)
