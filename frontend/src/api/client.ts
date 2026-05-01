@@ -65,6 +65,7 @@ export async function ingestFile(file: File) {
   const r = await fetch(`${BASE}/ingest/file`, {
     method: 'POST', headers: { Authorization: `Bearer ${token()}` }, body: fd
   })
+  if (!r.ok) throw new Error(`ingestFile failed: ${r.status}`)
   return r.json()
 }
 
