@@ -37,10 +37,14 @@ export async function updatePage(slug: string, body: { title?: string; body_md?:
   return r.json()
 }
 
-export async function sendMessage(message: string, sessionId?: string) {
+export async function sendMessage(
+  message: string,
+  sessionId?: string,
+  mode: 'query' | 'edit' = 'query'
+) {
   const r = await fetch(`${BASE}/chat/message`, {
     method: 'POST', headers: headers(),
-    body: JSON.stringify({ message, session_id: sessionId })
+    body: JSON.stringify({ message, session_id: sessionId, mode })
   })
   return r.json()
 }
