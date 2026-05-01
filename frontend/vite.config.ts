@@ -1,5 +1,5 @@
-import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   plugins: [react()],
@@ -9,5 +9,8 @@ export default defineConfig({
     proxy: {
       '/api': { target: 'http://api:8000', rewrite: (p) => p.replace(/^\/api/, '') }
     }
+  },
+  test: {
+    passWithNoTests: true
   }
 })
