@@ -311,3 +311,28 @@ async def test_move_folder_moves_all_and_broadcasts(tools, session):
         }
     )
     assert "2 pages" in result
+
+
+@pytest.mark.asyncio
+async def test_move_folder_suppresses_writing_sse_while_moving(tools, session):
+    from app.models import Page
+
+    page_a = MagicMock(spec=Page)
+    page_a.slug = "projects/2025/alpha"
+
+    session.execute.side_effect = [
+        MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[page_a])))),
+        MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))),
+    ]
+
+    seen: list[bool] = []
+
+    async def tracking_do_move(old, new):
+        seen.append(tools._suppress_agent_writing_sse)
+
+    tools._do_move_page = tracking_do_move
+
+    await tools.move_folder("projects/2025", "archive/2025")
+
+    assert seen == [True]
+    assert tools._suppress_agent_writing_sse is False

@@ -97,6 +97,8 @@ class AgentTools:
         self.workspace_id = workspace_id
         self.broadcaster = broadcaster
         self.source_id = source_id
+        # Set True during move_folder so each _do_move_page does not spam agent:writing (and index updates).
+        self._suppress_agent_writing_sse = False
 
     async def _broadcast(self, event: dict):
         if self.broadcaster:
@@ -128,7 +130,8 @@ class AgentTools:
     async def write_page(
         self, slug: str, body_md: str, summary: str = "", title: str | None = None
     ) -> str:
-        await self._broadcast({"event": "agent:writing", "slug": slug})
+        if not self._suppress_agent_writing_sse:
+            await self._broadcast({"event": "agent:writing", "slug": slug})
         result = await self.session.execute(
             select(Page).where(Page.slug == slug, Page.workspace_id == self.workspace_id)
         )
@@ -416,8 +419,12 @@ class AgentTools:
             conflict_list = ", ".join(p.slug for p in collisions)
             return f"Error: Destination already has conflicting pages: {conflict_list}."
 
-        for page, new_slug in zip(pages, new_slugs, strict=True):
-            await self._do_move_page(page.slug, new_slug)
+        self._suppress_agent_writing_sse = True
+        try:
+            for page, new_slug in zip(pages, new_slugs, strict=True):
+                await self._do_move_page(page.slug, new_slug)
+        finally:
+            self._suppress_agent_writing_sse = False
 
         count = len(pages)
         await self._broadcast(
