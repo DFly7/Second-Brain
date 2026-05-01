@@ -8,6 +8,19 @@ interface WikiContentProps {
   onNavigate: (slug: string) => void
 }
 
+function isExternalHref(href: string): boolean {
+  return /^(https?:\/\/|mailto:|tel:)/i.test(href)
+}
+
+function hrefToSlug(href: string): string | null {
+  if (!href) return null
+  if (href.startsWith('wiki://')) return href.slice(7)
+  if (href.startsWith('#')) return null
+  if (isExternalHref(href)) return null
+  // treat relative links as wiki slugs (e.g. sources/foo, meta/index, etc.)
+  return href.replace(/^\.\//, '')
+}
+
 export default function WikiContent({ selectedSlug, onNavigate }: WikiContentProps) {
   const [editing, setEditing] = useState(false)
   const [editBody, setEditBody] = useState('')
@@ -70,15 +83,19 @@ export default function WikiContent({ selectedSlug, onNavigate }: WikiContentPro
             remarkPlugins={[remarkGfm]}
             components={{
               a({ href, children }) {
-                if (href?.startsWith('wiki://')) {
-                  const slug = href.slice(7)
+                const slug = href ? hrefToSlug(href) : null
+                if (href && slug) {
                   return (
-                    <span
-                      onClick={() => onNavigate(slug)}
+                    <a
+                      href={href}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        onNavigate(slug)
+                      }}
                       style={{ color: '#58a6ff', cursor: 'pointer', textDecoration: 'underline' }}
                     >
                       {children}
-                    </span>
+                    </a>
                   )
                 }
                 return <a href={href} target="_blank" rel="noreferrer">{children}</a>

@@ -114,7 +114,99 @@ const [fileEntries, setFileEntries] = useState<FileEntry[]>([])
 - Auto-closes 2 seconds after last entry reaches `done` or `error`
 - Old single-file `handleFile` replaced entirely
 
+### Modal overflow / sticky actions (multi-select safety)
+
+When many files are selected, the modal must not grow beyond the viewport such that the primary action is unreachable.
+
+- Modal card uses:
+  - `maxHeight: '90vh'`
+  - `display: 'flex'`, `flexDirection: 'column'`
+- The file list becomes a scroll region:
+  - `overflowY: 'auto'`
+  - Either `flex: 1` (preferred) or `maxHeight` tuned to leave room for actions
+- The primary action area (Upload button + any status) stays visible:
+  - `flexShrink: 0`
+  - Conceptually a “footer” section under the scroll region
+
+This guarantees the Upload/Start button remains selectable even with dozens/hundreds of files.
+
 **Files changed:** `frontend/src/components/IngestModal.tsx` only — Layout.tsx unchanged
+
+---
+
+## 6. Persistent Ingest Queue UI (reopenable, best-effort persisted)
+
+Users need to reopen a view showing “what’s queued / in progress / done” even after closing the ingest modal.
+
+### UI placement
+
+Reuse the existing right-side drawer (`ActivityLog`) by adding a tabbed header:
+
+- `Activity` (existing)
+- `Queue` (new)
+
+### Queue data model
+
+Client-side queue state with best-effort persistence in localStorage:
+
+```ts
+type QueueStatus = 'pending' | 'uploading' | 'queued' | 'converting' | 'processing' | 'done' | 'error'
+
+interface QueueItem {
+  id: string
+  fileName: string
+  fileSize: number
+  createdAt: string // ISO
+  status: QueueStatus
+  sourceId?: string
+  error?: string
+}
+```
+
+Notes:
+- `queued` corresponds to “accepted by API and waiting for marker slot” (SSE `agent:queued`).
+- For file uploads, `pending/uploading` are local-only states before the server emits SSE events.
+
+### Persistence rules
+
+- Store items in localStorage (e.g. key `ingest_queue_v1`) and hydrate on app load.
+- Prune strategy:
+  - Keep only the most recent N (e.g. 200) to avoid unbounded growth.
+  - Remove terminal items (`done|error`) after a TTL (e.g. 24h) or keep until explicitly cleared (TBD in implementation plan; default: TTL).
+
+### SSE integration (single subscription)
+
+To avoid losing status when the ingest modal closes, subscribe to SSE at the app level (Layout):
+
+- `Layout.tsx` owns a single `createSSE` subscription
+- It updates:
+  - existing `agentStatus` banner + highlight behavior (already present)
+  - the queue store when `source_id` matches an item
+
+SSE → Queue status mapping:
+
+| SSE event | Queue status |
+|---|---|
+| `agent:queued` | `queued` |
+| `agent:converting` | `converting` |
+| `agent:ingesting` | `processing` |
+| `agent:done` | `done` |
+
+### Interaction with `IngestModal`
+
+`IngestModal` writes items into the queue store when files are selected/upload begins:
+
+- On file selection: create QueueItems with `pending`
+- On upload start per file: `uploading`
+- On `ingestFile` response: attach `sourceId`, set `queued` (or `converting` if that’s the existing local label)
+
+The modal can still show the list inline, but it must read from the shared queue store so closing/reopening the drawer is consistent.
+
+**Files changed (expected):**
+- `frontend/src/components/ActivityLog.tsx` (add tabs + Queue view)
+- `frontend/src/components/Layout.tsx` (queue store + SSE updates)
+- `frontend/src/components/IngestModal.tsx` (write into shared queue store, modal scroll/sticky footer)
+- add a small utility/store module (e.g. `frontend/src/state/ingestQueue.ts`) for localStorage + reducer-like updates
 
 ---
 

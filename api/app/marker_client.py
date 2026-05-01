@@ -60,7 +60,7 @@ class MarkerClient:
             len(data),
             self.use_llm,
         )
-        async with httpx.AsyncClient(timeout=600.0) as client:
+        async with httpx.AsyncClient(timeout=1800.0) as client:
             try:
                 resp = await client.post(url, data=form, files=files)
             except httpx.RemoteProtocolError as e:

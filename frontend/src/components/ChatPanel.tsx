@@ -9,6 +9,18 @@ function processWikilinks(text: string): string {
   return text.replace(/\[\[([^\]]+)\]\]/g, '[$1](wiki://$1)')
 }
 
+function isExternalHref(href: string): boolean {
+  return /^(https?:\/\/|mailto:|tel:)/i.test(href)
+}
+
+function hrefToSlug(href: string): string | null {
+  if (!href) return null
+  if (href.startsWith('wiki://')) return href.slice(7)
+  if (href.startsWith('#')) return null
+  if (isExternalHref(href)) return null
+  return href.replace(/^\.\//, '')
+}
+
 interface ChatPanelProps {
   onNavigate: (slug: string) => void
 }
@@ -66,15 +78,19 @@ export default function ChatPanel({ onNavigate }: ChatPanelProps) {
                   remarkPlugins={[remarkGfm]}
                   components={{
                     a({ href, children }) {
-                      if (href?.startsWith('wiki://')) {
-                        const slug = href.slice(7)
+                      const slug = href ? hrefToSlug(href) : null
+                      if (href && slug) {
                         return (
-                          <span
-                            onClick={() => onNavigate(slug)}
+                          <a
+                            href={href}
+                            onClick={(e) => {
+                              e.preventDefault()
+                              onNavigate(slug)
+                            }}
                             style={{ color: '#58a6ff', cursor: 'pointer', textDecoration: 'underline' }}
                           >
                             {children}
-                          </span>
+                          </a>
                         )
                       }
                       return <a href={href} target="_blank" rel="noreferrer">{children}</a>
