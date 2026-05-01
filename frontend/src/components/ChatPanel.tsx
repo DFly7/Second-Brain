@@ -1,9 +1,19 @@
 import { useState, useRef, useEffect } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { sendMessage } from '../api/client'
 
 interface Message { role: 'user' | 'assistant'; content: string; cited?: string[] }
 
-export default function ChatPanel() {
+function processWikilinks(text: string): string {
+  return text.replace(/\[\[([^\]]+)\]\]/g, '[$1](wiki://$1)')
+}
+
+interface ChatPanelProps {
+  onNavigate: (slug: string) => void
+}
+
+export default function ChatPanel({ onNavigate }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [sessionId, setSessionId] = useState<string | undefined>()
@@ -28,10 +38,14 @@ export default function ChatPanel() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0d1117',
-      borderLeft: '1px solid #30363d' }}>
-      <div style={{ padding: '12px 16px', borderBottom: '1px solid #30363d', fontSize: 13,
-        color: '#8b949e', background: '#161b22' }}>
+    <div style={{
+      display: 'flex', flexDirection: 'column', height: '100%',
+      background: '#0d1117', borderLeft: '1px solid #30363d',
+    }}>
+      <div style={{
+        padding: '12px 16px', borderBottom: '1px solid #30363d',
+        fontSize: 13, color: '#8b949e', background: '#161b22',
+      }}>
         Chat
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -45,13 +59,45 @@ export default function ChatPanel() {
             <div style={{
               padding: '8px 12px', borderRadius: 8, fontSize: 13, lineHeight: 1.6,
               background: m.role === 'user' ? '#1f6feb' : '#161b22',
-              color: '#e6edf3', border: m.role === 'assistant' ? '1px solid #30363d' : 'none'
+              color: '#e6edf3', border: m.role === 'assistant' ? '1px solid #30363d' : 'none',
             }}>
-              {m.content}
+              {m.role === 'assistant' ? (
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    a({ href, children }) {
+                      if (href?.startsWith('wiki://')) {
+                        const slug = href.slice(7)
+                        return (
+                          <span
+                            onClick={() => onNavigate(slug)}
+                            style={{ color: '#58a6ff', cursor: 'pointer', textDecoration: 'underline' }}
+                          >
+                            {children}
+                          </span>
+                        )
+                      }
+                      return <a href={href} target="_blank" rel="noreferrer">{children}</a>
+                    }
+                  }}
+                >
+                  {processWikilinks(m.content)}
+                </ReactMarkdown>
+              ) : (
+                m.content
+              )}
             </div>
             {m.cited && m.cited.length > 0 && (
               <div style={{ fontSize: 11, color: '#8b949e', marginTop: 4, paddingLeft: 4 }}>
-                Sources: {m.cited.join(', ')}
+                Sources: {m.cited.map((slug) => (
+                  <span
+                    key={slug}
+                    onClick={() => onNavigate(slug)}
+                    style={{ color: '#58a6ff', cursor: 'pointer', marginRight: 6, textDecoration: 'underline' }}
+                  >
+                    {slug}
+                  </span>
+                ))}
               </div>
             )}
           </div>
@@ -62,16 +108,27 @@ export default function ChatPanel() {
         <div ref={bottomRef} />
       </div>
       <div style={{ padding: 12, borderTop: '1px solid #30363d', display: 'flex', gap: 8 }}>
-        <input value={input} onChange={e => setInput(e.target.value)}
+        <input
+          value={input}
+          onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && !e.shiftKey && submit()}
-          placeholder="Ask your wiki..." style={{
-            flex: 1, padding: '8px 12px', background: '#161b22', border: '1px solid #30363d',
-            borderRadius: 6, color: '#e6edf3', fontSize: 13
-          }} />
-        <button onClick={submit} disabled={loading} style={{
-          padding: '8px 16px', background: '#238636', border: 'none', borderRadius: 6,
-          color: '#fff', cursor: loading ? 'not-allowed' : 'pointer', fontSize: 13
-        }}>Send</button>
+          placeholder="Ask your wiki..."
+          style={{
+            flex: 1, padding: '8px 12px', background: '#161b22',
+            border: '1px solid #30363d', borderRadius: 6, color: '#e6edf3', fontSize: 13,
+          }}
+        />
+        <button
+          onClick={submit}
+          disabled={loading}
+          style={{
+            padding: '8px 16px', background: '#238636', border: 'none',
+            borderRadius: 6, color: '#fff',
+            cursor: loading ? 'not-allowed' : 'pointer', fontSize: 13,
+          }}
+        >
+          Send
+        </button>
       </div>
     </div>
   )
