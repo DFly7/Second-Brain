@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { usePage, useUpdatePage } from '../hooks/useWiki'
@@ -13,6 +13,10 @@ export default function WikiContent({ selectedSlug, onNavigate }: WikiContentPro
   const [editBody, setEditBody] = useState('')
   const { data: page } = usePage(selectedSlug)
   const updatePage = useUpdatePage()
+
+  useEffect(() => {
+    setEditing(false)
+  }, [selectedSlug])
 
   function startEdit() {
     setEditBody(page?.body_md || '')
