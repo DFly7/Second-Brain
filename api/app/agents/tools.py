@@ -184,6 +184,20 @@ class AgentTools:
             new_body = existing.rstrip() + "\n\n" + content
         return await self.write_page(slug, new_body)
 
+    async def patch_page(self, slug: str, old_text: str, new_text: str) -> str:
+        existing = await self.read_page(slug)
+        if existing.startswith(f"[Page '{slug}' not found]"):
+            return f"patch failed: page '{slug}' not found"
+        count = existing.count(old_text)
+        if count == 0:
+            return f"patch failed: old_text not found in '{slug}'"
+        if count > 1:
+            return (
+                f"patch failed: old_text matches {count} locations in '{slug}', be more specific"
+            )
+        new_body = existing.replace(old_text, new_text, 1)
+        return await self.write_page(slug, new_body)
+
     async def create_page(
         self, slug: str, title: str, body_md: str, summary: str = ""
     ) -> str:
@@ -612,6 +626,29 @@ class AgentTools:
             {
                 "type": "function",
                 "function": {
+                    "name": "patch_page",
+                    "description": (
+                        "Surgically replace an exact string in a wiki page. "
+                        "You must read_page first to know the exact text to target. "
+                        "Returns an error if old_text is not found or matches multiple locations."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "slug": {"type": "string", "description": "Page slug"},
+                            "old_text": {
+                                "type": "string",
+                                "description": "Exact string to replace (must be unique in the page)",
+                            },
+                            "new_text": {"type": "string", "description": "Replacement string"},
+                        },
+                        "required": ["slug", "old_text", "new_text"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
                     "name": "move_page",
                     "description": "Move a wiki page to a new slug, rewriting backlinks.",
                     "parameters": {
@@ -739,6 +776,8 @@ class AgentTools:
             )
         if name == "append_to_page":
             return await self.append_to_page(args["slug"], args["content"])
+        if name == "patch_page":
+            return await self.patch_page(args["slug"], args["old_text"], args["new_text"])
         if name == "move_page":
             return await self.move_page(args["old_slug"], args["new_slug"])
         if name == "delete_page":
