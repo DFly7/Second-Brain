@@ -88,3 +88,76 @@ async def test_patch_page_fails_on_missing_page(tools):
 
     assert result == "patch failed: page 'system/history' not found"
     tools.write_page.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_grep_page_literal_match(tools):
+    tools.read_page = AsyncMock(return_value=("line 1\nline 2\nfoo bar baz\nline 4\nline 5"))
+
+    result = await tools.grep_page("system/history", "foo bar", context_lines=1)
+
+    assert "foo bar baz" in result
+    assert "line 2" in result  # context before
+    assert "line 4" in result  # context after
+
+
+@pytest.mark.asyncio
+async def test_grep_page_case_insensitive(tools):
+    tools.read_page = AsyncMock(return_value="Hello World\nnothing\n")
+
+    result = await tools.grep_page("system/history", "hello world")
+
+    assert "Hello World" in result
+
+
+@pytest.mark.asyncio
+async def test_grep_page_regex_match(tools):
+    tools.read_page = AsyncMock(
+        return_value=(
+            "## 2026-04-01 · abc\nApril session.\n"
+            "## 2026-05-01 · def\nMay session.\n"
+        )
+    )
+
+    result = await tools.grep_page(
+        "system/history", r"## 2026-04-.*", context_lines=1, regex=True
+    )
+
+    assert "## 2026-04-01" in result
+    assert "## 2026-05-01" not in result
+
+
+@pytest.mark.asyncio
+async def test_grep_page_no_matches(tools):
+    tools.read_page = AsyncMock(return_value="Some content here.")
+
+    result = await tools.grep_page("system/history", "nonexistent")
+
+    assert result == "no matches"
+
+
+@pytest.mark.asyncio
+async def test_grep_page_invalid_regex(tools):
+    tools.read_page = AsyncMock(return_value="Some content.")
+
+    result = await tools.grep_page("system/history", "[invalid", regex=True)
+
+    assert result.startswith("grep failed: invalid pattern:")
+
+
+@pytest.mark.asyncio
+async def test_grep_page_missing_page(tools):
+    tools.read_page = AsyncMock(return_value="[Page 'system/history' not found]")
+
+    result = await tools.grep_page("system/history", "anything")
+
+    assert result == "page not found: 'system/history'"
+
+
+@pytest.mark.asyncio
+async def test_grep_page_multiple_matches_separated(tools):
+    tools.read_page = AsyncMock(return_value=("a\nfoo\nb\nc\nfoo\nd"))
+
+    result = await tools.grep_page("system/history", "foo", context_lines=1)
+
+    assert "---" in result  # separator between matches

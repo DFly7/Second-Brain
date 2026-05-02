@@ -198,6 +198,41 @@ class AgentTools:
         new_body = existing.replace(old_text, new_text, 1)
         return await self.write_page(slug, new_body)
 
+    async def grep_page(
+        self, slug: str, query: str, context_lines: int = 5, regex: bool = False
+    ) -> str:
+        content = await self.read_page(slug)
+        if content.startswith(f"[Page '{slug}' not found]"):
+            return f"page not found: '{slug}'"
+
+        if regex:
+            try:
+                pattern = re.compile(query, re.IGNORECASE)
+
+                def match_fn(line: str) -> bool:
+                    return bool(pattern.search(line))
+
+            except re.error as exc:
+                return f"grep failed: invalid pattern: {exc}"
+        else:
+
+            def match_fn(line: str) -> bool:
+                return query.lower() in line.lower()
+
+        lines = content.split("\n")
+        matched_indices = [i for i, line in enumerate(lines) if match_fn(line)]
+
+        if not matched_indices:
+            return "no matches"
+
+        results = []
+        for idx in matched_indices:
+            start = max(0, idx - context_lines)
+            end = min(len(lines), idx + context_lines + 1)
+            results.append("\n".join(lines[start:end]))
+
+        return "\n---\n".join(results)
+
     async def create_page(
         self, slug: str, title: str, body_md: str, summary: str = ""
     ) -> str:
@@ -649,6 +684,35 @@ class AgentTools:
             {
                 "type": "function",
                 "function": {
+                    "name": "grep_page",
+                    "description": (
+                        "Search within a wiki page for lines matching a query, returning each match "
+                        "with surrounding context lines. Use regex=true for pattern matching "
+                        "(e.g. '## 2026-04-.*' to find all April 2026 session headers)."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "slug": {"type": "string", "description": "Page slug to search within"},
+                            "query": {"type": "string", "description": "Search string or regex pattern"},
+                            "context_lines": {
+                                "type": "integer",
+                                "description": "Lines of context above and below each match (default 5)",
+                                "default": 5,
+                            },
+                            "regex": {
+                                "type": "boolean",
+                                "description": "Treat query as a regex pattern (default false = case-insensitive literal match)",
+                                "default": False,
+                            },
+                        },
+                        "required": ["slug", "query"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
                     "name": "move_page",
                     "description": "Move a wiki page to a new slug, rewriting backlinks.",
                     "parameters": {
@@ -778,6 +842,13 @@ class AgentTools:
             return await self.append_to_page(args["slug"], args["content"])
         if name == "patch_page":
             return await self.patch_page(args["slug"], args["old_text"], args["new_text"])
+        if name == "grep_page":
+            return await self.grep_page(
+                args["slug"],
+                args["query"],
+                context_lines=args.get("context_lines", 5),
+                regex=args.get("regex", False),
+            )
         if name == "move_page":
             return await self.move_page(args["old_slug"], args["new_slug"])
         if name == "delete_page":
