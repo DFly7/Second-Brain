@@ -17,7 +17,7 @@
 | Modify | `api/app/models.py` | Add `last_monitored_message_id` to `ChatSession` |
 | Create | `api/alembic/versions/<rev>_add_monitor_cursor.py` | Migration for new column |
 | Modify | `api/app/agents/tools.py` | Add `append_to_page`, `patch_page`, `grep_page` methods + register in `as_litellm_tools()` and `dispatch()` |
-| Create | `api/tests/test_memory_tools.py` | Unit tests for the three new tools |
+| Create | `tests/test_memory_tools.py` | Unit tests for the three new tools |
 | Modify | `api/app/agents/chat_monitor.py` | Cursor load, delta slice, threshold bail-out, system/memory + system/history upsert |
 | Modify | `api/app/agents/prompts/chat_monitor.md` | Describe memory/history responsibilities and new tools |
 | Modify | `api/app/agents/query_agent.py` | Inject `system/memory` into system prompt; add `grep_page` to allowed tools |
@@ -78,11 +78,11 @@ git commit -m "feat: add last_monitored_message_id cursor to ChatSession"
 
 **Files:**
 - Modify: `api/app/agents/tools.py`
-- Create: `api/tests/test_memory_tools.py`
+- Create: `tests/test_memory_tools.py`
 
 - [ ] **Step 1: Write the failing test**
 
-Create `api/tests/test_memory_tools.py`:
+Create `tests/test_memory_tools.py`:
 
 ```python
 import pytest
@@ -194,7 +194,7 @@ Expected: both PASS
 - [ ] **Step 7: Commit**
 
 ```bash
-git add api/app/agents/tools.py api/tests/test_memory_tools.py
+git add api/app/agents/tools.py tests/test_memory_tools.py
 git commit -m "feat: add append_to_page tool"
 ```
 
@@ -204,11 +204,11 @@ git commit -m "feat: add append_to_page tool"
 
 **Files:**
 - Modify: `api/app/agents/tools.py`
-- Modify: `api/tests/test_memory_tools.py`
+- Modify: `tests/test_memory_tools.py`
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `api/tests/test_memory_tools.py`:
+Append to `tests/test_memory_tools.py`:
 
 ```python
 @pytest.mark.asyncio
@@ -327,7 +327,7 @@ Expected: all 4 PASS
 - [ ] **Step 7: Commit**
 
 ```bash
-git add api/app/agents/tools.py api/tests/test_memory_tools.py
+git add api/app/agents/tools.py tests/test_memory_tools.py
 git commit -m "feat: add patch_page tool with explicit failure messages"
 ```
 
@@ -337,11 +337,11 @@ git commit -m "feat: add patch_page tool with explicit failure messages"
 
 **Files:**
 - Modify: `api/app/agents/tools.py`
-- Modify: `api/tests/test_memory_tools.py`
+- Modify: `tests/test_memory_tools.py`
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `api/tests/test_memory_tools.py`:
+Append to `tests/test_memory_tools.py`:
 
 ```python
 @pytest.mark.asyncio
@@ -518,7 +518,7 @@ Expected: all tests PASS
 - [ ] **Step 7: Commit**
 
 ```bash
-git add api/app/agents/tools.py api/tests/test_memory_tools.py
+git add api/app/agents/tools.py tests/test_memory_tools.py
 git commit -m "feat: add grep_page tool with literal and regex search"
 ```
 
