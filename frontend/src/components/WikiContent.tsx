@@ -115,8 +115,10 @@ export default function WikiContent({ selectedSlug, onNavigate }: WikiContentPro
               },
             }}
           >
-            {(page.body_md || '').replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, slug, display) =>
-              `[${display ?? slug}](wiki://${slug})`
+            {(page.body_md || '').replace(
+              /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g,
+              (_: string, slug: string, display?: string) =>
+                `[${display ?? slug}](wiki://${slug})`
             )}
           </ReactMarkdown>
         </div>
