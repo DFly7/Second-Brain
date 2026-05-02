@@ -28,7 +28,7 @@ assert "test" in os.environ["S3_BUCKET"], (
 
 import pytest
 import pytest_asyncio
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from sqlalchemy import text
 
 from app.database import AsyncSessionLocal, Base, engine
@@ -53,10 +53,32 @@ async def workspace_id(db_session):
 @pytest.fixture(autouse=True)
 def _mock_s3():
     """Block all real S3 calls in every test. Tests that need storage should mock explicitly."""
-    with patch("app.storage.download_file", side_effect=RuntimeError("Real S3 call in tests — mock app.storage.download_file explicitly")):
-        with patch("app.storage.upload_file", side_effect=RuntimeError("Real S3 call in tests — mock app.storage.upload_file explicitly")):
+    ingest_upload = patch(
+        "app.routes.ingest.upload_file",
+        MagicMock(return_value="s3://mock"),
+    )
+    tools_dl = patch(
+        "app.agents.tools.download_file",
+        side_effect=RuntimeError(
+            "Real S3 call in tests — mock app.agents.tools.download_file explicitly"
+        ),
+    )
+    with patch(
+        "app.storage.download_file",
+        side_effect=RuntimeError(
+            "Real S3 call in tests — mock app.storage.download_file explicitly"
+        ),
+    ):
+        with patch(
+            "app.storage.upload_file",
+            side_effect=RuntimeError(
+                "Real S3 call in tests — mock app.storage.upload_file explicitly"
+            ),
+        ):
             with patch("app.storage.ensure_bucket"):
-                yield
+                with ingest_upload:
+                    with tools_dl:
+                        yield
 
 
 @pytest_asyncio.fixture(autouse=True, loop_scope="function")
