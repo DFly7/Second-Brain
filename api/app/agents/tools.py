@@ -176,6 +176,14 @@ class AgentTools:
         await self.update_index(slug, page.title, page.summary)
         return f"Page '{slug}' saved."
 
+    async def append_to_page(self, slug: str, content: str) -> str:
+        existing = await self.read_page(slug)
+        if existing.startswith(f"[Page '{slug}' not found]"):
+            new_body = content
+        else:
+            new_body = existing.rstrip() + "\n\n" + content
+        return await self.write_page(slug, new_body)
+
     async def create_page(
         self, slug: str, title: str, body_md: str, summary: str = ""
     ) -> str:
@@ -582,6 +590,28 @@ class AgentTools:
             {
                 "type": "function",
                 "function": {
+                    "name": "append_to_page",
+                    "description": (
+                        "Append content to the end of an existing wiki page. Creates the page if it "
+                        "does not exist. Use this to add new entries to log-style pages like "
+                        "system/history."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "slug": {"type": "string", "description": "Page slug"},
+                            "content": {
+                                "type": "string",
+                                "description": "Markdown content to append",
+                            },
+                        },
+                        "required": ["slug", "content"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
                     "name": "move_page",
                     "description": "Move a wiki page to a new slug, rewriting backlinks.",
                     "parameters": {
@@ -707,6 +737,8 @@ class AgentTools:
                 args["body_md"],
                 args.get("summary", ""),
             )
+        if name == "append_to_page":
+            return await self.append_to_page(args["slug"], args["content"])
         if name == "move_page":
             return await self.move_page(args["old_slug"], args["new_slug"])
         if name == "delete_page":

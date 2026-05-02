@@ -60,7 +60,10 @@ def _mock_s3():
 
 
 @pytest_asyncio.fixture(autouse=True, loop_scope="function")
-async def clean_db():
+async def clean_db(request):
+    if request.node.get_closest_marker("no_database"):
+        yield
+        return
     async with engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.drop_all)
