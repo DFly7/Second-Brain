@@ -14,7 +14,7 @@ from app.sse import broadcaster
 _PROMPTS = Path(__file__).parent / "prompts"
 SYSTEM_PROMPT = (_PROMPTS / "query.md").read_text()
 
-READ_ONLY_TOOLS = ["list_pages", "search_pages", "read_page"]
+READ_ONLY_TOOLS = ["list_pages", "search_pages", "read_page", "grep_page"]
 
 
 async def run(
@@ -28,8 +28,14 @@ async def run(
     )
     tool_defs = tools.as_litellm_tools(allowed=READ_ONLY_TOOLS)
 
+    user_memory = await tools.read_page("system/memory")
+    if user_memory.startswith("[Page 'system/memory' not found]"):
+        system_prompt = SYSTEM_PROMPT
+    else:
+        system_prompt = f"<user_context>\n{user_memory}\n</user_context>\n\n{SYSTEM_PROMPT}"
+
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": system_prompt},
         *history[-10:],  # last 10 messages for context
         {"role": "user", "content": question},
     ]
