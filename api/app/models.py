@@ -108,6 +108,9 @@ class ChatSession(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_monitored_message_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("chat_messages.id"), nullable=True, default=None
+    )
 
     messages: Mapped[list["ChatMessage"]] = relationship(back_populates="session")
 
