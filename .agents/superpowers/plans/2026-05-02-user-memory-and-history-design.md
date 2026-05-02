@@ -42,7 +42,13 @@ One Alembic migration required.
 Appends `content` to the end of the named page. Creates the page if it doesn't exist. No read required. Used by the monitor to add new session entries to `system/history`.
 
 ### `patch_page(slug, old_text, new_text)`
-Reads the page, finds the exact `old_text` string, replaces it with `new_text`. Fails clearly if `old_text` is not found or is ambiguous (multiple matches). Agent must have read the page first to know the exact text to target. Used by the monitor to update an existing session entry in `system/history`, and available to any agent for surgical edits on any page.
+Reads the page, finds the exact `old_text` string, replaces it with `new_text`. Agent must have read the page first to know the exact text to target. Used by the monitor to update an existing session entry in `system/history`, and available to any agent for surgical edits on any page.
+
+Failure return strings are explicit so the agent knows how to recover:
+- `"patch failed: old_text not found in '{slug}'"` — agent re-reads the page and retargets
+- `"patch failed: old_text matches {n} locations in '{slug}', be more specific"` — agent widens the target string until unique
+
+No retry logic inside the tool — the agent's own tool loop (up to 10 iterations) handles re-read and retry naturally.
 
 ### `grep_page(slug, query, context_lines=5)`
 Case-insensitive line-by-line search within a page. Returns each matching line plus `context_lines` lines above and below, separated by `---` if multiple matches. Returns a clear "no matches" or "page not found" string if nothing found. Available to all agents.
