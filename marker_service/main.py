@@ -1,3 +1,4 @@
+import gc
 import os
 
 # Surya Settings() reads this when imported; must be set before Marker/surya load.
@@ -179,6 +180,7 @@ async def convert(
             Path(tmp_path).unlink(missing_ok=True)
 
         full_markdown, _, pil_images = text_from_rendered(rendered)
+        del rendered
         _log.info(
             "convert text_from_rendered done source_id=%s markdown_chars=%d pil_image_count=%d",
             sid,
@@ -187,6 +189,9 @@ async def convert(
         )
         # pil_images: {filename: PIL.Image}
         b64_images = {name: _pil_to_b64(img) for name, img in (pil_images or {}).items()}
+        del pil_images
+        del converter
+        gc.collect()
         _log.info(
             "convert images to base64 done source_id=%s encoded_images=%d",
             sid,

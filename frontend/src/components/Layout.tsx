@@ -60,6 +60,7 @@ export default function Layout() {
         event: string
         slug?: string
         source_id?: string
+        filename?: string
         pages_touched?: string[]
         context?: string
       }
@@ -88,23 +89,14 @@ export default function Layout() {
         setAgentStatus(null)
       }
       if (event.event === 'agent:queued') {
-        setAgentStatus(
-          event.source_id
-            ? `Queued (source ${event.source_id.slice(0, 8)}…)`
-            : 'Queued…',
-        )
+        const label = event.filename ?? (event.source_id ? `source ${event.source_id.slice(0, 8)}…` : null)
+        setAgentStatus(label ? `Queued ${label}…` : 'Queued…')
       } else if (event.event === 'agent:converting') {
-        setAgentStatus(
-          event.source_id
-            ? `Converting document (source ${event.source_id.slice(0, 8)}…)…`
-            : 'Converting document…',
-        )
+        const label = event.filename ?? (event.source_id ? `source ${event.source_id.slice(0, 8)}…` : null)
+        setAgentStatus(label ? `Converting ${label}…` : 'Converting document…')
       } else if (event.event === 'agent:ingesting') {
-        setAgentStatus(
-          event.source_id
-            ? `Updating wiki from source ${event.source_id.slice(0, 8)}…`
-            : 'Updating wiki from ingested source…',
-        )
+        const label = event.filename ?? (event.source_id ? `source ${event.source_id.slice(0, 8)}…` : null)
+        setAgentStatus(label ? `Updating wiki from ${label}…` : 'Updating wiki from ingested source…')
       } else if (event.event === 'agent:reading') {
         setHighlightedSlug(event.slug || null)
         setAgentStatus(`Reading ${event.slug}…`)

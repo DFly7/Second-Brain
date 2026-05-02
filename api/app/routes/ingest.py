@@ -86,7 +86,7 @@ async def _run_pipeline(source_id: str, workspace_id: str, data: bytes, filename
         len(data),
     )
 
-    await broadcaster.publish({"event": "agent:queued", "source_id": source_id})
+    await broadcaster.publish({"event": "agent:queued", "source_id": source_id, "filename": filename})
 
     async with AsyncSessionLocal() as session:
         src_result = await session.execute(select(Source).where(Source.id == source_id))
@@ -97,7 +97,7 @@ async def _run_pipeline(source_id: str, workspace_id: str, data: bytes, filename
 
         try:
             if suffix in TEXT_TYPES:
-                await broadcaster.publish({"event": "agent:converting", "source_id": source_id})
+                await broadcaster.publish({"event": "agent:converting", "source_id": source_id, "filename": filename})
                 _log.info(
                     "ingest skipping marker (plain text) source_id=%s suffix=%s",
                     source_id,
@@ -112,7 +112,7 @@ async def _run_pipeline(source_id: str, workspace_id: str, data: bytes, filename
                 ]
             else:
                 async with _marker_sem:
-                    await broadcaster.publish({"event": "agent:converting", "source_id": source_id})
+                    await broadcaster.publish({"event": "agent:converting", "source_id": source_id, "filename": filename})
                     _log.info("ingest calling marker source_id=%s filename=%s", source_id, filename)
                     client = MarkerClient()
                     raw_pages = await client.convert(data, filename, source_id=source_id)
@@ -173,7 +173,7 @@ async def _run_pipeline(source_id: str, workspace_id: str, data: bytes, filename
             await broadcaster.publish({"event": "agent:error", "source_id": source_id})
             return
 
-    await broadcaster.publish({"event": "agent:ingesting", "source_id": source_id})
+    await broadcaster.publish({"event": "agent:ingesting", "source_id": source_id, "filename": filename})
     await run_ingest(source_id, workspace_id)
 
     async with AsyncSessionLocal() as session:

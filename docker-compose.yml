@@ -36,6 +36,7 @@ services:
 
   marker:
     build: ./marker_service
+    restart: on-failure
     environment:
       # Surya default is 10; parallel shards + shutil.move races on duplicate layout pulls to the same volume.
       PARALLEL_DOWNLOAD_WORKERS: "1"
