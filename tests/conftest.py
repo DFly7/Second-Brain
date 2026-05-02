@@ -87,18 +87,20 @@ async def clean_db():
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         # FK from Alembic exists on wiki_test volumes but is not on SQLAlchemy metadata;
         # drop it so metadata.drop_all can order tables (chat_messages ↔ chat_sessions).
-        await conn.execute(
-            text(
-                "ALTER TABLE chat_sessions DROP CONSTRAINT IF EXISTS "
-                "fk_chat_sessions_last_monitored_message_id"
+        reg = await conn.execute(text("SELECT to_regclass('public.chat_sessions')"))
+        if reg.scalar() is not None:
+            await conn.execute(
+                text(
+                    "ALTER TABLE chat_sessions DROP CONSTRAINT IF EXISTS "
+                    "fk_chat_sessions_last_monitored_message_id"
+                )
             )
-        )
-        await conn.execute(
-            text(
-                "ALTER TABLE chat_sessions DROP CONSTRAINT IF EXISTS "
-                "chat_sessions_last_monitored_message_id_fkey"
+            await conn.execute(
+                text(
+                    "ALTER TABLE chat_sessions DROP CONSTRAINT IF EXISTS "
+                    "chat_sessions_last_monitored_message_id_fkey"
+                )
             )
-        )
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     yield

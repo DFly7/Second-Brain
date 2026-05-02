@@ -110,6 +110,21 @@ async def get_messages(
     ]
 
 
+@router.get("/sessions")
+async def list_sessions(
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(get_current_user),
+):
+    ws = await _ensure_workspace(db, user)
+    result = await db.execute(
+        select(ChatSession)
+        .where(ChatSession.workspace_id == ws.id)
+        .order_by(ChatSession.created_at.desc())
+    )
+    sessions = result.scalars().all()
+    return [{"id": s.id, "created_at": s.created_at.isoformat()} for s in sessions]
+
+
 @router.get("/sse")
 async def sse_stream(token: str = Query(...)):
     try:
