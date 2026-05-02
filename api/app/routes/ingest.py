@@ -174,7 +174,18 @@ async def _run_pipeline(source_id: str, workspace_id: str, data: bytes, filename
             return
 
     await broadcaster.publish({"event": "agent:ingesting", "source_id": source_id, "filename": filename})
-    await run_ingest(source_id, workspace_id)
+    try:
+        await run_ingest(source_id, workspace_id)
+    except Exception:
+        _log.exception("ingest agent failed source_id=%s filename=%s", source_id, filename)
+        async with AsyncSessionLocal() as session:
+            src_result = await session.execute(select(Source).where(Source.id == source_id))
+            source = src_result.scalar_one_or_none()
+            if source:
+                source.status = "error"
+                await session.commit()
+        await broadcaster.publish({"event": "agent:error", "source_id": source_id})
+        return
 
     async with AsyncSessionLocal() as session:
         src_result = await session.execute(select(Source).where(Source.id == source_id))

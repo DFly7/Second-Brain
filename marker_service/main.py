@@ -1,4 +1,3 @@
-import gc
 import os
 
 # Surya Settings() reads this when imported; must be set before Marker/surya load.
@@ -191,7 +190,6 @@ async def convert(
         b64_images = {name: _pil_to_b64(img) for name, img in (pil_images or {}).items()}
         del pil_images
         del converter
-        gc.collect()
         _log.info(
             "convert images to base64 done source_id=%s encoded_images=%d",
             sid,

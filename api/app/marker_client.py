@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from dataclasses import dataclass, field
 
@@ -9,6 +10,11 @@ _log = logging.getLogger(__name__)
 
 # Marker can run for a long time on large PDFs; keep read timeout well above typical conversions.
 MARKER_HTTP_TIMEOUT = httpx.Timeout(connect=60.0, read=7200.0, write=600.0, pool=60.0)
+
+# Retry ConnectError (marker restarting/loading models). Backoff: 15s, 30s, 60s, 120s, 120s.
+_CONNECT_RETRIES = 5
+_CONNECT_BACKOFF_BASE = 15.0
+_CONNECT_BACKOFF_MAX = 120.0
 
 
 @dataclass
@@ -63,37 +69,58 @@ class MarkerClient:
             len(data),
             self.use_llm,
         )
-        async with httpx.AsyncClient(timeout=MARKER_HTTP_TIMEOUT) as client:
+
+        resp = None
+        for attempt in range(_CONNECT_RETRIES + 1):
             try:
-                resp = await client.post(url, data=form, files=files)
-            except httpx.ReadTimeout as e:
-                _log.error(
-                    "marker HTTP read timed out after %ss (increase MARKER_HTTP_TIMEOUT.read if "
-                    "needed); source_id=%s filename=%s err=%s",
-                    MARKER_HTTP_TIMEOUT.read,
-                    source_id or "-",
-                    filename,
-                    e,
-                )
-                raise
-            except httpx.RemoteProtocolError as e:
-                _log.error(
-                    "marker closed connection without a response (often OOM kill or crash in "
-                    "marker container; check `docker compose logs marker` and Docker memory). "
+                async with httpx.AsyncClient(timeout=MARKER_HTTP_TIMEOUT) as client:
+                    try:
+                        resp = await client.post(url, data=form, files=files)
+                    except httpx.ReadTimeout as e:
+                        _log.error(
+                            "marker HTTP read timed out after %ss (increase MARKER_HTTP_TIMEOUT.read if "
+                            "needed); source_id=%s filename=%s err=%s",
+                            MARKER_HTTP_TIMEOUT.read,
+                            source_id or "-",
+                            filename,
+                            e,
+                        )
+                        raise
+                    try:
+                        resp.raise_for_status()
+                    except httpx.HTTPStatusError:
+                        _log.error(
+                            "marker HTTP %s body=%s",
+                            resp.status_code,
+                            (resp.text[:500] + "…") if len(resp.text) > 500 else resp.text,
+                        )
+                        raise
+                break  # success
+            except (httpx.ConnectError, httpx.RemoteProtocolError) as e:
+                if attempt >= _CONNECT_RETRIES:
+                    _log.error(
+                        "marker %s after %d retries, giving up. source_id=%s filename=%s err=%s",
+                        type(e).__name__,
+                        attempt,
+                        source_id or "-",
+                        filename,
+                        e,
+                    )
+                    raise
+                wait = min(_CONNECT_BACKOFF_BASE * (2 ** attempt), _CONNECT_BACKOFF_MAX)
+                _log.warning(
+                    "marker %s (attempt %d/%d), retrying in %.0fs. "
+                    "If this is RemoteProtocolError the marker container likely crashed — "
+                    "check Docker Desktop memory (Settings → Resources → Memory, set ≥12 GB). "
                     "source_id=%s err=%s",
+                    type(e).__name__,
+                    attempt + 1,
+                    _CONNECT_RETRIES,
+                    wait,
                     source_id or "-",
                     e,
                 )
-                raise
-            try:
-                resp.raise_for_status()
-            except httpx.HTTPStatusError:
-                _log.error(
-                    "marker HTTP %s body=%s",
-                    resp.status_code,
-                    (resp.text[:500] + "…") if len(resp.text) > 500 else resp.text,
-                )
-                raise
+                await asyncio.sleep(wait)
 
         raw_pages = resp.json()
         _log.info(
