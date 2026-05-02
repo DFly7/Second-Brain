@@ -8,21 +8,45 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.assistant_message import assistant_message_for_litellm
 from app.agents.tools import AgentTools
 from app.config import settings
-from app.models import ActivityLog, ChatMessage
+from app.models import ActivityLog, ChatMessage, ChatSession
 from app.sse import broadcaster
 
 _PROMPTS = Path(__file__).parent / "prompts"
 SYSTEM_PROMPT = (_PROMPTS / "chat_monitor.md").read_text()
 
+MONITOR_THRESHOLD = 4
+
 
 async def run(session_id: str, workspace_id: str, session: AsyncSession) -> None:
-    result = await session.execute(
+    # Load session for cursor
+    session_result = await session.execute(
+        select(ChatSession).where(ChatSession.id == session_id)
+    )
+    chat_session = session_result.scalar_one_or_none()
+    if not chat_session:
+        return
+
+    # Fetch all messages then slice from cursor
+    all_result = await session.execute(
         select(ChatMessage)
         .where(ChatMessage.session_id == session_id)
         .order_by(ChatMessage.created_at)
     )
-    messages = result.scalars().all()
-    if not messages:
+    all_messages = all_result.scalars().all()
+    if not all_messages:
+        return
+
+    if chat_session.last_monitored_message_id:
+        cursor_ids = [m.id for m in all_messages]
+        try:
+            cursor_idx = cursor_ids.index(chat_session.last_monitored_message_id)
+            messages = all_messages[cursor_idx + 1:]
+        except ValueError:
+            messages = all_messages
+    else:
+        messages = all_messages
+
+    if len(messages) < MONITOR_THRESHOLD:
         return
 
     transcript = "\n".join(f"{m.role.upper()}: {m.content}" for m in messages)
@@ -64,6 +88,8 @@ async def run(session_id: str, workspace_id: str, session: AsyncSession) -> None
                 }
             )
 
+    chat_session.last_monitored_message_id = messages[-1].id
+    session.add(chat_session)
     if pages_saved:
         session.add(
             ActivityLog(
@@ -72,4 +98,4 @@ async def run(session_id: str, workspace_id: str, session: AsyncSession) -> None
                 payload={"session_id": session_id, "pages_saved": pages_saved},
             )
         )
-        await session.commit()
+    await session.commit()
