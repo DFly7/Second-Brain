@@ -1,4 +1,5 @@
 import json
+from datetime import date as _date
 from pathlib import Path
 
 import litellm
@@ -54,9 +55,17 @@ async def run(session_id: str, workspace_id: str, session: AsyncSession) -> None
     tools_obj = AgentTools(session=session, workspace_id=workspace_id, broadcaster=broadcaster)
     tool_defs = tools_obj.as_litellm_tools()
 
+    today = _date.today().isoformat()
     llm_messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": f"Chat transcript to review:\n\n{transcript[:8000]}"},
+        {
+            "role": "user",
+            "content": (
+                f"Session ID: {session_id}\n"
+                f"Date: {today}\n\n"
+                f"New messages to review:\n\n{transcript[:8000]}"
+            ),
+        },
     ]
 
     pages_saved = []
