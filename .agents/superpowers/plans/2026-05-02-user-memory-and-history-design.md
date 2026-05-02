@@ -50,8 +50,8 @@ Failure return strings are explicit so the agent knows how to recover:
 
 No retry logic inside the tool — the agent's own tool loop (up to 10 iterations) handles re-read and retry naturally.
 
-### `grep_page(slug, query, context_lines=5)`
-Case-insensitive line-by-line search within a page. Returns each matching line plus `context_lines` lines above and below, separated by `---` if multiple matches. Returns a clear "no matches" or "page not found" string if nothing found. Available to all agents.
+### `grep_page(slug, query, context_lines=5, regex=False)`
+Line-by-line search within a page. When `regex=False` (default), does a case-insensitive literal match. When `regex=True`, treats `query` as a Python `re` pattern (e.g. `## 2026-04-.*` to find all April 2026 session headers). Returns each matching line plus `context_lines` lines above and below, separated by `---` if multiple matches. Returns `"no matches"` or `"page not found"` if nothing found. Invalid regex returns `"grep failed: invalid pattern: {error}"`. Available to all agents.
 
 All three tools are registered in `as_litellm_tools()` and `dispatch()`.
 
