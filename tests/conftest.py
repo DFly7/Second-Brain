@@ -60,12 +60,23 @@ def _mock_s3():
 
 
 @pytest_asyncio.fixture(autouse=True, loop_scope="function")
-async def clean_db(request):
-    if request.node.get_closest_marker("no_database"):
-        yield
-        return
+async def clean_db():
     async with engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        # FK from Alembic exists on wiki_test volumes but is not on SQLAlchemy metadata;
+        # drop it so metadata.drop_all can order tables (chat_messages ↔ chat_sessions).
+        await conn.execute(
+            text(
+                "ALTER TABLE chat_sessions DROP CONSTRAINT IF EXISTS "
+                "fk_chat_sessions_last_monitored_message_id"
+            )
+        )
+        await conn.execute(
+            text(
+                "ALTER TABLE chat_sessions DROP CONSTRAINT IF EXISTS "
+                "chat_sessions_last_monitored_message_id_fkey"
+            )
+        )
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     yield

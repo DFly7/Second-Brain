@@ -4,8 +4,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.tools import AgentTools
 
-pytestmark = pytest.mark.no_database
-
 
 @pytest.fixture
 def session():
