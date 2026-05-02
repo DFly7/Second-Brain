@@ -1,12 +1,17 @@
 import { useState, useRef, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 import { sendMessage } from '../api/client'
 
 interface Message { role: 'user' | 'assistant'; content: string; cited?: string[] }
 
 function processWikilinks(text: string): string {
-  return text.replace(/\[\[([^\]]+)\]\]/g, '[$1](wiki://$1)')
+  return text.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, slug, display) =>
+    `[${display ?? slug}](wiki://${slug})`
+  )
 }
 
 function isExternalHref(href: string): boolean {
@@ -99,7 +104,8 @@ export default function ChatPanel({ onNavigate, activeSseEvent }: ChatPanelProps
             }}>
               {m.role === 'assistant' ? (
                 <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
+                  remarkPlugins={[remarkGfm, remarkMath]}
+                  rehypePlugins={[rehypeKatex]}
                   urlTransform={(url) => url}
                   components={{
                     a({ href, children }) {

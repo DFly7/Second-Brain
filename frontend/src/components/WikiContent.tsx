@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 import { usePage, useUpdatePage } from '../hooks/useWiki'
 
 interface WikiContentProps {
@@ -80,7 +83,8 @@ export default function WikiContent({ selectedSlug, onNavigate }: WikiContentPro
       ) : (
         <div style={{ lineHeight: 1.7, fontSize: 14 }}>
           <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
+            remarkPlugins={[remarkGfm, remarkMath]}
+            rehypePlugins={[rehypeKatex]}
             urlTransform={(url) => url}
             components={{
               a({ href, children }) {
@@ -99,10 +103,21 @@ export default function WikiContent({ selectedSlug, onNavigate }: WikiContentPro
                   )
                 }
                 return <a href={href} target="_blank" rel="noreferrer">{children}</a>
-              }
+              },
+              ul({ children }) {
+                return <ul style={{ margin: '6px 0', paddingLeft: 22 }}>{children}</ul>
+              },
+              ol({ children }) {
+                return <ol style={{ margin: '6px 0', paddingLeft: 22 }}>{children}</ol>
+              },
+              p({ children }) {
+                return <p style={{ margin: '6px 0' }}>{children}</p>
+              },
             }}
           >
-            {(page.body_md || '').replace(/\[\[([^\]]+)\]\]/g, '[$1](wiki://$1)')}
+            {(page.body_md || '').replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, slug, display) =>
+              `[${display ?? slug}](wiki://${slug})`
+            )}
           </ReactMarkdown>
         </div>
       )}
