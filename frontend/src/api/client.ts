@@ -92,3 +92,17 @@ export async function runHealthCheck() {
   if (!r.ok) throw new Error('Health check failed to start')
   return r.json()
 }
+
+export async function listSessions(): Promise<{ id: string; created_at: string }[]> {
+  const r = await fetch(`${BASE}/chat/sessions`, { headers: headers() })
+  if (!r.ok) throw new Error('Failed to load sessions')
+  return r.json()
+}
+
+export async function getSessionMessages(
+  sessionId: string
+): Promise<{ id: string; role: string; content: string }[]> {
+  const r = await fetch(`${BASE}/chat/sessions/${sessionId}/messages`, { headers: headers() })
+  if (!r.ok) return []
+  return r.json()
+}
