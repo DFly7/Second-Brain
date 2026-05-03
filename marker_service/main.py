@@ -3,6 +3,7 @@ import os
 # Surya Settings() reads this when imported; must be set before Marker/surya load.
 os.environ.setdefault("PARALLEL_DOWNLOAD_WORKERS", "1")
 
+import asyncio
 import base64
 import io
 import logging
@@ -105,7 +106,7 @@ app = FastAPI(title="Marker Service")
 
 _models = create_model_dict()
 
-_PAGE_SEP = re.compile(r"\n\n\d+\n-{48}\n\n")
+_PAGE_SEP = re.compile(r"\n*\{\d+\}-+\n*")
 _IMG_REF = re.compile(r"!\[.*?\]\(([^)]+)\)")
 
 
@@ -120,6 +121,69 @@ def health():
     return {"status": "ok"}
 
 
+def _run_conversion(data: bytes, suffix: str, config: dict, sid: str, filename: str) -> list:
+    config_parser = ConfigParser(config)
+
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
+        f.write(data)
+        tmp_path = f.name
+
+    try:
+        converter = PdfConverter(
+            config=config_parser.generate_config_dict(),
+            artifact_dict=_models,
+            processor_list=config_parser.get_processors(),
+            renderer=config_parser.get_renderer(),
+            llm_service=config_parser.get_llm_service() if config.get("use_llm") else None,
+        )
+        rendered = converter(tmp_path)
+        _log.info(
+            "convert pdf extraction done source_id=%s extracting markdown and images",
+            sid,
+        )
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+    full_markdown, _, pil_images = text_from_rendered(rendered)
+    del rendered
+    _log.info(
+        "convert text_from_rendered done source_id=%s markdown_chars=%d pil_image_count=%d",
+        sid,
+        len(full_markdown),
+        len(pil_images or {}),
+    )
+    b64_images = {name: _pil_to_b64(img) for name, img in (pil_images or {}).items()}
+    del pil_images
+    del converter
+    _log.info(
+        "convert images to base64 done source_id=%s encoded_images=%d",
+        sid,
+        len(b64_images),
+    )
+
+    raw_pages = _PAGE_SEP.split(full_markdown)
+    pages = []
+    for i, page_md in enumerate(raw_pages):
+        page_md = page_md.strip()
+        if not page_md:
+            continue
+        refs = _IMG_REF.findall(page_md)
+        page_images = [
+            {"filename": ref, "b64": b64_images[ref]}
+            for ref in refs
+            if ref in b64_images
+        ]
+        pages.append({"page_num": i + 1, "markdown": page_md, "images": page_images})
+
+    _log.info(
+        "convert done source_id=%s filename=%s pages=%d",
+        sid,
+        filename,
+        len(pages),
+    )
+    return pages
+
+
 @app.post("/convert")
 async def convert(
     file: UploadFile = File(...),
@@ -132,98 +196,37 @@ async def convert(
     data = await file.read()
     suffix = Path(file.filename or "file.pdf").suffix or ".pdf"
     sid = source_id.strip() or "-"
+    filename = file.filename
     _log.info(
         "convert start source_id=%s filename=%s suffix=%s bytes=%d use_llm=%s",
         sid,
-        file.filename,
+        filename,
         suffix,
         len(data),
         use_llm,
     )
 
+    config: dict = {"output_format": "markdown", "paginate_output": True}
+    if use_llm:
+        config["use_llm"] = True
+        config["llm_service"] = llm_service
+        if llm_model:
+            config["llm_model"] = llm_model
+        if llm_api_key:
+            if "gemini" in llm_service.lower():
+                config["gemini_api_key"] = llm_api_key
+            elif "claude" in llm_service.lower():
+                config["claude_api_key"] = llm_api_key
+            elif "openai" in llm_service.lower():
+                config["openai_api_key"] = llm_api_key
+
     try:
-        config: dict = {"output_format": "markdown", "paginate_output": True}
-        if use_llm:
-            config["use_llm"] = True
-            config["llm_service"] = llm_service
-            if llm_model:
-                config["llm_model"] = llm_model
-            if llm_api_key:
-                if "gemini" in llm_service.lower():
-                    config["gemini_api_key"] = llm_api_key
-                elif "claude" in llm_service.lower():
-                    config["claude_api_key"] = llm_api_key
-                elif "openai" in llm_service.lower():
-                    config["openai_api_key"] = llm_api_key
-
-        config_parser = ConfigParser(config)
-
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
-            f.write(data)
-            tmp_path = f.name
-
-        try:
-            converter = PdfConverter(
-                config=config_parser.generate_config_dict(),
-                artifact_dict=_models,
-                processor_list=config_parser.get_processors(),
-                renderer=config_parser.get_renderer(),
-                llm_service=config_parser.get_llm_service() if use_llm else None,
-            )
-            rendered = converter(tmp_path)
-            _log.info(
-                "convert pdf extraction done source_id=%s extracting markdown and images",
-                sid,
-            )
-        finally:
-            Path(tmp_path).unlink(missing_ok=True)
-
-        full_markdown, _, pil_images = text_from_rendered(rendered)
-        del rendered
-        _log.info(
-            "convert text_from_rendered done source_id=%s markdown_chars=%d pil_image_count=%d",
-            sid,
-            len(full_markdown),
-            len(pil_images or {}),
-        )
-        # pil_images: {filename: PIL.Image}
-        b64_images = {name: _pil_to_b64(img) for name, img in (pil_images or {}).items()}
-        del pil_images
-        del converter
-        _log.info(
-            "convert images to base64 done source_id=%s encoded_images=%d",
-            sid,
-            len(b64_images),
-        )
-
-        # Split into per-page sections (paginate_output inserts separators)
-        raw_pages = _PAGE_SEP.split(full_markdown)
-
-        pages = []
-        for i, page_md in enumerate(raw_pages):
-            page_md = page_md.strip()
-            if not page_md:
-                continue
-            refs = _IMG_REF.findall(page_md)
-            page_images = [
-                {"filename": ref, "b64": b64_images[ref]}
-                for ref in refs
-                if ref in b64_images
-            ]
-            pages.append({"page_num": i + 1, "markdown": page_md, "images": page_images})
-
-        _log.info(
-            "convert done source_id=%s filename=%s pages=%d",
-            sid,
-            file.filename,
-            len(pages),
-        )
-        return pages
+        return await asyncio.to_thread(_run_conversion, data, suffix, config, sid, filename)
     except Exception:
         _log.exception(
             "convert failed source_id=%s filename=%s suffix=%s bytes=%d",
             sid,
-            file.filename,
+            filename,
             suffix,
             len(data),
         )
