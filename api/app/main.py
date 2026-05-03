@@ -1,6 +1,7 @@
 import logging
 import sys
 
+import litellm
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -28,6 +29,7 @@ def _configure_app_logging() -> None:
 _configure_app_logging()
 logging.getLogger("LiteLLM").setLevel(logging.WARNING)
 logging.getLogger("litellm").setLevel(logging.WARNING)
+litellm.suppress_debug_info = True
 
 app = FastAPI(title="LLM Wiki")
 
