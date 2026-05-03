@@ -10,7 +10,7 @@ from app.config import settings
 
 _log = logging.getLogger(__name__)
 
-DATALAB_CONVERT_URL = "https://www.datalab.to/api/v1/marker"
+DATALAB_CONVERT_URL = "https://www.datalab.to/api/v1/convert"
 _PAGE_SEP = re.compile(r"\n\n\d+\n-{48}\n\n")
 _IMG_REF = re.compile(r"!\[.*?\]\(([^)]+)\)")
 
