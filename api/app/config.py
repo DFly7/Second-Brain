@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     single_user_password: str = "changeme"
     # Hybrid search: call embedding API for the query vector. Set false to use FTS only.
     vector_search_enabled: bool = True
+    marker_backend: str = "datalab"
+    datalab_api_key: str = ""
+    datalab_mode: str = "accurate"
     marker_url: str = "http://marker:8001"
     marker_use_llm: bool = False
     marker_llm_service: str = "marker.services.gemini.GoogleGeminiService"

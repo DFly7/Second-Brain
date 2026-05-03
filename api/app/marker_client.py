@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import re
+import time
 from dataclasses import dataclass, field
 
 import httpx
@@ -8,13 +10,19 @@ from app.config import settings
 
 _log = logging.getLogger(__name__)
 
-# Marker can run for a long time on large PDFs; keep read timeout well above typical conversions.
-MARKER_HTTP_TIMEOUT = httpx.Timeout(connect=60.0, read=7200.0, write=600.0, pool=60.0)
+DATALAB_CONVERT_URL = "https://www.datalab.to/api/v1/convert"
+_PAGE_SEP = re.compile(r"\n\n\d+\n-{48}\n\n")
+_IMG_REF = re.compile(r"!\[.*?\]\(([^)]+)\)")
 
-# Retry ConnectError (marker restarting/loading models). Backoff: 15s, 30s, 60s, 120s, 120s.
+_DATALAB_SUBMIT_TIMEOUT = httpx.Timeout(connect=30.0, read=60.0, write=120.0, pool=30.0)
+_DATALAB_POLL_TIMEOUT = httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=10.0)
+_LOCAL_HTTP_TIMEOUT = httpx.Timeout(connect=60.0, read=7200.0, write=600.0, pool=60.0)
+
 _CONNECT_RETRIES = 5
 _CONNECT_BACKOFF_BASE = 15.0
 _CONNECT_BACKOFF_MAX = 120.0
+POLL_INTERVAL = 5.0
+MAX_WAIT = 7200.0
 
 
 @dataclass
@@ -30,7 +38,75 @@ class PageData:
     images: list[ImageData] = field(default_factory=list)
 
 
-class MarkerClient:
+def _parse_paginated_markdown(full_markdown: str, b64_images: dict) -> list[PageData]:
+    raw_pages = _PAGE_SEP.split(full_markdown)
+    pages = []
+    for i, page_md in enumerate(raw_pages):
+        page_md = page_md.strip()
+        if not page_md:
+            continue
+        refs = _IMG_REF.findall(page_md)
+        page_images = [
+            ImageData(filename=ref, b64=b64_images[ref])
+            for ref in refs
+            if ref in b64_images
+        ]
+        pages.append(PageData(page_num=i + 1, markdown=page_md, images=page_images))
+    return pages
+
+
+class DatalabMarkerClient:
+    def __init__(self, api_key: str = "", mode: str = ""):
+        self.api_key = api_key or settings.datalab_api_key
+        self.mode = mode or settings.datalab_mode
+
+    async def convert(self, data: bytes, filename: str, *, source_id: str = "") -> list[PageData]:
+        headers = {"X-API-Key": self.api_key}
+        files = {"file": (filename, data, "application/octet-stream")}
+        form = {"output_format": "markdown", "paginate": "true", "mode": self.mode}
+
+        async with httpx.AsyncClient(timeout=_DATALAB_SUBMIT_TIMEOUT) as client:
+            resp = await client.post(
+                DATALAB_CONVERT_URL, headers=headers, files=files, data=form
+            )
+            resp.raise_for_status()
+            submission = resp.json()
+
+        if not submission.get("success"):
+            raise RuntimeError(f"Datalab submission failed: {submission}")
+
+        check_url = submission["request_check_url"]
+        _log.info(
+            "datalab submitted source_id=%s request_id=%s",
+            source_id or "-",
+            submission["request_id"],
+        )
+
+        deadline = time.monotonic() + MAX_WAIT
+        async with httpx.AsyncClient(timeout=_DATALAB_POLL_TIMEOUT) as client:
+            while time.monotonic() < deadline:
+                await asyncio.sleep(POLL_INTERVAL)
+                resp = await client.get(check_url, headers=headers)
+                resp.raise_for_status()
+                result = resp.json()
+                if result["status"] == "complete":
+                    break
+                if result["status"] == "failed":
+                    raise RuntimeError(
+                        f"Datalab conversion failed: {result.get('error')}"
+                    )
+            else:
+                raise TimeoutError(
+                    f"Datalab conversion timed out after {MAX_WAIT}s source_id={source_id or '-'}"
+                )
+
+        _log.info("datalab complete source_id=%s", source_id or "-")
+        return _parse_paginated_markdown(
+            result.get("markdown", ""), result.get("images") or {}
+        )
+
+
+class LocalMarkerClient:
     def __init__(
         self,
         base_url: str = "",
@@ -45,13 +121,7 @@ class MarkerClient:
         self.llm_model = llm_model or settings.marker_llm_model
         self.llm_api_key = llm_api_key or settings.marker_llm_api_key
 
-    async def convert(
-        self,
-        data: bytes,
-        filename: str,
-        *,
-        source_id: str = "",
-    ) -> list[PageData]:
+    async def convert(self, data: bytes, filename: str, *, source_id: str = "") -> list[PageData]:
         form = {
             "use_llm": str(self.use_llm).lower(),
             "llm_service": self.llm_service,
@@ -62,71 +132,37 @@ class MarkerClient:
         files = {"file": (filename, data, "application/octet-stream")}
         url = f"{self.base_url}/convert"
         _log.info(
-            "marker HTTP POST %s source_id=%s filename=%s bytes=%d use_llm=%s",
+            "local marker POST %s source_id=%s filename=%s bytes=%d",
             url,
             source_id or "-",
             filename,
             len(data),
-            self.use_llm,
         )
 
         resp = None
         for attempt in range(_CONNECT_RETRIES + 1):
             try:
-                async with httpx.AsyncClient(timeout=MARKER_HTTP_TIMEOUT) as client:
-                    try:
-                        resp = await client.post(url, data=form, files=files)
-                    except httpx.ReadTimeout as e:
-                        _log.error(
-                            "marker HTTP read timed out after %ss (increase MARKER_HTTP_TIMEOUT.read if "
-                            "needed); source_id=%s filename=%s err=%s",
-                            MARKER_HTTP_TIMEOUT.read,
-                            source_id or "-",
-                            filename,
-                            e,
-                        )
-                        raise
-                    try:
-                        resp.raise_for_status()
-                    except httpx.HTTPStatusError:
-                        _log.error(
-                            "marker HTTP %s body=%s",
-                            resp.status_code,
-                            (resp.text[:500] + "…") if len(resp.text) > 500 else resp.text,
-                        )
-                        raise
-                break  # success
+                async with httpx.AsyncClient(timeout=_LOCAL_HTTP_TIMEOUT) as client:
+                    resp = await client.post(url, data=form, files=files)
+                    resp.raise_for_status()
+                break
             except (httpx.ConnectError, httpx.RemoteProtocolError) as e:
                 if attempt >= _CONNECT_RETRIES:
-                    _log.error(
-                        "marker %s after %d retries, giving up. source_id=%s filename=%s err=%s",
-                        type(e).__name__,
-                        attempt,
-                        source_id or "-",
-                        filename,
-                        e,
-                    )
                     raise
-                wait = min(_CONNECT_BACKOFF_BASE * (2 ** attempt), _CONNECT_BACKOFF_MAX)
+                wait = min(_CONNECT_BACKOFF_BASE * (2**attempt), _CONNECT_BACKOFF_MAX)
                 _log.warning(
-                    "marker %s (attempt %d/%d), retrying in %.0fs. "
-                    "If this is RemoteProtocolError the marker container likely crashed — "
-                    "check Docker Desktop memory (Settings → Resources → Memory, set ≥12 GB). "
-                    "source_id=%s err=%s",
+                    "local marker %s (attempt %d/%d), retrying in %.0fs. source_id=%s",
                     type(e).__name__,
                     attempt + 1,
                     _CONNECT_RETRIES,
                     wait,
                     source_id or "-",
-                    e,
                 )
                 await asyncio.sleep(wait)
 
         raw_pages = resp.json()
         _log.info(
-            "marker response OK source_id=%s pages=%d",
-            source_id or "-",
-            len(raw_pages),
+            "local marker response OK source_id=%s pages=%d", source_id or "-", len(raw_pages)
         )
         return [
             PageData(
@@ -136,3 +172,9 @@ class MarkerClient:
             )
             for p in raw_pages
         ]
+
+
+def make_client() -> DatalabMarkerClient | LocalMarkerClient:
+    if settings.marker_backend == "local":
+        return LocalMarkerClient()
+    return DatalabMarkerClient()
