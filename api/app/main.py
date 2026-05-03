@@ -26,6 +26,8 @@ def _configure_app_logging() -> None:
 
 
 _configure_app_logging()
+logging.getLogger("LiteLLM").setLevel(logging.WARNING)
+logging.getLogger("litellm").setLevel(logging.WARNING)
 
 app = FastAPI(title="LLM Wiki")
 

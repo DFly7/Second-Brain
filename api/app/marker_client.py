@@ -10,7 +10,7 @@ from app.config import settings
 
 _log = logging.getLogger(__name__)
 
-DATALAB_CONVERT_URL = "https://www.datalab.to/api/v1/convert"
+DATALAB_CONVERT_URL = "https://www.datalab.to/api/v1/marker"
 _PAGE_SEP = re.compile(r"\n\n\d+\n-{48}\n\n")
 _IMG_REF = re.compile(r"!\[.*?\]\(([^)]+)\)")
 
@@ -62,13 +62,31 @@ class DatalabMarkerClient:
 
     async def convert(self, data: bytes, filename: str, *, source_id: str = "") -> list[PageData]:
         headers = {"X-API-Key": self.api_key}
-        files = {"file": (filename, data, "application/octet-stream")}
+        MIME_TYPES = {
+            "pdf": "application/pdf",
+            "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "doc": "application/msword",
+            "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "html": "text/html",
+            "png": "image/png",
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "gif": "image/gif",
+            "tiff": "image/tiff",
+            "webp": "image/webp",
+        }
+        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        mime = MIME_TYPES.get(ext, "application/octet-stream")
+        files = {"file": (filename, data, mime)}
         form = {"output_format": "markdown", "paginate": "true", "mode": self.mode}
 
         async with httpx.AsyncClient(timeout=_DATALAB_SUBMIT_TIMEOUT) as client:
             resp = await client.post(
                 DATALAB_CONVERT_URL, headers=headers, files=files, data=form
             )
+            if resp.status_code >= 400:
+                _log.error("datalab error %s body=%s", resp.status_code, resp.text)
             resp.raise_for_status()
             submission = resp.json()
 
