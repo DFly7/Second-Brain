@@ -985,3 +985,43 @@ To run with the local container:
 2. Uncomment the `marker` dependency under `api.depends_on`
 3. Change `MARKER_BACKEND: datalab` → `MARKER_BACKEND: local` in the api environment block
 4. `docker compose up --build`
+
+---
+
+## Verification commands (run on your machine when ready)
+
+These are intentionally at the end of the plan so implementation work does not depend on long Docker runs in agent sessions.
+
+**1. Start database (and MinIO if tests need it)** — from repo root:
+
+```bash
+docker compose up -d db minio
+```
+
+Wait until `docker compose ps` shows `db` healthy (and `minio` healthy if required).
+
+**2. Migrations** (applies to the DB in compose; use `wiki` or your configured DB):
+
+```bash
+docker compose run --rm api alembic upgrade head
+```
+
+**3. Tests** — avoids Compose waiting on unrelated services when `db`/`minio` are already up:
+
+```bash
+docker compose run --rm --no-deps api pytest tests/ -v
+```
+
+If `--no-deps` fails because the API container cannot reach `db` on the Docker network, omit `--no-deps` (Compose will create the default network and attach dependencies):
+
+```bash
+docker compose run --rm api pytest tests/ -v
+```
+
+**4. Full dev stack** (optional):
+
+```bash
+docker compose up --build
+```
+
+Ensure `.env` includes `DATALAB_API_KEY=...` when using `MARKER_BACKEND=datalab`.

@@ -1,19 +1,6 @@
 import pytest
 
 
-def test_source_page_has_vision_processed_field():
-    from app.models import SourcePage
-
-    page = SourcePage(
-        source_id="src-1",
-        page_num=1,
-        markdown="# Hello",
-        preview="# Hello",
-        image_s3_keys=[],
-    )
-    assert page.vision_processed is False
-
-
 @pytest.mark.asyncio
 async def test_source_page_can_be_created():
     from app.database import AsyncSessionLocal

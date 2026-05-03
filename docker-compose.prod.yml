@@ -26,18 +26,19 @@ services:
       timeout: 5s
       retries: 3
 
-  marker:
-    build:
-      context: ./marker_service
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 120s
-    volumes:
-      - marker_models:/root/.cache
+  # Local marker — uncomment and set MARKER_BACKEND=local on api when using self-hosted conversion
+  # marker:
+  #   build:
+  #     context: ./marker_service
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 120s
+  #   volumes:
+  #     - marker_models:/root/.cache
 
   api:
     build:
@@ -48,12 +49,12 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-      marker:
-        condition: service_healthy
+      # marker:
+      #   condition: service_healthy
     env_file: .env
     environment:
       S3_ENDPOINT: http://minio:9000
-      MARKER_URL: http://marker:8001
+      MARKER_BACKEND: datalab
     restart: unless-stopped
 
   frontend:
@@ -69,4 +70,4 @@ services:
 volumes:
   pgdata:
   minio_data:
-  marker_models:
+  # marker_models:

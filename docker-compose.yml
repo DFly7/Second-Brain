@@ -34,21 +34,21 @@ services:
       timeout: 5s
       retries: 3
 
-  marker:
-    build: ./marker_service
-    restart: on-failure
-    shm_size: '2gb'
-    environment:
-      # Surya default is 10; parallel shards + shutil.move races on duplicate layout pulls to the same volume.
-      PARALLEL_DOWNLOAD_WORKERS: "1"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 900s
-    volumes:
-      - marker_models:/root/.cache
+  # Local marker service — uncomment and set MARKER_BACKEND=local in api env to use instead of Datalab
+  # marker:
+  #   build: ./marker_service
+  #   restart: on-failure
+  #   shm_size: '2gb'
+  #   environment:
+  #     PARALLEL_DOWNLOAD_WORKERS: "1"
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 900s
+  #   volumes:
+  #     - marker_models:/root/.cache
 
   api:
     build: ./api
@@ -57,13 +57,13 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-      marker:
-        condition: service_healthy
+      # marker:           # uncomment when MARKER_BACKEND=local
+      #   condition: service_healthy
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://wiki:wiki@db:5432/wiki
       S3_ENDPOINT: http://minio:9000
-      MARKER_URL: http://marker:8001
+      MARKER_BACKEND: datalab
     ports:
       - "8000:8000"
     volumes:
@@ -87,4 +87,4 @@ services:
 volumes:
   pgdata:
   minio_data:
-  marker_models:
+  # marker_models:   # uncomment when using local marker

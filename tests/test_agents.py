@@ -1,5 +1,4 @@
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.agents.tools import AgentTools
@@ -126,7 +125,6 @@ async def test_read_source_page_no_images_returns_markdown():
     page = MagicMock(spec=SourcePage)
     page.markdown = "# Hello\n\nWorld"
     page.image_s3_keys = []
-    page.vision_processed = False
 
     mock_session = AsyncMock()
     scalar_result = MagicMock()
@@ -142,30 +140,28 @@ async def test_read_source_page_no_images_returns_markdown():
 
 
 @pytest.mark.asyncio
-async def test_read_source_page_calls_ensure_vision_captions():
-    from unittest.mock import AsyncMock, MagicMock, patch
+async def test_read_source_page_with_images_returns_markdown():
+    from unittest.mock import AsyncMock, MagicMock
 
     from app.agents.tools import AgentTools
     from app.models import SourcePage
 
     page = MagicMock(spec=SourcePage)
-    page.markdown = "## Results\n\n![Figure 1](img0.png)\n\n> **[AI-generated caption — gpt-4o-mini]** A chart."
+    page.markdown = "## Results\n\n![Figure 1](img0.png)\n\nMore text."
     page.image_s3_keys = ["ws/src/p1-img0.png"]
-    page.vision_processed = True  # already processed — helper is a no-op
 
     mock_session = AsyncMock()
     scalar_result = MagicMock()
     scalar_result.scalar_one_or_none.return_value = page
     mock_session.execute = AsyncMock(return_value=scalar_result)
 
-    with patch("app.agents.tools._ensure_vision_captions", new_callable=AsyncMock) as mock_helper:
-        tools = AgentTools(
-            session=mock_session, workspace_id="ws-1", broadcaster=None, source_id="src-1"
-        )
-        result = await tools.read_source_page(1)
-        mock_helper.assert_awaited_once_with(page, mock_session)
+    tools = AgentTools(
+        session=mock_session, workspace_id="ws-1", broadcaster=None, source_id="src-1"
+    )
+    result = await tools.read_source_page(1)
 
-    assert "> **[AI-generated caption" in result
+    assert "![Figure 1](img0.png)" in result
+    assert "More text." in result
 
 
 @pytest.mark.asyncio
@@ -275,231 +271,6 @@ async def test_orchestrator_offers_spawn_for_large_docs():
     tools_passed = call_args.kwargs.get("tools", [])
     tool_names = [t["function"]["name"] for t in tools_passed]
     assert "spawn_page_reader" in tool_names
-
-
-@pytest.mark.asyncio
-async def test_ensure_vision_captions_skips_if_already_processed():
-    from app.agents.tools import _ensure_vision_captions
-    from app.models import SourcePage
-
-    page = MagicMock(spec=SourcePage)
-    page.vision_processed = True
-    page.image_s3_keys = ["ws/src/p1-img0.png"]
-
-    mock_session = MagicMock(spec=AsyncSession)
-    mock_session.commit = AsyncMock()
-
-    with patch("app.agents.tools.litellm.acompletion", new_callable=AsyncMock) as mock_vision:
-        await _ensure_vision_captions(page, mock_session)
-        mock_vision.assert_not_called()
-
-    mock_session.commit.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_ensure_vision_captions_skips_if_no_images():
-    from app.agents.tools import _ensure_vision_captions
-    from app.models import SourcePage
-
-    page = MagicMock(spec=SourcePage)
-    page.vision_processed = False
-    page.image_s3_keys = []
-
-    mock_session = MagicMock(spec=AsyncSession)
-    mock_session.commit = AsyncMock()
-
-    with patch("app.agents.tools.litellm.acompletion", new_callable=AsyncMock) as mock_vision:
-        await _ensure_vision_captions(page, mock_session)
-        mock_vision.assert_not_called()
-
-    mock_session.commit.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_ensure_vision_captions_skips_if_no_vision_model():
-    from app.agents.tools import _ensure_vision_captions
-    from app.models import SourcePage
-
-    page = MagicMock(spec=SourcePage)
-    page.vision_processed = False
-    page.image_s3_keys = ["ws/src/p1-img0.png"]
-
-    mock_session = MagicMock(spec=AsyncSession)
-    mock_session.commit = AsyncMock()
-
-    with (
-        patch("app.agents.tools.litellm.acompletion", new_callable=AsyncMock) as mock_vision,
-        patch("app.agents.tools.settings") as mock_settings,
-    ):
-        mock_settings.vision_model = ""
-        await _ensure_vision_captions(page, mock_session)
-        mock_vision.assert_not_called()
-
-    mock_session.commit.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_ensure_vision_captions_inserts_caption_inline():
-    from app.agents.tools import _ensure_vision_captions
-    from app.models import SourcePage
-
-    page = MagicMock(spec=SourcePage)
-    page.vision_processed = False
-    page.image_s3_keys = ["ws/src/p1-img0.png"]
-    page.markdown = "## Results\n\n![Figure 1](img0.png)\n\nSome text."
-
-    mock_session = MagicMock(spec=AsyncSession)
-    mock_session.commit = AsyncMock()
-
-    mock_vision_resp = MagicMock()
-    mock_vision_resp.choices[0].message.content = "A bar chart showing quarterly revenue."
-
-    with (
-        patch("app.agents.tools.download_file", return_value=b"\x89PNG\r\n"),
-        patch("app.agents.tools.settings") as mock_settings,
-        patch("app.agents.tools.litellm.acompletion", new_callable=AsyncMock, return_value=mock_vision_resp),
-    ):
-        mock_settings.vision_model = "gpt-4o-mini"
-        await _ensure_vision_captions(page, mock_session)
-
-    assert page.vision_processed is True
-    assert "> **[AI-generated caption — gpt-4o-mini]** A bar chart showing quarterly revenue." in page.markdown
-    img_pos = page.markdown.index("![Figure 1](img0.png)")
-    caption_pos = page.markdown.index("> **[AI-generated caption")
-    assert caption_pos > img_pos
-    assert caption_pos < page.markdown.index("Some text.")
-    mock_session.commit.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_ensure_vision_captions_inserts_fallback_on_failure():
-    from app.agents.tools import _ensure_vision_captions
-    from app.models import SourcePage
-
-    page = MagicMock(spec=SourcePage)
-    page.vision_processed = False
-    page.image_s3_keys = ["ws/src/p1-img0.png"]
-    page.markdown = "## Results\n\n![Figure 1](img0.png)\n\nSome text."
-
-    mock_session = MagicMock(spec=AsyncSession)
-    mock_session.commit = AsyncMock()
-
-    with (
-        patch("app.agents.tools.download_file", return_value=b"\x89PNG\r\n"),
-        patch("app.agents.tools.settings") as mock_settings,
-        patch("app.agents.tools.litellm.acompletion", new_callable=AsyncMock, side_effect=Exception("timeout")),
-    ):
-        mock_settings.vision_model = "gpt-4o-mini"
-        await _ensure_vision_captions(page, mock_session)
-
-    assert page.vision_processed is True
-    assert "caption unavailable" in page.markdown
-    assert "ws/src/p1-img0.png" in page.markdown
-    mock_session.commit.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_ensure_vision_captions_appends_orphaned_image():
-    from app.agents.tools import _ensure_vision_captions
-    from app.models import SourcePage
-
-    page = MagicMock(spec=SourcePage)
-    page.vision_processed = False
-    page.image_s3_keys = ["ws/src/p1-img0.png"]
-    page.markdown = "## Results\n\nNo image tag here."
-
-    mock_session = MagicMock(spec=AsyncSession)
-    mock_session.commit = AsyncMock()
-
-    mock_vision_resp = MagicMock()
-    mock_vision_resp.choices[0].message.content = "A diagram."
-
-    with (
-        patch("app.agents.tools.download_file", return_value=b"\x89PNG\r\n"),
-        patch("app.agents.tools.settings") as mock_settings,
-        patch("app.agents.tools.litellm.acompletion", new_callable=AsyncMock, return_value=mock_vision_resp),
-    ):
-        mock_settings.vision_model = "gpt-4o-mini"
-        await _ensure_vision_captions(page, mock_session)
-
-    assert "> **[AI-generated caption — gpt-4o-mini]** A diagram." in page.markdown
-    assert page.vision_processed is True
-    mock_session.commit.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_describe_image_returns_caption():
-    mock_vision_resp = MagicMock()
-    mock_vision_resp.choices[0].message.content = "A scatter plot of user retention."
-
-    with (
-        patch("app.agents.tools.download_file", return_value=b"\x89PNG\r\n"),
-        patch("app.agents.tools.settings") as mock_settings,
-        patch(
-            "app.agents.tools.litellm.acompletion",
-            new_callable=AsyncMock,
-            return_value=mock_vision_resp,
-        ),
-    ):
-        mock_settings.vision_model = "gpt-4o-mini"
-        tools = AgentTools(session=AsyncMock(), workspace_id="ws-1", broadcaster=None)
-        result = await tools.describe_image("ws/src/p2-chart.png")
-
-    assert result == "A scatter plot of user retention."
-
-
-@pytest.mark.asyncio
-async def test_describe_image_returns_error_on_failure():
-    with (
-        patch("app.agents.tools.download_file", side_effect=Exception("S3 error")),
-        patch("app.agents.tools.settings") as mock_settings,
-    ):
-        mock_settings.vision_model = "gpt-4o-mini"
-        tools = AgentTools(session=AsyncMock(), workspace_id="ws-1", broadcaster=None)
-        result = await tools.describe_image("ws/src/p2-chart.png")
-
-    assert "error" in result.lower()
-
-
-@pytest.mark.asyncio
-async def test_describe_image_does_not_write_to_db():
-    mock_session = MagicMock(spec=AsyncSession)
-    mock_session.commit = AsyncMock()
-    mock_vision_resp = MagicMock()
-    mock_vision_resp.choices[0].message.content = "A pie chart."
-
-    with (
-        patch("app.agents.tools.download_file", return_value=b"\x89PNG\r\n"),
-        patch("app.agents.tools.settings") as mock_settings,
-        patch(
-            "app.agents.tools.litellm.acompletion",
-            new_callable=AsyncMock,
-            return_value=mock_vision_resp,
-        ),
-    ):
-        mock_settings.vision_model = "gpt-4o-mini"
-        tools = AgentTools(session=mock_session, workspace_id="ws-1", broadcaster=None)
-        await tools.describe_image("ws/src/p1-img0.png")
-
-    mock_session.add.assert_not_called()
-    mock_session.commit.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_dispatch_describe_image():
-    tools = AgentTools(session=AsyncMock(), workspace_id="ws-1", broadcaster=None)
-    tools.describe_image = AsyncMock(return_value="A chart.")
-
-    result = await tools.dispatch("describe_image", {"s3_key": "ws/src/p1-img0.png"})
-
-    tools.describe_image.assert_awaited_once_with("ws/src/p1-img0.png")
-    assert result == "A chart."
-
-
-def test_describe_image_in_tool_schema():
-    tools = AgentTools(session=None, workspace_id="ws-1", broadcaster=None)
-    names = [t["function"]["name"] for t in tools.as_litellm_tools()]
-    assert "describe_image" in names
 
 
 @pytest.mark.asyncio

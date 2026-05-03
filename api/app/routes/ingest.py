@@ -1,7 +1,5 @@
-import asyncio
 import base64
 import logging
-import os
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
@@ -19,7 +17,6 @@ from app.storage import upload_file
 router = APIRouter(prefix="/ingest", tags=["ingest"])
 
 _log = logging.getLogger(__name__)
-_marker_sem = asyncio.Semaphore(int(os.environ.get("MARKER_CONCURRENCY", "1")))
 
 MARKER_TYPES = {"pdf", "docx", "doc", "pptx", "ppt", "xlsx", "xls", "png", "jpg", "jpeg", "webp"}
 TEXT_TYPES = {"md", "markdown", "txt", "text"}
@@ -74,7 +71,7 @@ def _chunk_text(text: str) -> list[str]:
 
 async def _run_pipeline(source_id: str, workspace_id: str, data: bytes, filename: str):
     from app.agents.ingest_agent import run as run_ingest
-    from app.marker_client import MarkerClient
+    from app.marker_client import make_client
 
     suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     _log.info(
@@ -111,11 +108,10 @@ async def _run_pipeline(source_id: str, workspace_id: str, data: bytes, filename
                     for i, chunk in enumerate(chunks)
                 ]
             else:
-                async with _marker_sem:
-                    await broadcaster.publish({"event": "agent:converting", "source_id": source_id, "filename": filename})
-                    _log.info("ingest calling marker source_id=%s filename=%s", source_id, filename)
-                    client = MarkerClient()
-                    raw_pages = await client.convert(data, filename, source_id=source_id)
+                await broadcaster.publish({"event": "agent:converting", "source_id": source_id, "filename": filename})
+                _log.info("ingest calling marker source_id=%s filename=%s", source_id, filename)
+                client = make_client()
+                raw_pages = await client.convert(data, filename, source_id=source_id)
                 _log.info(
                     "ingest marker done source_id=%s pages=%d",
                     source_id,

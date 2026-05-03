@@ -1,88 +1,16 @@
-import base64
 import re
 from datetime import datetime
-from pathlib import Path
 
-from jinja2 import Template
-import litellm
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
 from app.models import ActivityLog, Page, PageLink, Revision, SourcePage
 from app.search import search_pages as _search
 from app.sse import SSEBroadcaster
-from app.storage import download_file
 from app.wikilinks import sync_links
-
-_PROMPTS = Path(__file__).parent / "prompts"
-_VISION_CAPTION_TEMPLATE = Template((_PROMPTS / "vision_caption.md").read_text())
-_VISION_DESCRIBE_PROMPT = (_PROMPTS / "vision_describe.md").read_text()
 
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)+$")
 _FOLDER_RE = re.compile(r"^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$")
-
-
-async def _ensure_vision_captions(page: SourcePage, session: AsyncSession) -> None:
-    if page.vision_processed:
-        return
-    if not page.image_s3_keys or not settings.vision_model:
-        return
-
-    markdown = page.markdown
-
-    for s3_key in page.image_s3_keys:
-        basename = s3_key.rsplit("/", 1)[-1]
-        original_filename = re.sub(r"^p\d+-", "", basename)
-
-        try:
-            img_bytes = download_file(s3_key)
-            b64 = base64.b64encode(img_bytes).decode()
-            ext = s3_key.rsplit(".", 1)[-1].lower()
-            mime = {
-                "png": "image/png",
-                "jpg": "image/jpeg",
-                "jpeg": "image/jpeg",
-                "webp": "image/webp",
-            }.get(ext, "image/png")
-            resp = await litellm.acompletion(
-                model=settings.vision_model,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": _VISION_CAPTION_TEMPLATE.render(context=markdown[:500]),
-                            },
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": f"data:{mime};base64,{b64}"},
-                            },
-                        ],
-                    }
-                ],
-            )
-            caption = resp.choices[0].message.content or ""
-            caption_block = f"\n> **[AI-generated caption — {settings.vision_model}]** {caption}"
-        except Exception:
-            caption_block = (
-                f"\n> **[AI-generated caption — {settings.vision_model}]**"
-                f" *(caption unavailable — image: `{s3_key}`)*"
-            )
-
-        pattern = re.compile(
-            r"(!\[.*?\]\([^)]*" + re.escape(original_filename) + r"[^)]*\))"
-        )
-        if pattern.search(markdown):
-            markdown = pattern.sub(lambda m: m.group(1) + caption_block, markdown, count=1)
-        else:
-            markdown += caption_block
-
-    page.markdown = markdown
-    page.vision_processed = True
-    session.add(page)
-    await session.commit()
 
 
 class AgentTools:
@@ -523,41 +451,7 @@ class AgentTools:
         if not page:
             return f"[Page {page_num} not found]"
 
-        await _ensure_vision_captions(page, self.session)
         return page.markdown
-
-    async def describe_image(self, s3_key: str) -> str:
-        try:
-            img_bytes = download_file(s3_key)
-            b64 = base64.b64encode(img_bytes).decode()
-            ext = s3_key.rsplit(".", 1)[-1].lower()
-            mime = {
-                "png": "image/png",
-                "jpg": "image/jpeg",
-                "jpeg": "image/jpeg",
-                "webp": "image/webp",
-            }.get(ext, "image/png")
-            resp = await litellm.acompletion(
-                model=settings.vision_model,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": f"data:{mime};base64,{b64}"},
-                            },
-                            {
-                                "type": "text",
-                                "text": _VISION_DESCRIBE_PROMPT,
-                            },
-                        ],
-                    }
-                ],
-            )
-            return resp.choices[0].message.content or ""
-        except Exception as exc:
-            return f"[describe_image error: {exc}]"
 
     def as_litellm_tools(self, allowed: list[str] | None = None) -> list[dict]:
         all_tools = [
@@ -779,7 +673,7 @@ class AgentTools:
                 "type": "function",
                 "function": {
                     "name": "read_source_page",
-                    "description": "Read the full markdown of a source document page. Pages with images include vision-model descriptions of figures inline.",
+                    "description": "Read the full markdown of a source document page.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -789,27 +683,6 @@ class AgentTools:
                             }
                         },
                         "required": ["page_num"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "describe_image",
-                    "description": (
-                        "Describe a specific image from the source document by its S3 key. "
-                        "Use this when a page shows '(caption unavailable — image: `<key>`)' "
-                        "to get a fresh vision description of that image."
-                    ),
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "s3_key": {
-                                "type": "string",
-                                "description": "The S3 key of the image, as shown in the caption unavailable notice.",
-                            }
-                        },
-                        "required": ["s3_key"],
                     },
                 },
             },
@@ -860,6 +733,4 @@ class AgentTools:
             return str(pages)
         if name == "read_source_page":
             return await self.read_source_page(args["page_num"])
-        if name == "describe_image":
-            return await self.describe_image(args["s3_key"])
         return f"Unknown tool: {name}"
