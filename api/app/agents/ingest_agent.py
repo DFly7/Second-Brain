@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from app.agents.assistant_message import assistant_message_for_litellm
 from app.agents.log_context import agent_run_context
+from app.agents.prompt_render import render_system_prompt
 from app.agents.tools import AgentTools
 from app.agents import sub_agent
 from app.config import settings
@@ -88,10 +89,10 @@ async def run(source_id: str, workspace_id: str, audience_user_id: str):
             if is_large:
                 tool_defs = tools.as_litellm_tools(allowed=wiki_tool_names + ["list_source_pages"])
                 tool_defs.append(SPAWN_PAGE_READER_TOOL)
-                system_prompt = SYSTEM_PROMPT_LARGE
+                system_prompt = render_system_prompt(SYSTEM_PROMPT_LARGE)
             else:
                 tool_defs = tools.as_litellm_tools(allowed=wiki_tool_names + source_tool_names)
-                system_prompt = SYSTEM_PROMPT_SMALL
+                system_prompt = render_system_prompt(SYSTEM_PROMPT_SMALL)
 
             messages = [
                 {"role": "system", "content": system_prompt},

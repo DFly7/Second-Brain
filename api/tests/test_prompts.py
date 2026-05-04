@@ -11,6 +11,7 @@ STATIC_PROMPTS = [
     "health.md",
     "chat_monitor.md",
     "sub_agent.md",
+    "run_context_wrapper.md",
 ]
 
 

@@ -6,6 +6,7 @@ import structlog
 
 from app.agents.assistant_message import assistant_message_for_litellm
 from app.agents.log_context import agent_run_context
+from app.agents.prompt_render import render_system_prompt
 from app.agents.tools import AgentTools
 from app.config import settings
 from app.database import AsyncSessionLocal
@@ -48,7 +49,7 @@ async def run(
             tool_defs = tools.as_litellm_tools(allowed=["read_source_page"])
 
             messages = [
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": render_system_prompt(SYSTEM_PROMPT)},
                 {
                     "role": "user",
                     "content": (

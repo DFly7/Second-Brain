@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.assistant_message import assistant_message_for_litellm
 from app.agents.log_context import agent_run_context
+from app.agents.prompt_render import render_system_prompt
 from app.agents.tools import AgentTools
 from app.config import settings
 from app.sse import broadcaster
@@ -48,6 +49,10 @@ async def run(
             system_prompt = SYSTEM_PROMPT
         else:
             system_prompt = f"<user_context>\n{user_memory}\n</user_context>\n\n{SYSTEM_PROMPT}"
+
+        system_prompt = render_system_prompt(
+            system_prompt, model=settings.litellm_model
+        )
 
         messages = [
             {"role": "system", "content": system_prompt},
