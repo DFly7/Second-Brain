@@ -4,6 +4,25 @@ import Layout from './components/Layout'
 
 type AuthState = 'loading' | 'authenticated' | 'unauthenticated'
 
+/** Full-viewport placeholder so OAuth callback / session checks don’t flash an empty shell before Layout. */
+function AuthGateSplash({ label }: { label: string }) {
+  return (
+    <div
+      style={{
+        flex: 1,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#0d1117',
+        color: '#8b949e',
+        fontSize: 14,
+      }}
+    >
+      {label}
+    </div>
+  )
+}
+
 // Module-level flag: Strict Mode runs the auth effect twice. During POST /auth/callback the second
 // pass must not call /me (cookies not set yet) or duplicate the token exchange.
 let _callbackInflight = false
@@ -55,6 +74,10 @@ export default function App() {
     if (authState === 'unauthenticated') redirectToAuthentik()
   }, [authState])
 
-  if (authState !== 'authenticated') return null
-  return <Layout />
+  if (authState === 'authenticated') return <Layout />
+
+  const splashLabel =
+    authState === 'unauthenticated' ? 'Redirecting to sign in…' : 'Signing you in…'
+
+  return <AuthGateSplash label={splashLabel} />
 }
