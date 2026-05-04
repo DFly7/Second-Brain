@@ -9,6 +9,7 @@ async def test_datalab_client_submits_and_polls():
     from app.marker_client import DatalabMarkerClient, PageData
 
     submit_response = MagicMock()
+    submit_response.status_code = 200
     submit_response.raise_for_status = MagicMock()
     submit_response.json.return_value = {
         "success": True,
@@ -17,6 +18,7 @@ async def test_datalab_client_submits_and_polls():
     }
 
     poll_response = MagicMock()
+    poll_response.status_code = 200
     poll_response.raise_for_status = MagicMock()
     poll_response.json.return_value = {
         "status": "complete",
@@ -48,6 +50,7 @@ async def test_datalab_client_raises_on_failed_status():
     from app.marker_client import DatalabMarkerClient
 
     submit_response = MagicMock()
+    submit_response.status_code = 200
     submit_response.raise_for_status = MagicMock()
     submit_response.json.return_value = {
         "success": True,
@@ -56,6 +59,7 @@ async def test_datalab_client_raises_on_failed_status():
     }
 
     poll_response = MagicMock()
+    poll_response.status_code = 200
     poll_response.raise_for_status = MagicMock()
     poll_response.json.return_value = {"status": "failed", "error": "unsupported format"}
 
@@ -77,6 +81,7 @@ async def test_datalab_client_attaches_images_to_pages():
     from app.marker_client import DatalabMarkerClient
 
     submit_response = MagicMock()
+    submit_response.status_code = 200
     submit_response.raise_for_status = MagicMock()
     submit_response.json.return_value = {
         "success": True,
@@ -85,6 +90,7 @@ async def test_datalab_client_attaches_images_to_pages():
     }
 
     poll_response = MagicMock()
+    poll_response.status_code = 200
     poll_response.raise_for_status = MagicMock()
     poll_response.json.return_value = {
         "status": "complete",
@@ -114,6 +120,7 @@ async def test_datalab_client_sends_correct_form_fields():
     from app.marker_client import DatalabMarkerClient
 
     submit_response = MagicMock()
+    submit_response.status_code = 200
     submit_response.raise_for_status = MagicMock()
     submit_response.json.return_value = {
         "success": True,
@@ -121,6 +128,7 @@ async def test_datalab_client_sends_correct_form_fields():
         "request_check_url": "https://www.datalab.to/api/v1/convert/reqabc",
     }
     poll_response = MagicMock()
+    poll_response.status_code = 200
     poll_response.raise_for_status = MagicMock()
     poll_response.json.return_value = {"status": "complete", "markdown": "text", "images": {}}
 

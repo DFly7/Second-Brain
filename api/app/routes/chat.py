@@ -1,16 +1,13 @@
-import json
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response
+from fastapi import APIRouter, BackgroundTasks, Depends
 from fastapi.responses import StreamingResponse
-from jose import JWTError, jwt
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.query_agent import run as run_query
-from app.auth import ALGORITHM, get_current_user
-from app.config import settings
+from app.auth import get_current_user
 from app.database import AsyncSessionLocal, get_db
 from app.models import ActivityLog, ChatMessage, ChatSession
 from app.routes.wiki import _ensure_workspace
@@ -126,14 +123,7 @@ async def list_sessions(
 
 
 @router.get("/sse")
-async def sse_stream(token: str = Query(...)):
-    try:
-        payload = jwt.decode(token, settings.jwt_secret, algorithms=[ALGORITHM])
-        if payload.get("sub") is None:
-            return Response(status_code=401)
-    except JWTError:
-        return Response(status_code=401)
-
+async def sse_stream(_user: str = Depends(get_current_user)):
     q = broadcaster.subscribe()
 
     async def event_gen():

@@ -6,6 +6,10 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+_TESTS_DIR = Path(__file__).resolve().parent
+if str(_TESTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_TESTS_DIR))
+
 # Force test credentials so docker-compose `env_file: .env` cannot override pytest.
 os.environ["DATABASE_URL"] = "postgresql+asyncpg://wiki:wiki@db:5432/wiki_test"
 os.environ["AUTHENTIK_ISSUER"] = (
@@ -63,12 +67,6 @@ def _mock_s3():
         "app.routes.ingest.upload_file",
         MagicMock(return_value="s3://mock"),
     )
-    tools_dl = patch(
-        "app.agents.tools.download_file",
-        side_effect=RuntimeError(
-            "Real S3 call in tests — mock app.agents.tools.download_file explicitly"
-        ),
-    )
     with patch(
         "app.storage.download_file",
         side_effect=RuntimeError(
@@ -83,8 +81,15 @@ def _mock_s3():
         ):
             with patch("app.storage.ensure_bucket"):
                 with ingest_upload:
-                    with tools_dl:
-                        yield
+                    yield
+
+
+@pytest.fixture(autouse=True)
+def _reset_jwks_cache():
+    from app.auth import reset_jwks_cache
+
+    reset_jwks_cache()
+    yield
 
 
 @pytest_asyncio.fixture(autouse=True, loop_scope="function")

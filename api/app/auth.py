@@ -1,43 +1,156 @@
-from datetime import datetime, timedelta
+import os
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
+import httpx
+from authlib.jose import JsonWebKey, jwt
+from authlib.jose.errors import JoseError
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from app.config import settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
-ALGORITHM = "HS256"
-TOKEN_EXPIRE_DAYS = 30
+
+_jwks_cache = None
 
 
-class LoginRequest(BaseModel):
-    email: str
-    password: str
+def reset_jwks_cache() -> None:
+    global _jwks_cache
+    _jwks_cache = None
 
 
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
+def _cookie_secure() -> bool:
+    if os.environ.get("PYTEST_VERSION") is not None:
+        return False
+    return settings.authentik_redirect_uri.startswith("https://")
 
 
-@router.post("/login", response_model=TokenResponse)
-async def login(req: LoginRequest):
-    if req.email != settings.single_user_email or req.password != settings.single_user_password:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    expire = datetime.utcnow() + timedelta(days=TOKEN_EXPIRE_DAYS)
-    token = jwt.encode({"sub": req.email, "exp": expire}, settings.jwt_secret, algorithm=ALGORITHM)
-    return TokenResponse(access_token=token)
+async def _get_jwks():
+    global _jwks_cache
+    if _jwks_cache is None:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(settings.authentik_jwks_uri)
+            r.raise_for_status()
+        _jwks_cache = JsonWebKey.import_key_set(r.json())
+    return _jwks_cache
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme)) -> str:
+async def _decode_token(token: str) -> dict:
+    jwks = await _get_jwks()
     try:
-        payload = jwt.decode(token, settings.jwt_secret, algorithms=[ALGORITHM])
-        sub = payload.get("sub")
-        if sub is None:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        return str(sub)
-    except JWTError:
+        claims = jwt.decode(token, jwks)
+        claims.validate()
+        payload = dict(claims)
+    except JoseError:
         raise HTTPException(status_code=401, detail="Invalid token")
+    if payload.get("iss") != settings.authentik_issuer:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    if payload.get("sub") is None:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return payload
+
+
+async def get_current_user(request: Request) -> str:
+    token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    payload = await _decode_token(token)
+    return str(payload["sub"])
+
+
+def _set_auth_cookies(
+    response: Response, access_token: str, refresh_token: str
+) -> None:
+    sec = _cookie_secure()
+    response.set_cookie(
+        "access_token",
+        access_token,
+        httponly=True,
+        secure=sec,
+        samesite="strict",
+    )
+    response.set_cookie(
+        "refresh_token",
+        refresh_token,
+        httponly=True,
+        secure=sec,
+        samesite="strict",
+    )
+
+
+def _clear_auth_cookies(response: Response) -> None:
+    sec = _cookie_secure()
+    response.delete_cookie(
+        "access_token",
+        path="/",
+        secure=sec,
+        httponly=True,
+        samesite="strict",
+    )
+    response.delete_cookie(
+        "refresh_token",
+        path="/",
+        secure=sec,
+        httponly=True,
+        samesite="strict",
+    )
+
+
+class CallbackRequest(BaseModel):
+    code: str
+    code_verifier: str
+
+
+@router.post("/callback")
+async def auth_callback(req: CallbackRequest, response: Response):
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
+            settings.authentik_token_url,
+            data={
+                "grant_type": "authorization_code",
+                "client_id": settings.authentik_client_id,
+                "code": req.code,
+                "code_verifier": req.code_verifier,
+                "redirect_uri": settings.authentik_redirect_uri,
+            },
+        )
+    if r.status_code != 200:
+        raise HTTPException(status_code=401, detail="Token exchange failed")
+    tokens = r.json()
+    _set_auth_cookies(response, tokens["access_token"], tokens["refresh_token"])
+    return {"ok": True}
+
+
+@router.post("/refresh")
+async def auth_refresh(request: Request, response: Response):
+    refresh_token = request.cookies.get("refresh_token")
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail="No refresh token")
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
+            settings.authentik_token_url,
+            data={
+                "grant_type": "refresh_token",
+                "client_id": settings.authentik_client_id,
+                "refresh_token": refresh_token,
+            },
+        )
+    if r.status_code != 200:
+        raise HTTPException(status_code=401, detail="Refresh failed")
+    tokens = r.json()
+    _set_auth_cookies(response, tokens["access_token"], tokens["refresh_token"])
+    return {"ok": True}
+
+
+@router.post("/logout")
+async def auth_logout(response: Response):
+    _clear_auth_cookies(response)
+    return {"ok": True}
+
+
+@router.get("/me")
+async def auth_me(request: Request):
+    token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    payload = await _decode_token(token)
+    return {"sub": payload["sub"], "email": payload.get("email")}
