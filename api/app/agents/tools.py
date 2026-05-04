@@ -1,6 +1,8 @@
 import re
+import time
 from datetime import datetime
 
+import structlog
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +13,35 @@ from app.wikilinks import sync_links
 
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)+$")
 _FOLDER_RE = re.compile(r"^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$")
+
+_LOG = structlog.get_logger()
+
+_LARGE_ARG_KEYS = frozenset({
+    "body_md",
+    "content",
+    "new_text",
+    "old_text",
+    "query",
+    "summary",
+    "title",
+    "focus_hint",
+})
+
+
+def summarize_tool_args_for_log(args: dict) -> dict:
+    """Short, log-safe view of tool args (avoid dumping full pages into JSON logs)."""
+    out: dict = {}
+    for k, v in args.items():
+        if not isinstance(v, str):
+            out[k] = v
+            continue
+        if k in _LARGE_ARG_KEYS and len(v) > 120:
+            out[k] = f"<{len(v)} chars>"
+        elif len(v) > 400:
+            out[k] = f"<{len(v)} chars>"
+        else:
+            out[k] = v
+    return out
 
 
 class AgentTools:
@@ -701,6 +732,31 @@ class AgentTools:
         return all_tools
 
     async def dispatch(self, name: str, args: dict) -> str:
+        _LOG.info(
+            "tool_call_start",
+            tool=name,
+            args=summarize_tool_args_for_log(args),
+        )
+        t0 = time.perf_counter()
+        try:
+            result = await self._execute_tool(name, args)
+        except Exception as exc:
+            _LOG.warning(
+                "tool_call_failed",
+                tool=name,
+                duration_ms=round((time.perf_counter() - t0) * 1000),
+                error=str(exc),
+            )
+            raise
+        _LOG.info(
+            "tool_call_done",
+            tool=name,
+            duration_ms=round((time.perf_counter() - t0) * 1000),
+            result_chars=len(result),
+        )
+        return result
+
+    async def _execute_tool(self, name: str, args: dict) -> str:
         if name == "list_pages":
             pages = await self.list_pages()
             return str(pages)
