@@ -3,6 +3,7 @@ import re
 from pathlib import Path
 
 import litellm
+import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.assistant_message import assistant_message_for_litellm
@@ -16,6 +17,8 @@ SYSTEM_PROMPT = (_PROMPTS / "query.md").read_text()
 
 READ_ONLY_TOOLS = ["list_pages", "search_pages", "read_page", "grep_page"]
 
+_log = structlog.get_logger()
+
 
 async def run(
     workspace_id: str,
@@ -24,6 +27,7 @@ async def run(
     session: AsyncSession,
     audience_user_id: str,
 ) -> tuple[str, list[str]]:
+    _log.info("query_agent_start", workspace_id=workspace_id)
     tools = AgentTools(
         session=session,
         workspace_id=workspace_id,
@@ -60,6 +64,7 @@ async def run(
         if not msg.tool_calls:
             answer = msg.content or ""
             cited_pages = re.findall(r"\[\[([^\]]+)\]\]", answer)
+            _log.info("query_agent_answer", workspace_id=workspace_id, cited_pages=len(cited_pages))
             await broadcaster.publish(
                 {"event": "agent:done", "context": "chat", "pages_touched": cited_pages},
                 audience_user_id=audience_user_id,
@@ -80,6 +85,7 @@ async def run(
                 }
             )
 
+    _log.warning("query_agent_no_answer", workspace_id=workspace_id)
     await broadcaster.publish(
         {"event": "agent:done", "context": "chat", "pages_touched": cited_pages},
         audience_user_id=audience_user_id,

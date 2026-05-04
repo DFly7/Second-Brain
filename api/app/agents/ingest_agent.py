@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 import litellm
+import structlog
 from sqlalchemy import select
 
 from app.agents.assistant_message import assistant_message_for_litellm
@@ -12,6 +13,8 @@ from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models import ActivityLog, Source, SourcePage
 from app.sse import broadcaster
+
+_log = structlog.get_logger()
 
 SMALL_DOC_THRESHOLD = 20
 COST_CEILING_USD = 2.0
@@ -42,6 +45,7 @@ SPAWN_PAGE_READER_TOOL = {
 
 
 async def run(source_id: str, workspace_id: str, audience_user_id: str):
+    _log.info("ingest_agent_start", source_id=source_id, workspace_id=workspace_id)
     async with AsyncSessionLocal() as session:
         src_result = await session.execute(select(Source).where(Source.id == source_id))
         source = src_result.scalar_one_or_none()
@@ -100,6 +104,11 @@ async def run(source_id: str, workspace_id: str, audience_user_id: str):
             except Exception:
                 pass
             if total_cost > COST_CEILING_USD:
+                _log.warning(
+                    "ingest_agent_cost_ceiling_hit",
+                    source_id=source_id,
+                    cost_usd=round(total_cost, 4),
+                )
                 break
 
             msg = resp.choices[0].message
@@ -147,6 +156,13 @@ async def run(source_id: str, workspace_id: str, audience_user_id: str):
             )
         )
         await session.commit()
+        _log.info(
+            "ingest_agent_done",
+            source_id=source_id,
+            workspace_id=workspace_id,
+            pages_touched=len(pages_touched),
+            cost_usd=round(total_cost, 4),
+        )
         await broadcaster.publish(
             {"event": "agent:done", "pages_touched": pages_touched, "source_id": source_id},
             audience_user_id=audience_user_id,
