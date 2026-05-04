@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { redirectToAuthentik } from './auth'
+import { redirectToAuthentik, devLogin, DEV_AUTH_BYPASS } from './auth'
 import Layout from './components/Layout'
 
 type AuthState = 'loading' | 'authenticated' | 'unauthenticated'
@@ -93,10 +93,23 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (authState === 'unauthenticated') redirectToAuthentik()
+    if (authState === 'unauthenticated' && !DEV_AUTH_BYPASS) redirectToAuthentik()
   }, [authState])
 
   if (authState === 'authenticated') return <Layout />
+
+  if (authState === 'unauthenticated' && DEV_AUTH_BYPASS) {
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0d1117' }}>
+        <button
+          onClick={() => devLogin().then(() => setAuthState('authenticated'))}
+          style={{ padding: '10px 24px', fontSize: 14, cursor: 'pointer', borderRadius: 6, border: '1px solid #30363d', background: '#21262d', color: '#c9d1d9' }}
+        >
+          Dev Login
+        </button>
+      </div>
+    )
+  }
 
   const splashLabel =
     authState === 'unauthenticated' ? 'Redirecting to sign in…' : 'Signing you in…'

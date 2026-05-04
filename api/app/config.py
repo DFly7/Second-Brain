@@ -3,11 +3,12 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     database_url: str
-    authentik_issuer: str
-    authentik_jwks_uri: str
-    authentik_client_id: str
-    authentik_token_url: str
-    authentik_redirect_uri: str
+    dev_auth_bypass: bool = False
+    authentik_issuer: str = ""
+    authentik_jwks_uri: str = ""
+    authentik_client_id: str = ""
+    authentik_token_url: str = ""
+    authentik_redirect_uri: str = ""
     litellm_model: str = "gemini/gemini-2.0-flash"
     gemini_api_key: str | None = None
     s3_endpoint: str = "http://minio:9000"

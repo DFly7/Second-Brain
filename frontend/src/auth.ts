@@ -1,6 +1,8 @@
-const AUTHENTIK_URL = (import.meta.env.VITE_AUTHENTIK_URL as string).replace(/\/$/, '')
-const CLIENT_ID = import.meta.env.VITE_AUTHENTIK_CLIENT_ID as string
-const REDIRECT_URI = import.meta.env.VITE_REDIRECT_URI as string
+export const DEV_AUTH_BYPASS = import.meta.env.VITE_DEV_AUTH_BYPASS === 'true'
+
+const AUTHENTIK_URL = DEV_AUTH_BYPASS ? '' : (import.meta.env.VITE_AUTHENTIK_URL as string ?? '').replace(/\/$/, '')
+const CLIENT_ID = DEV_AUTH_BYPASS ? '' : import.meta.env.VITE_AUTHENTIK_CLIENT_ID as string
+const REDIRECT_URI = DEV_AUTH_BYPASS ? '' : import.meta.env.VITE_REDIRECT_URI as string
 
 export function generateVerifier(): string {
   const array = new Uint8Array(32)
@@ -20,8 +22,16 @@ export async function generateChallenge(verifier: string): Promise<string> {
     .replace(/=/g, '')
 }
 
+export async function devLogin(): Promise<void> {
+  await fetch('/api/auth/dev-login', { credentials: 'include' })
+}
+
 export async function logout(): Promise<void> {
   await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+  if (DEV_AUTH_BYPASS) {
+    window.location.reload()
+    return
+  }
   const params = new URLSearchParams({
     post_logout_redirect_uri: REDIRECT_URI,
   })

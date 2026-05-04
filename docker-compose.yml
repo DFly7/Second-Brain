@@ -89,7 +89,77 @@ services:
     depends_on:
       - frontend
 
+  # --- Local Authentik (alternative to DEV_AUTH_BYPASS) ---
+  # Uncomment these three services to run authentik locally.
+  # One-time setup after first boot: visit http://localhost:9000/if/flow/initial-setup/
+  # then create an OAuth2/OIDC provider + application with slug "second-brain".
+  # Set redirect URI to http://localhost:5173/callback.
+  # In .env point the API at the internal docker name:
+  #   AUTHENTIK_ISSUER=http://localhost:9000/application/o/second-brain/
+  #   AUTHENTIK_JWKS_URI=http://authentik-server:9000/application/o/second-brain/jwks/
+  #   AUTHENTIK_TOKEN_URL=http://authentik-server:9000/application/o/token/
+  #   AUTHENTIK_CLIENT_ID=<your client id from authentik UI>
+  #   AUTHENTIK_REDIRECT_URI=http://localhost:5173/callback
+  # In frontend/.env.local:
+  #   VITE_AUTHENTIK_URL=http://localhost:9000
+  #   VITE_AUTHENTIK_CLIENT_ID=<your client id>
+  #   VITE_REDIRECT_URI=http://localhost:5173/callback
+
+  # authentik-db:
+  #   image: docker.io/library/postgres:16-alpine
+  #   environment:
+  #     POSTGRES_PASSWORD: authentikdev
+  #     POSTGRES_USER: authentik
+  #     POSTGRES_DB: authentik
+  #   volumes:
+  #     - authentik_pgdata:/var/lib/postgresql/data
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U authentik"]
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 5
+
+  # authentik-server:
+  #   image: ghcr.io/goauthentik/server:2026.2.2
+  #   command: server
+  #   environment:
+  #     AUTHENTIK_REDIS__HOST: ""
+  #     AUTHENTIK_POSTGRESQL__HOST: authentik-db
+  #     AUTHENTIK_POSTGRESQL__USER: authentik
+  #     AUTHENTIK_POSTGRESQL__NAME: authentik
+  #     AUTHENTIK_POSTGRESQL__PASSWORD: authentikdev
+  #     AUTHENTIK_SECRET_KEY: local-dev-secret-do-not-use-in-prod
+  #     AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+  #   ports:
+  #     - "9000:9000"
+  #   depends_on:
+  #     authentik-db:
+  #       condition: service_healthy
+
+  # authentik-worker:
+  #   image: ghcr.io/goauthentik/server:2026.2.2
+  #   command: worker
+  #   user: root
+  #   environment:
+  #     AUTHENTIK_REDIS__HOST: ""
+  #     AUTHENTIK_POSTGRESQL__HOST: authentik-db
+  #     AUTHENTIK_POSTGRESQL__USER: authentik
+  #     AUTHENTIK_POSTGRESQL__NAME: authentik
+  #     AUTHENTIK_POSTGRESQL__PASSWORD: authentikdev
+  #     AUTHENTIK_SECRET_KEY: local-dev-secret-do-not-use-in-prod
+  #     AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+  #   depends_on:
+  #     authentik-db:
+  #       condition: service_healthy
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #     - authentik_media:/media
+  #     - authentik_certs:/certs
+
 volumes:
   pgdata:
   minio_data:
   # marker_models:   # uncomment when using local marker
+  # authentik_pgdata:  # uncomment when using local authentik
+  # authentik_media:
+  # authentik_certs:

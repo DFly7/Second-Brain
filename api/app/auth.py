@@ -74,6 +74,10 @@ async def get_current_user(request: Request) -> str:
     if not token:
         log.warning("get_current_user: no access_token cookie on %s", request.url.path)
         raise HTTPException(status_code=401, detail="Not authenticated")
+    if settings.dev_auth_bypass:
+        if token == "dev":
+            return "dev-user"
+        raise HTTPException(status_code=401, detail="Not authenticated")
     try:
         payload = await _decode_token(token)
     except HTTPException as e:
@@ -82,8 +86,11 @@ async def get_current_user(request: Request) -> str:
     return str(payload["sub"])
 
 
+_REFRESH_MAX_AGE = 30 * 24 * 3600  # 30 days — match typical authentik refresh token lifetime
+
+
 def _set_auth_cookies(
-    response: Response, access_token: str, refresh_token: str
+    response: Response, access_token: str, refresh_token: str, access_token_ttl: int | None = None
 ) -> None:
     sec = _cookie_secure()
     response.set_cookie(
@@ -92,6 +99,7 @@ def _set_auth_cookies(
         httponly=True,
         secure=sec,
         samesite="strict",
+        max_age=access_token_ttl,  # None = session cookie; set from token response expires_in
     )
     response.set_cookie(
         "refresh_token",
@@ -99,14 +107,18 @@ def _set_auth_cookies(
         httponly=True,
         secure=sec,
         samesite="strict",
+        max_age=_REFRESH_MAX_AGE,
     )
-    # JS-readable flag so the frontend can skip async auth checks when not logged in
+    # JS-readable flag so the frontend can skip async auth checks when not logged in.
+    # Must be persistent (not a session cookie) so browser restarts don't trigger a
+    # spurious redirect-to-authentik-and-back when the refresh token is still valid.
     response.set_cookie(
         "logged_in",
         "1",
         httponly=False,
         secure=sec,
         samesite="strict",
+        max_age=_REFRESH_MAX_AGE,
     )
 
 
@@ -140,6 +152,14 @@ class CallbackRequest(BaseModel):
     code_verifier: str
 
 
+@router.get("/dev-login")
+async def auth_dev_login(response: Response):
+    if not settings.dev_auth_bypass:
+        raise HTTPException(status_code=404)
+    _set_auth_cookies(response, "dev", "dev")
+    return {"ok": True}
+
+
 @router.post("/callback")
 async def auth_callback(req: CallbackRequest, response: Response):
     async with httpx.AsyncClient() as client:
@@ -156,7 +176,7 @@ async def auth_callback(req: CallbackRequest, response: Response):
     if r.status_code != 200:
         raise HTTPException(status_code=401, detail="Token exchange failed")
     tokens = r.json()
-    _set_auth_cookies(response, tokens["access_token"], tokens.get("refresh_token", ""))
+    _set_auth_cookies(response, tokens["access_token"], tokens.get("refresh_token", ""), tokens.get("expires_in"))
     return {"ok": True}
 
 
@@ -177,7 +197,7 @@ async def auth_refresh(request: Request, response: Response):
     if r.status_code != 200:
         raise HTTPException(status_code=401, detail="Refresh failed")
     tokens = r.json()
-    _set_auth_cookies(response, tokens["access_token"], tokens["refresh_token"])
+    _set_auth_cookies(response, tokens["access_token"], tokens["refresh_token"], tokens.get("expires_in"))
     return {"ok": True}
 
 
@@ -191,6 +211,10 @@ async def auth_logout(response: Response):
 async def auth_me(request: Request):
     token = request.cookies.get("access_token")
     if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if settings.dev_auth_bypass:
+        if token == "dev":
+            return {"sub": "dev-user", "email": "dev@local"}
         raise HTTPException(status_code=401, detail="Not authenticated")
     payload = await _decode_token(token)
     return {"sub": payload["sub"], "email": payload.get("email")}
