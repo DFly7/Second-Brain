@@ -1,5 +1,6 @@
 from typing import Literal
 
+import structlog
 from fastapi import APIRouter, BackgroundTasks, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -14,6 +15,8 @@ from app.routes.wiki import _ensure_workspace
 from app.sse import broadcaster
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+
+_log = structlog.get_logger()
 
 
 class MessageRequest(BaseModel):
@@ -30,6 +33,12 @@ async def send_message(
     user: str = Depends(get_current_user),
 ):
     ws = await _ensure_workspace(db, user)
+    _log.info(
+        "chat_message_received",
+        workspace_id=ws.id,
+        mode=body.mode,
+        session_id=body.session_id,
+    )
 
     session_obj: ChatSession | None = None
     if body.session_id:
@@ -62,6 +71,13 @@ async def send_message(
         answer, cited = await run_edit(ws.id, body.message, history[:-1], db, user)
     else:
         answer, cited = await run_query(ws.id, body.message, history[:-1], db, user)
+
+    _log.info(
+        "chat_message_answered",
+        workspace_id=ws.id,
+        mode=body.mode,
+        cited_pages=len(cited),
+    )
 
     assistant_msg = ChatMessage(
         session_id=session_obj.id, role="assistant", content=answer
