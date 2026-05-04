@@ -174,6 +174,7 @@ class LocalMarkerClient:
                 wait = min(_CONNECT_BACKOFF_BASE * (2**attempt), _CONNECT_BACKOFF_MAX)
                 _log.warning(
                     "marker_connect_retry",
+                    source_id=source_id or "-",
                     attempt=attempt + 1,
                     max=_CONNECT_RETRIES,
                     error=str(e),
