@@ -1,47 +1,63 @@
-import asyncio
 import json
-from collections import defaultdict
+import logging
 from typing import AsyncIterator
+
+import redis.asyncio as aioredis
+from redis.asyncio.client import PubSub
+
+log = logging.getLogger("app.sse")
 
 
 class SSEBroadcaster:
-    """In-process fan-out of SSE events, scoped by authenticated user id (OIDC sub)."""
+    """Fan-out of SSE events via Redis Pub/Sub, scoped by authenticated user id (OIDC sub)."""
 
     def __init__(self):
-        self._queues: dict[str, list[asyncio.Queue]] = defaultdict(list)
+        self._pool: aioredis.ConnectionPool | None = None
 
-    def subscribe(self, user_id: str) -> asyncio.Queue:
-        q: asyncio.Queue = asyncio.Queue(maxsize=100)
-        self._queues[user_id].append(q)
-        return q
+    def connect(self, redis_url: str) -> None:
+        self._pool = aioredis.ConnectionPool.from_url(redis_url)
 
-    def unsubscribe(self, user_id: str, q: asyncio.Queue):
-        lst = self._queues.get(user_id)
-        if not lst:
-            return
-        if q in lst:
-            lst.remove(q)
-        if not lst:
-            del self._queues[user_id]
+    async def disconnect(self) -> None:
+        if self._pool:
+            await self._pool.disconnect()
+            self._pool = None
 
-    async def publish(self, event: dict, *, audience_user_id: str):
-        data = json.dumps(event)
-        for q in list(self._queues.get(audience_user_id, [])):
+    def _client(self) -> aioredis.Redis:
+        return aioredis.Redis(connection_pool=self._pool)
+
+    async def subscribe(self, user_id: str) -> PubSub:
+        pubsub = self._client().pubsub()
+        await pubsub.subscribe(f"sse:{user_id}")
+        # Drain subscribe acknowledgement so the next get_message sees published data.
+        await pubsub.get_message(ignore_subscribe_messages=False, timeout=2.0)
+        return pubsub
+
+    async def unsubscribe(self, pubsub: PubSub) -> None:
+        await pubsub.unsubscribe()
+        await pubsub.aclose()
+
+    async def publish(self, event: dict, *, audience_user_id: str) -> None:
+        try:
+            client = self._client()
             try:
-                q.put_nowait(data)
-            except asyncio.QueueFull:
-                # Drop messages for slow consumers to avoid blocking others.
-                pass
+                await client.publish(f"sse:{audience_user_id}", json.dumps(event))
+            finally:
+                await client.aclose()
+        except Exception as exc:
+            # Redis being unavailable must not abort ingest, chat, or health pipelines.
+            # The user just won't see the real-time UI update for this event.
+            log.warning("SSE publish failed (Redis unavailable?): %s", exc)
 
-    async def stream(self, q: asyncio.Queue) -> AsyncIterator[str]:
-        # Timeout handler must stay inside the loop; otherwise the first idle
-        # period ends the async generator and the client disconnects (bad for
-        # long Marker runs between agent:converting and agent:ingesting).
+    async def stream(self, pubsub: PubSub, keepalive_timeout: float = 30.0) -> AsyncIterator[str]:
         while True:
-            try:
-                data = await asyncio.wait_for(q.get(), timeout=30)
-                yield f"data: {data}\n\n"
-            except asyncio.TimeoutError:
+            msg = await pubsub.get_message(
+                ignore_subscribe_messages=True, timeout=keepalive_timeout
+            )
+            if msg is not None:
+                data = msg["data"]
+                text = data.decode() if isinstance(data, bytes) else data
+                yield f"data: {text}\n\n"
+            else:
                 yield ": keepalive\n\n"
 
 
