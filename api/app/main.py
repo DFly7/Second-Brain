@@ -1,5 +1,7 @@
 import logging
+import os
 import sys
+from contextlib import asynccontextmanager
 
 import litellm
 from fastapi import FastAPI
@@ -31,7 +33,17 @@ logging.getLogger("LiteLLM").setLevel(logging.WARNING)
 logging.getLogger("litellm").setLevel(logging.WARNING)
 litellm.suppress_debug_info = True
 
-app = FastAPI(title="LLM Wiki")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    from app.sse import broadcaster
+
+    await broadcaster.connect(os.environ.get("REDIS_URL", "redis://redis:6379"))
+    yield
+    await broadcaster.disconnect()
+
+
+app = FastAPI(title="LLM Wiki", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

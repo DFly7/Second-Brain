@@ -116,3 +116,13 @@ async def clean_db():
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     yield
+
+
+@pytest_asyncio.fixture(autouse=True, loop_scope="function")
+async def _connect_sse_broadcaster():
+    """Agents use the module-level broadcaster; pytest ASGI transport does not run app lifespan."""
+    from app.sse import broadcaster
+
+    await broadcaster.connect(os.environ["REDIS_URL"])
+    yield
+    await broadcaster.disconnect()

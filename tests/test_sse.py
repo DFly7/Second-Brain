@@ -8,7 +8,7 @@ from app.sse import SSEBroadcaster
 @pytest_asyncio.fixture(loop_scope="function")
 async def broadcaster():
     b = SSEBroadcaster()
-    b.connect("redis://redis:6379")
+    await b.connect("redis://redis:6379")
     yield b
     await b.disconnect()
 
@@ -58,7 +58,7 @@ async def test_stream_sends_keepalive_when_idle(broadcaster):
 async def test_publish_survives_redis_connection_error():
     from unittest.mock import AsyncMock, patch
     b = SSEBroadcaster()
-    b.connect("redis://redis:6379")
+    await b.connect("redis://redis:6379")
     with patch.object(b, "_client") as mock_client:
         mock_redis = AsyncMock()
         mock_redis.publish.side_effect = ConnectionError("Redis down")

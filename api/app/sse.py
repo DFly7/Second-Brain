@@ -4,6 +4,7 @@ from typing import AsyncIterator
 
 import redis.asyncio as aioredis
 from redis.asyncio.client import PubSub
+from redis.exceptions import RedisError
 
 log = logging.getLogger("app.sse")
 
@@ -14,7 +15,9 @@ class SSEBroadcaster:
     def __init__(self):
         self._pool: aioredis.ConnectionPool | None = None
 
-    def connect(self, redis_url: str) -> None:
+    async def connect(self, redis_url: str) -> None:
+        if self._pool is not None:
+            await self.disconnect()
         self._pool = aioredis.ConnectionPool.from_url(redis_url)
 
     async def disconnect(self) -> None:
@@ -23,13 +26,16 @@ class SSEBroadcaster:
             self._pool = None
 
     def _client(self) -> aioredis.Redis:
+        if self._pool is None:
+            raise RuntimeError("SSEBroadcaster not connected; call connect() first")
         return aioredis.Redis(connection_pool=self._pool)
 
     async def subscribe(self, user_id: str) -> PubSub:
         pubsub = self._client().pubsub()
         await pubsub.subscribe(f"sse:{user_id}")
-        # Drain subscribe acknowledgement so the next get_message sees published data.
-        await pubsub.get_message(ignore_subscribe_messages=False, timeout=2.0)
+        # Wait for the subscribe acknowledgement so a publish that follows immediately
+        # is not dropped (subscription may not be active until ack is processed).
+        await pubsub.get_message(ignore_subscribe_messages=False, timeout=0.2)
         return pubsub
 
     async def unsubscribe(self, pubsub: PubSub) -> None:
@@ -43,10 +49,10 @@ class SSEBroadcaster:
                 await client.publish(f"sse:{audience_user_id}", json.dumps(event))
             finally:
                 await client.aclose()
-        except Exception as exc:
-            # Redis being unavailable must not abort ingest, chat, or health pipelines.
+        except (OSError, ConnectionError, TimeoutError, RedisError) as exc:
+            # Transient Redis/network failures must not abort ingest, chat, or health pipelines.
             # The user just won't see the real-time UI update for this event.
-            log.warning("SSE publish failed (Redis unavailable?): %s", exc)
+            log.warning("SSE publish failed (Redis blip?): %s", exc)
 
     async def stream(self, pubsub: PubSub, keepalive_timeout: float = 30.0) -> AsyncIterator[str]:
         while True:
