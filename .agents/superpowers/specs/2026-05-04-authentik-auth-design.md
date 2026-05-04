@@ -31,15 +31,17 @@ Two completely independent stacks. The only connection between them is FastAPI f
 
 ## Login Flow (OIDC Authorization Code + PKCE)
 
-1. User visits `smoothstudy.ai`, frontend sees no token in localStorage
-2. Frontend generates PKCE `code_verifier` + `code_challenge`, stores verifier in `sessionStorage`
-3. Frontend redirects to `https://auth.smoothstudy.ai/application/o/authorize/` with `client_id`, `redirect_uri`, `response_type=code`, `scope=openid profile email`, `code_challenge`
-4. User logs in on Authentik's UI
-5. Authentik redirects to `https://smoothstudy.ai/callback?code=...`
-6. Frontend extracts `code`, retrieves `code_verifier` from `sessionStorage`
-7. Frontend POSTs to `https://auth.smoothstudy.ai/application/o/token/` — exchanges code + verifier for JWT
-8. Frontend stores JWT in `localStorage`, all API calls send it as `Authorization: Bearer <token>`
-9. FastAPI validates JWT signature using Authentik's cached JWKS public keys
+1. User visits `smoothstudy.ai`, frontend sees no auth cookie → generates PKCE `code_verifier` + `code_challenge`, stores verifier in `sessionStorage`
+2. Frontend redirects to `https://auth.smoothstudy.ai/application/o/authorize/` with `client_id`, `redirect_uri`, `response_type=code`, `scope=openid profile email offline_access`, `code_challenge`
+3. User logs in on Authentik's UI
+4. Authentik redirects to `https://smoothstudy.ai/callback?code=...`
+5. Frontend sends `code` + `code_verifier` to FastAPI `POST /auth/callback`
+6. FastAPI exchanges them server-side with Authentik's token endpoint — receives `access_token` + `refresh_token`
+7. FastAPI sets both as **HttpOnly, Secure, SameSite=Strict cookies** in the HTTP response — browser stores them, JavaScript never sees the raw tokens
+8. All subsequent API calls automatically include the cookies (browser attaches them)
+9. FastAPI validates the access token cookie against Authentik's cached JWKS keys on every request
+10. When access token expires → frontend calls `POST /auth/refresh` → FastAPI uses the refresh token cookie to silently get new tokens from Authentik → sets new cookies
+11. If refresh token is also expired → frontend redirects to Authentik to re-authenticate
 
 ---
 
@@ -87,11 +89,11 @@ CLOUDFLARE_TUNNEL_TOKEN=     # Tunnel B token from Cloudflare Zero Trust dashboa
 ### Backend
 
 **`api/app/auth.py`** — complete rewrite:
-- Remove `/auth/login` endpoint entirely
-- Remove hardcoded credential check
-- `get_current_user` fetches Authentik JWKS keys from `AUTHENTIK_JWKS_URI` (cached, not fetched per-request)
-- Validates JWT signature (RS256) and expiry using those keys
-- Returns `payload.get("sub")` — the stable Authentik user UUID
+- Remove `/auth/login` endpoint entirely (Authentik owns login)
+- Add `POST /auth/callback` — receives `code` + `code_verifier` from frontend, exchanges with Authentik token endpoint server-side, sets `access_token` and `refresh_token` as HttpOnly, Secure, SameSite=Strict cookies
+- Add `POST /auth/refresh` — reads `refresh_token` cookie, calls Authentik token endpoint, sets new cookies
+- Add `POST /auth/logout` — clears both cookies
+- `get_current_user` reads `access_token` cookie (not Authorization header), validates JWT signature (RS256) against Authentik's cached JWKS keys, returns `payload.get("sub")`
 - Uses `authlib` for JWKS URL fetching and RS256 validation (`authlib` has a built-in `JsonWebKey` JWKS client; `python-jose` can validate RS256 but has no JWKS URL fetcher)
 - New dependency: `authlib` added to `api/requirements.txt`
 
@@ -100,21 +102,21 @@ CLOUDFLARE_TUNNEL_TOKEN=     # Tunnel B token from Cloudflare Zero Trust dashboa
 authentik_issuer: str
 authentik_jwks_uri: str
 authentik_client_id: str
+authentik_client_secret: str = ""  # empty for public PKCE clients
 ```
 
-**`api/app/main.py`** — update CORS `allow_origins` to include `https://smoothstudy.ai`.
+**`api/app/main.py`** — update CORS: add `https://smoothstudy.ai` to `allow_origins`, set `allow_credentials=True` (required for cookies to be sent cross-origin).
 
 ### Frontend
 
 **`frontend/src/App.tsx`** — remove custom login form. On load:
-- If `?code=` param in URL → OIDC callback: exchange code for token, store in localStorage, redirect to `/`
-- If no token in localStorage → generate PKCE, redirect to Authentik authorize endpoint
-- If token present → render `<Layout />` as normal
-- On any API 401 response → clear localStorage token, redirect to Authentik (handles expiry without a refresh token flow)
+- If `?code=` param in URL → OIDC callback: POST `code` + `code_verifier` to `/api/auth/callback`, then redirect to `/`
+- If unauthenticated (no session / 401) → generate PKCE, redirect to Authentik authorize endpoint
+- If authenticated → render `<Layout />` as normal
 
-**`frontend/src/api/client.ts`** — remove `login()` function. All other functions unchanged (token still read from localStorage, sent as Bearer).
+**`frontend/src/api/client.ts`** — remove `login()` function. Remove all `Authorization: Bearer` header logic (cookies are sent automatically by the browser). All fetch calls add `credentials: 'include'` so cookies are included. On 401 response → attempt `/api/auth/refresh`, retry once, if still 401 → redirect to Authentik.
 
-**`frontend/src/auth.ts`** (new small module) — PKCE helpers: `generateVerifier()`, `generateChallenge()`, `buildAuthorizeUrl()`, `exchangeCode()`.
+**`frontend/src/auth.ts`** (new small module) — PKCE helpers: `generateVerifier()`, `generateChallenge()`, `buildAuthorizeUrl()`. No token storage — the browser handles cookies.
 
 ### Vite env vars (`.env` additions)
 ```env
@@ -178,7 +180,5 @@ This yields:
 - All FastAPI route logic — unchanged
 - `get_current_user` dependency injection pattern — unchanged
 - Workspace/page/chat data model — unchanged
-- Token storage in `localStorage` — unchanged
-- `Authorization: Bearer` header pattern — unchanged
-- All other `client.ts` functions — unchanged
+- All other `client.ts` functions — unchanged (except adding `credentials: 'include'`)
 - Docker Compose for Second Brain — unchanged (except CORS env and removing old auth env vars)
