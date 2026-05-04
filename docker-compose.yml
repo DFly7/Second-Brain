@@ -76,6 +76,7 @@ services:
       REDIS_URL: redis://redis:6379
       S3_ENDPOINT: http://minio:9000
       MARKER_BACKEND: datalab
+      LOG_FORMAT: console
     ports:
       - "8000:8000"
     volumes:
