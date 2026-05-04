@@ -1,36 +1,27 @@
-import json
-import logging
-
+import structlog
+import structlog.testing
 import pytest
-from httpx import ASGITransport, AsyncClient
+from httpx import AsyncClient, ASGITransport
 
+from app.logging_config import configure_logging
 from app.main import app
+import app.middleware as request_middleware
 
 
 @pytest.mark.asyncio
-async def test_request_middleware_logs_request(caplog):
-    # structlog is configured with stdlib LoggerFactory; capture_logs() does not see those events.
-    with caplog.at_level(logging.INFO):
+async def test_request_middleware_logs_request():
+    configure_logging()
+    with structlog.testing.capture_logs() as cap:
+        # Rebind so this logger uses the capture_logs processor chain (module log may be stale).
+        request_middleware.log = structlog.get_logger()
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/health")
 
     assert response.status_code == 200
-    request_logs = []
-    for r in caplog.records:
-        msg = getattr(r, "msg", None)
-        if isinstance(msg, dict) and msg.get("event") == "request":
-            request_logs.append(msg)
-            continue
-        try:
-            data = json.loads(r.getMessage())
-        except (TypeError, json.JSONDecodeError):
-            continue
-        if isinstance(data, dict) and data.get("event") == "request":
-            request_logs.append(data)
-
+    request_logs = [e for e in cap if e.get("event") == "request"]
     assert len(request_logs) == 1
-    log_entry = request_logs[0]
-    assert log_entry["method"] == "GET"
-    assert log_entry["path"] == "/health"
-    assert log_entry["status"] == 200
-    assert "latency_ms" in log_entry
+    log = request_logs[0]
+    assert log["method"] == "GET"
+    assert log["path"] == "/health"
+    assert log["status"] == 200
+    assert "latency_ms" in log

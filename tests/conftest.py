@@ -27,10 +27,10 @@ os.environ["S3_BUCKET"] = "wiki-test"
 os.environ.setdefault("S3_ACCESS_KEY", "minioadmin")
 os.environ.setdefault("VECTOR_SEARCH_ENABLED", "true")
 os.environ.setdefault("REDIS_URL", "redis://redis:6379")
+# Compose .env may set bypass; JWT routes in tests need decode, not dev cookie-only.
+os.environ["DEV_AUTH_BYPASS"] = "false"
 os.environ.setdefault("MARKER_URL", "http://marker:8001")
 os.environ.setdefault("VISION_MODEL", "")
-# JWT-based route tests issue real-looking tokens — dev bypass rejects them unless token == "dev".
-os.environ["DEV_AUTH_BYPASS"] = "false"
 
 assert "test" in os.environ["DATABASE_URL"], (
     f"Refusing to run tests against non-test DB: {os.environ['DATABASE_URL']}"
