@@ -1,3 +1,4 @@
+import asyncio
 import os
 import time
 
@@ -18,6 +19,10 @@ _jwks_cache = None
 _jwks_fetched_at: float = 0.0
 _JWKS_TTL = 300  # 5 minutes
 
+# Authentik is occasionally slow; default httpx timeouts are tight and caused ReadTimeouts in prod.
+_HTTP_TIMEOUT = httpx.Timeout(20.0, connect=10.0)
+_JWKS_FETCH_RETRIES = 2
+
 
 def reset_jwks_cache() -> None:
     global _jwks_cache, _jwks_fetched_at
@@ -33,11 +38,29 @@ def _cookie_secure() -> bool:
     return settings.authentik_redirect_uri.startswith("https://")
 
 
-async def _fetch_jwks():
-    async with httpx.AsyncClient() as client:
+async def _fetch_jwks_once():
+    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
         r = await client.get(settings.authentik_jwks_uri)
         r.raise_for_status()
-    return JsonWebKey.import_key_set(r.json())
+    data = r.json()
+    if not isinstance(data, dict) or not data.get("keys"):
+        raise ValueError("JWKS response missing keys")
+    return JsonWebKey.import_key_set(data)
+
+
+async def _fetch_jwks():
+    last: BaseException | None = None
+    for attempt in range(_JWKS_FETCH_RETRIES):
+        try:
+            return await _fetch_jwks_once()
+        except (httpx.HTTPError, JoseError, ValueError, TypeError) as e:
+            last = e
+            reset_jwks_cache()
+            log.warning("jwks_fetch_failed", attempt=attempt, error=str(e))
+            if attempt + 1 < _JWKS_FETCH_RETRIES:
+                await asyncio.sleep(0.35 * (attempt + 1))
+    log.error("jwks_unavailable_after_retries", error=str(last))
+    raise HTTPException(status_code=503, detail="Authentication keys unavailable")
 
 
 async def _get_jwks():
@@ -54,15 +77,16 @@ async def _decode_token(token: str) -> dict:
         claims = jwt.decode(token, jwks)
         claims.validate()
         payload = dict(claims)
-    except JoseError:
-        # Key may have rotated — bust cache and retry once
+    except (JoseError, ValueError):
+        # Key may have rotated, or JWKS was incomplete — bust cache and retry once.
+        # authlib can raise ValueError('Invalid JSON Web Key Set') for kid mismatch; don't 500.
         reset_jwks_cache()
         try:
             jwks = await _get_jwks()
             claims = jwt.decode(token, jwks)
             claims.validate()
             payload = dict(claims)
-        except JoseError:
+        except (JoseError, ValueError):
             raise HTTPException(status_code=401, detail="Invalid token")
     if payload.get("iss") != settings.authentik_issuer:
         raise HTTPException(status_code=401, detail="Invalid token")
@@ -164,17 +188,21 @@ async def auth_dev_login(response: Response):
 
 @router.post("/callback")
 async def auth_callback(req: CallbackRequest, response: Response):
-    async with httpx.AsyncClient() as client:
-        r = await client.post(
-            settings.authentik_token_url,
-            data={
-                "grant_type": "authorization_code",
-                "client_id": settings.authentik_client_id,
-                "code": req.code,
-                "code_verifier": req.code_verifier,
-                "redirect_uri": settings.authentik_redirect_uri,
-            },
-        )
+    try:
+        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+            r = await client.post(
+                settings.authentik_token_url,
+                data={
+                    "grant_type": "authorization_code",
+                    "client_id": settings.authentik_client_id,
+                    "code": req.code,
+                    "code_verifier": req.code_verifier,
+                    "redirect_uri": settings.authentik_redirect_uri,
+                },
+            )
+    except httpx.HTTPError as e:
+        log.warning("auth_callback_http_error", error=str(e))
+        raise HTTPException(status_code=503, detail="Authentication service unreachable")
     if r.status_code != 200:
         raise HTTPException(status_code=401, detail="Token exchange failed")
     tokens = r.json()
@@ -187,15 +215,19 @@ async def auth_refresh(request: Request, response: Response):
     refresh_token = request.cookies.get("refresh_token")
     if not refresh_token:
         raise HTTPException(status_code=401, detail="No refresh token")
-    async with httpx.AsyncClient() as client:
-        r = await client.post(
-            settings.authentik_token_url,
-            data={
-                "grant_type": "refresh_token",
-                "client_id": settings.authentik_client_id,
-                "refresh_token": refresh_token,
-            },
-        )
+    try:
+        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+            r = await client.post(
+                settings.authentik_token_url,
+                data={
+                    "grant_type": "refresh_token",
+                    "client_id": settings.authentik_client_id,
+                    "refresh_token": refresh_token,
+                },
+            )
+    except httpx.HTTPError as e:
+        log.warning("auth_refresh_http_error", error=str(e))
+        raise HTTPException(status_code=503, detail="Authentication service unreachable")
     if r.status_code != 200:
         raise HTTPException(status_code=401, detail="Refresh failed")
     tokens = r.json()

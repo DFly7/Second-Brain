@@ -1,10 +1,44 @@
 const BASE = '/api'
 
+/** One in-flight refresh so parallel 401s don't stampede Authentik. */
+let refreshInflight: Promise<Response> | null = null
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(res => setTimeout(res, ms))
+}
+
+/**
+ * POST /auth/refresh with backoff — covers brief Authentik/API outages that used to
+ * force reload + full OAuth (see smoothstudy poll every 10s + single-shot refresh).
+ */
+function postRefreshWithRetries(): Promise<Response> {
+  if (refreshInflight !== null) return refreshInflight
+  const p = (async () => {
+    try {
+      let last: Response | undefined
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          last = await fetch(`${BASE}/auth/refresh`, { method: 'POST', credentials: 'include' })
+          if (last.ok) return last
+        } catch {
+          last = undefined
+        }
+        if (attempt < 2) await sleep(450 * (attempt + 1))
+      }
+      return last ?? new Response(null, { status: 401 })
+    } finally {
+      if (refreshInflight === p) refreshInflight = null
+    }
+  })()
+  refreshInflight = p
+  return p
+}
+
 async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
   const opts: RequestInit = { ...options, credentials: 'include' }
   let r = await fetch(url, opts)
   if (r.status !== 401) return r
-  const refresh = await fetch(`${BASE}/auth/refresh`, { method: 'POST', credentials: 'include' })
+  const refresh = await postRefreshWithRetries()
   if (!refresh.ok) {
     window.location.href = '/'
     return r
