@@ -1,20 +1,38 @@
 import os
 from contextlib import asynccontextmanager
+from urllib.parse import urlparse, urlunparse
 
 import litellm
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.logging_config import configure_logging
-from app.middleware import RequestLoggingMiddleware
 
 configure_logging()
 
 import structlog  # noqa: E402 — must import after configure_logging()
+from app.middleware import RequestLoggingMiddleware  # noqa: E402
 
 litellm.suppress_debug_info = True
 
 log = structlog.get_logger()
+
+
+def _sanitize_redis_url_for_log(url: str) -> str:
+    parsed = urlparse(url)
+    if not parsed.password:
+        return url
+    user = parsed.username or ""
+    host = parsed.hostname or ""
+    port = f":{parsed.port}" if parsed.port else ""
+    if user:
+        netloc = f"{user}:****@{host}{port}"
+    elif host:
+        netloc = f":****@{host}{port}"
+    else:
+        netloc = ":****"
+    sanitized = parsed._replace(netloc=netloc)
+    return urlunparse(sanitized)
 
 from app.auth import router as auth_router  # noqa: E402
 from app.routes.activity import router as activity_router  # noqa: E402
@@ -29,7 +47,7 @@ async def lifespan(app: FastAPI):
     from app.sse import broadcaster
 
     redis_url = os.environ.get("REDIS_URL", "redis://redis:6379")
-    log.info("startup", redis_url=redis_url)
+    log.info("startup", redis_url=_sanitize_redis_url_for_log(redis_url))
     await broadcaster.connect(redis_url)
     yield
     await broadcaster.disconnect()
