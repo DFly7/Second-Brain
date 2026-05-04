@@ -92,14 +92,6 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
-
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    restart: unless-stopped
-    command: tunnel --no-autoupdate run --url http://frontend:5173 --token ${CLOUDFLARE_TUNNEL_TOKEN}
-    depends_on:
-      - frontend
 
   # --- Local Authentik (alternative to DEV_AUTH_BYPASS) ---
   # Uncomment these three services to run authentik locally.

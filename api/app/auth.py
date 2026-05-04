@@ -28,6 +28,8 @@ def reset_jwks_cache() -> None:
 def _cookie_secure() -> bool:
     if os.environ.get("PYTEST_VERSION") is not None:
         return False
+    if settings.dev_auth_bypass:
+        return False
     return settings.authentik_redirect_uri.startswith("https://")
 
 
