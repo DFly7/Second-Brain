@@ -124,14 +124,14 @@ async def list_sessions(
 
 @router.get("/sse")
 async def sse_stream(user: str = Depends(get_current_user)):
-    q = broadcaster.subscribe(user)
+    pubsub = await broadcaster.subscribe(user)
 
     async def event_gen():
         try:
-            async for chunk in broadcaster.stream(q):
+            async for chunk in broadcaster.stream(pubsub):
                 yield chunk
         finally:
-            broadcaster.unsubscribe(user, q)
+            await broadcaster.unsubscribe(pubsub)
 
     return StreamingResponse(
         event_gen(),
