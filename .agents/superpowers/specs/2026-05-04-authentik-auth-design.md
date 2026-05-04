@@ -93,6 +93,7 @@ CLOUDFLARE_TUNNEL_TOKEN=     # Tunnel B token from Cloudflare Zero Trust dashboa
 - Add `POST /auth/callback` — receives `code` + `code_verifier` from frontend, exchanges with Authentik token endpoint server-side, sets `access_token` and `refresh_token` as HttpOnly, Secure, SameSite=Strict cookies
 - Add `POST /auth/refresh` — reads `refresh_token` cookie, calls Authentik token endpoint, sets new cookies
 - Add `POST /auth/logout` — clears both cookies
+- Add `GET /auth/me` — protected endpoint, returns `{ sub, email }` from the validated token. Frontend calls this on boot to determine auth state — if 200 the user is logged in, if 401 they are not. JavaScript never reads the cookie directly.
 - `get_current_user` reads `access_token` cookie (not Authorization header), validates JWT signature (RS256) against Authentik's cached JWKS keys, returns `payload.get("sub")`
 - Uses `authlib` for JWKS URL fetching and RS256 validation (`authlib` has a built-in `JsonWebKey` JWKS client; `python-jose` can validate RS256 but has no JWKS URL fetcher)
 - New dependency: `authlib` added to `api/requirements.txt`
@@ -110,9 +111,11 @@ authentik_client_secret: str = ""  # empty for public PKCE clients
 ### Frontend
 
 **`frontend/src/App.tsx`** — remove custom login form. On load:
-- If `?code=` param in URL → OIDC callback: POST `code` + `code_verifier` to `/api/auth/callback`, then redirect to `/`
-- If unauthenticated (no session / 401) → generate PKCE, redirect to Authentik authorize endpoint
-- If authenticated → render `<Layout />` as normal
+- If `?code=` param in URL → OIDC callback: POST `code` + `code_verifier` to `POST /api/auth/callback`, then redirect to `/`
+- Otherwise → call `GET /api/auth/me` to check auth state (browser sends cookie automatically via `credentials: 'include'`)
+  - 200 → user is authenticated, render `<Layout />`
+  - 401 → attempt `POST /api/auth/refresh` once; if that succeeds render `<Layout />`, if it also 401s → redirect to Authentik
+- No localStorage, no token inspection — auth state is determined entirely by server responses
 
 **`frontend/src/api/client.ts`** — remove `login()` function. Remove all `Authorization: Bearer` header logic (cookies are sent automatically by the browser). All fetch calls add `credentials: 'include'` so cookies are included. On 401 response → attempt `/api/auth/refresh`, retry once, if still 401 → redirect to Authentik.
 
