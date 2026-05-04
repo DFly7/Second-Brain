@@ -29,6 +29,15 @@ services:
       timeout: 5s
       retries: 3
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   # Local marker — uncomment and set MARKER_BACKEND=local on api when using self-hosted conversion
   # marker:
   #   build:
@@ -52,10 +61,13 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       # marker:
       #   condition: service_healthy
     env_file: .env
     environment:
+      REDIS_URL: redis://redis:6379
       S3_ENDPOINT: http://minio:9000
       MARKER_BACKEND: datalab
     restart: unless-stopped

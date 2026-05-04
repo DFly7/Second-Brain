@@ -34,6 +34,15 @@ services:
       timeout: 5s
       retries: 3
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   # Local marker service — uncomment and set MARKER_BACKEND=local in api env to use instead of Datalab
   # marker:
   #   build: ./marker_service
@@ -57,11 +66,14 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       # marker:           # uncomment when MARKER_BACKEND=local
       #   condition: service_healthy
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://wiki:wiki@db:5432/wiki
+      REDIS_URL: redis://redis:6379
       S3_ENDPOINT: http://minio:9000
       MARKER_BACKEND: datalab
     ports:
