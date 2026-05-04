@@ -1,4 +1,4 @@
-const AUTHENTIK_URL = import.meta.env.VITE_AUTHENTIK_URL as string
+const AUTHENTIK_URL = (import.meta.env.VITE_AUTHENTIK_URL as string).replace(/\/$/, '')
 const CLIENT_ID = import.meta.env.VITE_AUTHENTIK_CLIENT_ID as string
 const REDIRECT_URI = import.meta.env.VITE_REDIRECT_URI as string
 
@@ -18,6 +18,14 @@ export async function generateChallenge(verifier: string): Promise<string> {
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
     .replace(/=/g, '')
+}
+
+export async function logout(): Promise<void> {
+  await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+  const params = new URLSearchParams({
+    post_logout_redirect_uri: REDIRECT_URI,
+  })
+  window.location.href = `${AUTHENTIK_URL}/application/o/${CLIENT_ID}/end-session/?${params}`
 }
 
 export async function redirectToAuthentik(): Promise<void> {

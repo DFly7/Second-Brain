@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import type React from 'react'
+import { logout } from '../auth'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import WikiSidebar from './WikiSidebar'
 import WikiContent from './WikiContent'
@@ -143,6 +144,7 @@ export default function Layout() {
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           <button type="button" onClick={() => setShowIngest(true)} style={topBtnStyle}>+ Ingest</button>
           <button type="button" onClick={() => setShowActivity(!showActivity)} style={topBtnStyle}>Activity</button>
+          <button type="button" onClick={logout} style={topBtnStyle}>Sign out</button>
         </div>
       </div>
 
