@@ -13,7 +13,8 @@ function sleep(ms: number): Promise<void> {
  */
 function postRefreshWithRetries(): Promise<Response> {
   if (refreshInflight !== null) return refreshInflight
-  const p = (async () => {
+  const promiseRef: { current: Promise<Response> | null } = { current: null }
+  promiseRef.current = (async () => {
     try {
       let last: Response | undefined
       for (let attempt = 0; attempt < 3; attempt++) {
@@ -27,11 +28,11 @@ function postRefreshWithRetries(): Promise<Response> {
       }
       return last ?? new Response(null, { status: 401 })
     } finally {
-      if (refreshInflight === p) refreshInflight = null
+      if (refreshInflight === promiseRef.current) refreshInflight = null
     }
   })()
-  refreshInflight = p
-  return p
+  refreshInflight = promiseRef.current
+  return promiseRef.current
 }
 
 async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
