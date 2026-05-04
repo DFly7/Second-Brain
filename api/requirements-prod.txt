@@ -12,6 +12,7 @@ passlib[bcrypt]==1.7.4
 python-multipart==0.0.12
 boto3==1.35.0
 httpx==0.28.1
+structlog>=24.0.0
 redis[asyncio]==5.2.1
 trafilatura==1.12.1
 pypdf==5.1.0
