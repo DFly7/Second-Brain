@@ -4,8 +4,8 @@ import Layout from './components/Layout'
 
 type AuthState = 'loading' | 'authenticated' | 'unauthenticated'
 
-// Module-level flag prevents React StrictMode's double-invoke from firing
-// the OIDC callback twice (second run has no verifier and would 401).
+// Module-level flag: Strict Mode runs the auth effect twice. During POST /auth/callback the second
+// pass must not call /me (cookies not set yet) or duplicate the token exchange.
 let _callbackInflight = false
 
 export default function App() {
@@ -19,19 +19,30 @@ export default function App() {
       if (_callbackInflight) return
       _callbackInflight = true
       const verifier = sessionStorage.getItem('pkce_verifier') ?? ''
-      sessionStorage.removeItem('pkce_verifier')
-      window.history.replaceState({}, '', '/')
       fetch('/api/auth/callback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ code, code_verifier: verifier }),
-      }).then(r => {
-        _callbackInflight = false
-        setAuthState(r.ok ? 'authenticated' : 'unauthenticated')
       })
+        .then(r => {
+          _callbackInflight = false
+          sessionStorage.removeItem('pkce_verifier')
+          window.history.replaceState({}, '', '/')
+          setAuthState(r.ok ? 'authenticated' : 'unauthenticated')
+        })
+        .catch(() => {
+          _callbackInflight = false
+          sessionStorage.removeItem('pkce_verifier')
+          window.history.replaceState({}, '', '/')
+          setAuthState('unauthenticated')
+        })
       return
     }
+
+    // Strict Mode runs this effect twice: first pass clears the URL during callback handling,
+    // second pass would hit /me before cookies exist and redirect back to Authentik.
+    if (_callbackInflight) return
 
     fetch('/api/auth/me', { credentials: 'include' }).then(async r => {
       if (r.ok) { setAuthState('authenticated'); return }
