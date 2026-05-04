@@ -23,12 +23,20 @@ function AuthGateSplash({ label }: { label: string }) {
   )
 }
 
+function hasLoggedInCookie() {
+  return document.cookie.split(';').some(c => c.trim().startsWith('logged_in='))
+}
+
 // Module-level flag: Strict Mode runs the auth effect twice. During POST /auth/callback the second
 // pass must not call /me (cookies not set yet) or duplicate the token exchange.
 let _callbackInflight = false
 
 export default function App() {
-  const [authState, setAuthState] = useState<AuthState>('loading')
+  const hasCode = new URLSearchParams(window.location.search).has('code')
+  // If there's no session cookie and no OIDC callback, skip async checks and redirect immediately.
+  const [authState, setAuthState] = useState<AuthState>(
+    !hasCode && !hasLoggedInCookie() ? 'unauthenticated' : 'loading'
+  )
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -58,6 +66,8 @@ export default function App() {
         })
       return
     }
+
+    if (!hasLoggedInCookie()) return  // already initialised as unauthenticated above
 
     // Strict Mode runs this effect twice: first pass clears the URL during callback handling,
     // second pass would hit /me before cookies exist and redirect back to Authentik.

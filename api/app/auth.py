@@ -83,6 +83,14 @@ def _set_auth_cookies(
         secure=sec,
         samesite="strict",
     )
+    # JS-readable flag so the frontend can skip async auth checks when not logged in
+    response.set_cookie(
+        "logged_in",
+        "1",
+        httponly=False,
+        secure=sec,
+        samesite="strict",
+    )
 
 
 def _clear_auth_cookies(response: Response) -> None:
@@ -99,6 +107,13 @@ def _clear_auth_cookies(response: Response) -> None:
         path="/",
         secure=sec,
         httponly=True,
+        samesite="strict",
+    )
+    response.delete_cookie(
+        "logged_in",
+        path="/",
+        secure=sec,
+        httponly=False,
         samesite="strict",
     )
 
