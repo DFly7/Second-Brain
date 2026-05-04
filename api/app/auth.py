@@ -118,6 +118,8 @@ _REFRESH_MAX_AGE = 30 * 24 * 3600  # 30 days — match typical authentik refresh
 def _set_auth_cookies(
     response: Response, access_token: str, refresh_token: str, access_token_ttl: int | None = None
 ) -> None:
+    import time
+
     sec = _cookie_secure()
     response.set_cookie(
         "access_token",
@@ -146,6 +148,17 @@ def _set_auth_cookies(
         samesite="strict",
         max_age=_REFRESH_MAX_AGE,
     )
+    # JS-readable expiry hint so the frontend can skip the /me round-trip on page load when
+    # the access token is still fresh. Falls back to the normal refresh flow if absent/expired.
+    if access_token_ttl:
+        response.set_cookie(
+            "token_expires_at",
+            str(int(time.time()) + access_token_ttl),
+            httponly=False,
+            secure=sec,
+            samesite="strict",
+            max_age=access_token_ttl,
+        )
 
 
 def _clear_auth_cookies(response: Response) -> None:
@@ -166,6 +179,13 @@ def _clear_auth_cookies(response: Response) -> None:
     )
     response.delete_cookie(
         "logged_in",
+        path="/",
+        secure=sec,
+        httponly=False,
+        samesite="strict",
+    )
+    response.delete_cookie(
+        "token_expires_at",
         path="/",
         secure=sec,
         httponly=False,

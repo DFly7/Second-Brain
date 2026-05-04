@@ -27,16 +27,28 @@ function hasLoggedInCookie() {
   return document.cookie.split(';').some(c => c.trim().startsWith('logged_in='))
 }
 
+/** Returns true if the access token expiry cookie exists and the token hasn't expired yet. */
+function isAccessTokenFresh() {
+  const raw = document.cookie.split(';').find(c => c.trim().startsWith('token_expires_at='))
+  if (!raw) return false
+  const expiresAt = parseInt(raw.split('=')[1], 10)
+  return Number.isFinite(expiresAt) && expiresAt > Math.floor(Date.now() / 1000)
+}
+
 // Module-level flag: Strict Mode runs the auth effect twice. During POST /auth/callback the second
 // pass must not call /me (cookies not set yet) or duplicate the token exchange.
 let _callbackInflight = false
 
 export default function App() {
   const hasCode = new URLSearchParams(window.location.search).has('code')
-  // If there's no session cookie and no OIDC callback, skip async checks and redirect immediately.
-  const [authState, setAuthState] = useState<AuthState>(
-    !hasCode && !hasLoggedInCookie() ? 'unauthenticated' : 'loading'
-  )
+  // Start authenticated immediately if we know the token is still fresh — eliminates the
+  // "Signing you in…" splash on normal return visits. Fall back to loading for OAuth callbacks,
+  // expired tokens, or missing cookies so the async check/refresh can run.
+  const [authState, setAuthState] = useState<AuthState>(() => {
+    if (!hasCode && !hasLoggedInCookie()) return 'unauthenticated'
+    if (!hasCode && isAccessTokenFresh()) return 'authenticated'
+    return 'loading'
+  })
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -84,6 +96,15 @@ export default function App() {
     // Strict Mode runs this effect twice: first pass clears the URL during callback handling,
     // second pass would hit /me before cookies exist and redirect back to Authentik.
     if (_callbackInflight) return
+
+    if (isAccessTokenFresh()) {
+      // Token is fresh — already started as authenticated. Silently revalidate in the background
+      // so a clock-skewed or otherwise invalid cookie gets caught without blocking the UI.
+      fetch('/api/auth/me', { credentials: 'include' }).then(r => {
+        if (!r.ok) setAuthState('unauthenticated')
+      })
+      return
+    }
 
     fetch('/api/auth/me', { credentials: 'include' }).then(async r => {
       if (r.ok) { setAuthState('authenticated'); return }
