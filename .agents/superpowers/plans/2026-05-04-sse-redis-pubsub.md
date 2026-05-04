@@ -180,6 +180,20 @@ async def test_stream_sends_keepalive_when_idle(broadcaster):
 
 
 @pytest.mark.asyncio
+async def test_publish_survives_redis_connection_error():
+    from unittest.mock import AsyncMock, patch
+    b = SSEBroadcaster()
+    b.connect("redis://redis:6379")
+    with patch.object(b, "_client") as mock_client:
+        mock_redis = AsyncMock()
+        mock_redis.publish.side_effect = ConnectionError("Redis down")
+        mock_client.return_value = mock_redis
+        # Must not raise — core pipeline callers must not crash on Redis blip
+        await b.publish({"event": "agent:done"}, audience_user_id="user-x")
+    await b.disconnect()
+
+
+@pytest.mark.asyncio
 async def test_multiple_subscribers_same_user_both_receive(broadcaster):
     pubsub_a = await broadcaster.subscribe("user-multi")
     pubsub_b = await broadcaster.subscribe("user-multi")
@@ -198,7 +212,7 @@ async def test_multiple_subscribers_same_user_both_receive(broadcaster):
 ```bash
 docker compose run --rm api pytest tests/test_sse.py -v
 ```
-Expected: 5 failures — `SSEBroadcaster` has no `connect` method yet.
+Expected: 6 failures — `SSEBroadcaster` has no `connect` method yet.
 
 ---
 
@@ -211,10 +225,13 @@ Expected: 5 failures — `SSEBroadcaster` has no `connect` method yet.
 
 ```python
 import json
+import logging
 from typing import AsyncIterator
 
 import redis.asyncio as aioredis
 from redis.asyncio.client import PubSub
+
+log = logging.getLogger("app.sse")
 
 
 class SSEBroadcaster:
@@ -244,8 +261,13 @@ class SSEBroadcaster:
         await pubsub.aclose()
 
     async def publish(self, event: dict, *, audience_user_id: str) -> None:
-        client = self._client()
-        await client.publish(f"sse:{audience_user_id}", json.dumps(event))
+        try:
+            client = self._client()
+            await client.publish(f"sse:{audience_user_id}", json.dumps(event))
+        except Exception as exc:
+            # Redis being unavailable must not abort ingest, chat, or health pipelines.
+            # The user just won't see the real-time UI update for this event.
+            log.warning("SSE publish failed (Redis unavailable?): %s", exc)
 
     async def stream(self, pubsub: PubSub, keepalive_timeout: float = 30.0) -> AsyncIterator[str]:
         while True:
@@ -266,7 +288,7 @@ broadcaster = SSEBroadcaster()
 ```bash
 docker compose run --rm api pytest tests/test_sse.py -v
 ```
-Expected: 5 tests pass.
+Expected: 6 tests pass.
 
 - [ ] **Step 3: Run full test suite to confirm no regressions**
 
