@@ -1,12 +1,12 @@
 import json
-import logging
 from typing import AsyncIterator
 
 import redis.asyncio as aioredis
+import structlog
 from redis.asyncio.client import PubSub
 from redis.exceptions import RedisError
 
-log = logging.getLogger("app.sse")
+log = structlog.get_logger()
 
 
 class SSEBroadcaster:
@@ -52,7 +52,7 @@ class SSEBroadcaster:
         except (OSError, ConnectionError, TimeoutError, RedisError) as exc:
             # Transient Redis/network failures must not abort ingest, chat, or health pipelines.
             # The user just won't see the real-time UI update for this event.
-            log.warning("SSE publish failed (Redis blip?): %s", exc)
+            log.warning("sse_publish_failed", error=str(exc))
 
     async def stream(self, pubsub: PubSub, keepalive_timeout: float = 30.0) -> AsyncIterator[str]:
         while True:

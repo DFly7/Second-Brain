@@ -1,7 +1,7 @@
 import base64
-import logging
 import uuid
 
+import structlog
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -16,7 +16,7 @@ from app.storage import upload_file
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
 
-_log = logging.getLogger(__name__)
+_log = structlog.get_logger()
 
 MARKER_TYPES = {"pdf", "docx", "doc", "pptx", "ppt", "xlsx", "xls", "png", "jpg", "jpeg", "webp"}
 TEXT_TYPES = {"md", "markdown", "txt", "text"}
@@ -77,12 +77,12 @@ async def _run_pipeline(
 
     suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     _log.info(
-        "ingest pipeline start source_id=%s workspace_id=%s filename=%s suffix=%s bytes=%d",
-        source_id,
-        workspace_id,
-        filename,
-        suffix,
-        len(data),
+        "ingest_pipeline_start",
+        source_id=source_id,
+        workspace_id=workspace_id,
+        filename=filename,
+        suffix=suffix,
+        bytes=len(data),
     )
 
     await broadcaster.publish(
@@ -94,7 +94,7 @@ async def _run_pipeline(
         src_result = await session.execute(select(Source).where(Source.id == source_id))
         source = src_result.scalar_one_or_none()
         if not source:
-            _log.warning("ingest pipeline aborted: source not found source_id=%s", source_id)
+            _log.warning("ingest_source_not_found", source_id=source_id)
             return
 
         try:
@@ -104,9 +104,9 @@ async def _run_pipeline(
                     audience_user_id=audience_user_id,
                 )
                 _log.info(
-                    "ingest skipping marker (plain text) source_id=%s suffix=%s",
-                    source_id,
-                    suffix,
+                    "ingest_skip_marker_plain_text",
+                    source_id=source_id,
+                    suffix=suffix,
                 )
                 text = data.decode("utf-8", errors="replace")
                 chunks = _chunk_text(text)
@@ -120,13 +120,13 @@ async def _run_pipeline(
                     {"event": "agent:converting", "source_id": source_id, "filename": filename},
                     audience_user_id=audience_user_id,
                 )
-                _log.info("ingest calling marker source_id=%s filename=%s", source_id, filename)
+                _log.info("ingest_calling_marker", source_id=source_id, filename=filename)
                 client = make_client()
                 raw_pages = await client.convert(data, filename, source_id=source_id)
                 _log.info(
-                    "ingest marker done source_id=%s pages=%d",
-                    source_id,
-                    len(raw_pages),
+                    "ingest_marker_done",
+                    source_id=source_id,
+                    pages=len(raw_pages),
                 )
                 pages_data = [
                     {
@@ -167,14 +167,14 @@ async def _run_pipeline(
             source.status = "ingesting"
             await session.commit()
             _log.info(
-                "ingest convert stage done source_id=%s pages_written=%d md_key=%s",
-                source_id,
-                len(pages_data),
-                md_key,
+                "ingest_convert_done",
+                source_id=source_id,
+                pages_written=len(pages_data),
+                md_key=md_key,
             )
 
         except Exception:
-            _log.exception("ingest pipeline failed source_id=%s filename=%s", source_id, filename)
+            _log.exception("ingest_pipeline_failed", source_id=source_id, filename=filename)
             source.status = "error"
             await session.commit()
             await broadcaster.publish(
@@ -190,7 +190,7 @@ async def _run_pipeline(
     try:
         await run_ingest(source_id, workspace_id, audience_user_id)
     except Exception:
-        _log.exception("ingest agent failed source_id=%s filename=%s", source_id, filename)
+        _log.exception("ingest_agent_failed", source_id=source_id, filename=filename)
         async with AsyncSessionLocal() as session:
             src_result = await session.execute(select(Source).where(Source.id == source_id))
             source = src_result.scalar_one_or_none()
@@ -209,7 +209,7 @@ async def _run_pipeline(
         if source:
             source.status = "done"
             await session.commit()
-    _log.info("ingest pipeline complete source_id=%s", source_id)
+    _log.info("ingest_pipeline_complete", source_id=source_id)
 
 
 @router.post("/file")
@@ -246,11 +246,11 @@ async def ingest_file(
         _run_pipeline, source.id, ws.id, data, file.filename or f"file.{suffix}", user
     )
     _log.info(
-        "ingest file accepted source_id=%s workspace_id=%s filename=%s bytes=%d queued=pipeline",
-        source.id,
-        ws.id,
-        file.filename,
-        len(data),
+        "ingest_file_accepted",
+        source_id=source.id,
+        workspace_id=ws.id,
+        filename=file.filename,
+        bytes=len(data),
     )
     await _maybe_auto_health(background_tasks, db, ws)
     return {"source_id": source.id, "status": "converting"}

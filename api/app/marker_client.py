@@ -1,14 +1,14 @@
 import asyncio
-import logging
 import re
 import time
 from dataclasses import dataclass, field
 
 import httpx
+import structlog
 
 from app.config import settings
 
-_log = logging.getLogger(__name__)
+_log = structlog.get_logger()
 
 DATALAB_CONVERT_URL = "https://www.datalab.to/api/v1/convert"
 _PAGE_SEP = re.compile(r"\n\n\d+\n-{48}\n\n")
@@ -86,7 +86,7 @@ class DatalabMarkerClient:
                 DATALAB_CONVERT_URL, headers=headers, files=files, data=form
             )
             if resp.status_code >= 400:
-                _log.error("datalab error %s body=%s", resp.status_code, resp.text)
+                _log.error("datalab_api_error", status=resp.status_code, body=resp.text)
             resp.raise_for_status()
             submission = resp.json()
 
@@ -95,9 +95,9 @@ class DatalabMarkerClient:
 
         check_url = submission["request_check_url"]
         _log.info(
-            "datalab submitted source_id=%s request_id=%s",
-            source_id or "-",
-            submission["request_id"],
+            "datalab_submission",
+            source_id=source_id or "-",
+            request_id=submission["request_id"],
         )
 
         deadline = time.monotonic() + MAX_WAIT
@@ -118,7 +118,11 @@ class DatalabMarkerClient:
                     f"Datalab conversion timed out after {MAX_WAIT}s source_id={source_id or '-'}"
                 )
 
-        _log.info("datalab complete source_id=%s", source_id or "-")
+        _log.info(
+            "datalab_conversion_complete",
+            source_id=source_id or "-",
+            request_id=submission["request_id"],
+        )
         return _parse_paginated_markdown(
             result.get("markdown", ""), result.get("images") or {}
         )
@@ -150,11 +154,11 @@ class LocalMarkerClient:
         files = {"file": (filename, data, "application/octet-stream")}
         url = f"{self.base_url}/convert"
         _log.info(
-            "local marker POST %s source_id=%s filename=%s bytes=%d",
-            url,
-            source_id or "-",
-            filename,
-            len(data),
+            "local_marker_post",
+            url=url,
+            source_id=source_id or "-",
+            filename=filename,
+            bytes=len(data),
         )
 
         resp = None
@@ -169,18 +173,18 @@ class LocalMarkerClient:
                     raise
                 wait = min(_CONNECT_BACKOFF_BASE * (2**attempt), _CONNECT_BACKOFF_MAX)
                 _log.warning(
-                    "local marker %s (attempt %d/%d), retrying in %.0fs. source_id=%s",
-                    type(e).__name__,
-                    attempt + 1,
-                    _CONNECT_RETRIES,
-                    wait,
-                    source_id or "-",
+                    "marker_connect_retry",
+                    attempt=attempt + 1,
+                    max=_CONNECT_RETRIES,
+                    error=str(e),
                 )
                 await asyncio.sleep(wait)
 
         raw_pages = resp.json()
         _log.info(
-            "local marker response OK source_id=%s pages=%d", source_id or "-", len(raw_pages)
+            "local_marker_response",
+            source_id=source_id or "-",
+            pages=len(raw_pages),
         )
         return [
             PageData(

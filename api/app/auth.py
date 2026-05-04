@@ -1,16 +1,16 @@
-import logging
 import os
 import time
 
 import httpx
-
-log = logging.getLogger("app.auth")
+import structlog
 from authlib.jose import JsonWebKey, jwt
 from authlib.jose.errors import JoseError
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from app.config import settings
+
+log = structlog.get_logger()
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -74,7 +74,7 @@ async def _decode_token(token: str) -> dict:
 async def get_current_user(request: Request) -> str:
     token = request.cookies.get("access_token")
     if not token:
-        log.warning("get_current_user: no access_token cookie on %s", request.url.path)
+        log.warning("no_access_token_cookie", path=request.url.path)
         raise HTTPException(status_code=401, detail="Not authenticated")
     if settings.dev_auth_bypass:
         if token == "dev":
@@ -83,7 +83,7 @@ async def get_current_user(request: Request) -> str:
     try:
         payload = await _decode_token(token)
     except HTTPException as e:
-        log.warning("get_current_user: token validation failed on %s: %s", request.url.path, e.detail)
+        log.warning("token_validation_failed", path=request.url.path, detail=e.detail)
         raise
     return str(payload["sub"])
 
