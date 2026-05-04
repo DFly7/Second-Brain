@@ -17,5 +17,5 @@ async def run_health_check(
     from app.agents import health_agent
 
     ws = await _ensure_workspace(db, user)
-    background_tasks.add_task(health_agent.run, ws.id)
+    background_tasks.add_task(health_agent.run, ws.id, user)
     return {"status": "health check started"}

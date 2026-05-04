@@ -143,6 +143,7 @@ def test_post_message_mode_edit_uses_edit_agent(chat_api_client):
             mock_query.assert_not_called()
             assert mock_edit.call_args[0][0] == "ws-1"
             assert mock_edit.call_args[0][1] == "hi"
+            assert mock_edit.call_args[0][4] == "test@example.com"
     finally:
         app.dependency_overrides.pop(get_db, None)
 

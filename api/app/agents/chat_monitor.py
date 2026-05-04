@@ -18,7 +18,9 @@ SYSTEM_PROMPT = (_PROMPTS / "chat_monitor.md").read_text()
 MONITOR_THRESHOLD = 4
 
 
-async def run(session_id: str, workspace_id: str, session: AsyncSession) -> None:
+async def run(
+    session_id: str, workspace_id: str, session: AsyncSession, audience_user_id: str
+) -> None:
     # Load session for cursor
     session_result = await session.execute(
         select(ChatSession).where(ChatSession.id == session_id)
@@ -52,7 +54,12 @@ async def run(session_id: str, workspace_id: str, session: AsyncSession) -> None
 
     transcript = "\n".join(f"{m.role.upper()}: {m.content}" for m in messages)
 
-    tools_obj = AgentTools(session=session, workspace_id=workspace_id, broadcaster=broadcaster)
+    tools_obj = AgentTools(
+        session=session,
+        workspace_id=workspace_id,
+        broadcaster=broadcaster,
+        audience_user_id=audience_user_id,
+    )
     tool_defs = tools_obj.as_litellm_tools()
 
     today = _date.today().isoformat()

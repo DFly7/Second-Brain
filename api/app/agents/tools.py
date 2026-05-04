@@ -21,18 +21,27 @@ class AgentTools:
         broadcaster: SSEBroadcaster | None,
         source_id: str | None = None,
         context: str = "ingest",
+        *,
+        audience_user_id: str | None = None,
     ):
         self.session = session
         self.workspace_id = workspace_id
         self.broadcaster = broadcaster
         self.source_id = source_id
         self.context = context
+        self.audience_user_id = audience_user_id
         # Set True during move_folder so each _do_move_page does not spam agent:writing (and index updates).
         self._suppress_agent_writing_sse = False
 
     async def _broadcast(self, event: dict):
-        if self.broadcaster:
-            await self.broadcaster.publish({"context": self.context, **event})
+        if not self.broadcaster:
+            return
+        if not self.audience_user_id:
+            raise RuntimeError("audience_user_id is required when broadcaster is set")
+        await self.broadcaster.publish(
+            {"context": self.context, **event},
+            audience_user_id=self.audience_user_id,
+        )
 
     async def list_pages(self) -> list[dict]:
         result = await self.session.execute(

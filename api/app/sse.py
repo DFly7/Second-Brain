@@ -1,24 +1,32 @@
 import asyncio
 import json
+from collections import defaultdict
 from typing import AsyncIterator
 
 
 class SSEBroadcaster:
-    def __init__(self):
-        self._queues: list[asyncio.Queue] = []
+    """In-process fan-out of SSE events, scoped by authenticated user id (OIDC sub)."""
 
-    def subscribe(self) -> asyncio.Queue:
+    def __init__(self):
+        self._queues: dict[str, list[asyncio.Queue]] = defaultdict(list)
+
+    def subscribe(self, user_id: str) -> asyncio.Queue:
         q: asyncio.Queue = asyncio.Queue(maxsize=100)
-        self._queues.append(q)
+        self._queues[user_id].append(q)
         return q
 
-    def unsubscribe(self, q: asyncio.Queue):
-        if q in self._queues:
-            self._queues.remove(q)
+    def unsubscribe(self, user_id: str, q: asyncio.Queue):
+        lst = self._queues.get(user_id)
+        if not lst:
+            return
+        if q in lst:
+            lst.remove(q)
+        if not lst:
+            del self._queues[user_id]
 
-    async def publish(self, event: dict):
+    async def publish(self, event: dict, *, audience_user_id: str):
         data = json.dumps(event)
-        for q in list(self._queues):
+        for q in list(self._queues.get(audience_user_id, [])):
             try:
                 q.put_nowait(data)
             except asyncio.QueueFull:

@@ -35,7 +35,7 @@ async def _maybe_auto_health(
     if source_count > 0 and source_count % 10 == 0:
         from app.agents import health_agent
 
-        background_tasks.add_task(health_agent.run, ws.id)
+        background_tasks.add_task(health_agent.run, ws.id, ws.user_id)
 
 
 class URLIngest(BaseModel):
@@ -69,7 +69,9 @@ def _chunk_text(text: str) -> list[str]:
     return chunks
 
 
-async def _run_pipeline(source_id: str, workspace_id: str, data: bytes, filename: str):
+async def _run_pipeline(
+    source_id: str, workspace_id: str, data: bytes, filename: str, audience_user_id: str
+):
     from app.agents.ingest_agent import run as run_ingest
     from app.marker_client import make_client
 
@@ -83,7 +85,10 @@ async def _run_pipeline(source_id: str, workspace_id: str, data: bytes, filename
         len(data),
     )
 
-    await broadcaster.publish({"event": "agent:queued", "source_id": source_id, "filename": filename})
+    await broadcaster.publish(
+        {"event": "agent:queued", "source_id": source_id, "filename": filename},
+        audience_user_id=audience_user_id,
+    )
 
     async with AsyncSessionLocal() as session:
         src_result = await session.execute(select(Source).where(Source.id == source_id))
@@ -94,7 +99,10 @@ async def _run_pipeline(source_id: str, workspace_id: str, data: bytes, filename
 
         try:
             if suffix in TEXT_TYPES:
-                await broadcaster.publish({"event": "agent:converting", "source_id": source_id, "filename": filename})
+                await broadcaster.publish(
+                    {"event": "agent:converting", "source_id": source_id, "filename": filename},
+                    audience_user_id=audience_user_id,
+                )
                 _log.info(
                     "ingest skipping marker (plain text) source_id=%s suffix=%s",
                     source_id,
@@ -108,7 +116,10 @@ async def _run_pipeline(source_id: str, workspace_id: str, data: bytes, filename
                     for i, chunk in enumerate(chunks)
                 ]
             else:
-                await broadcaster.publish({"event": "agent:converting", "source_id": source_id, "filename": filename})
+                await broadcaster.publish(
+                    {"event": "agent:converting", "source_id": source_id, "filename": filename},
+                    audience_user_id=audience_user_id,
+                )
                 _log.info("ingest calling marker source_id=%s filename=%s", source_id, filename)
                 client = make_client()
                 raw_pages = await client.convert(data, filename, source_id=source_id)
@@ -166,12 +177,18 @@ async def _run_pipeline(source_id: str, workspace_id: str, data: bytes, filename
             _log.exception("ingest pipeline failed source_id=%s filename=%s", source_id, filename)
             source.status = "error"
             await session.commit()
-            await broadcaster.publish({"event": "agent:error", "source_id": source_id})
+            await broadcaster.publish(
+                {"event": "agent:error", "source_id": source_id},
+                audience_user_id=audience_user_id,
+            )
             return
 
-    await broadcaster.publish({"event": "agent:ingesting", "source_id": source_id, "filename": filename})
+    await broadcaster.publish(
+        {"event": "agent:ingesting", "source_id": source_id, "filename": filename},
+        audience_user_id=audience_user_id,
+    )
     try:
-        await run_ingest(source_id, workspace_id)
+        await run_ingest(source_id, workspace_id, audience_user_id)
     except Exception:
         _log.exception("ingest agent failed source_id=%s filename=%s", source_id, filename)
         async with AsyncSessionLocal() as session:
@@ -180,7 +197,10 @@ async def _run_pipeline(source_id: str, workspace_id: str, data: bytes, filename
             if source:
                 source.status = "error"
                 await session.commit()
-        await broadcaster.publish({"event": "agent:error", "source_id": source_id})
+        await broadcaster.publish(
+            {"event": "agent:error", "source_id": source_id},
+            audience_user_id=audience_user_id,
+        )
         return
 
     async with AsyncSessionLocal() as session:
@@ -222,7 +242,9 @@ async def ingest_file(
     await db.commit()
     await db.refresh(source)
 
-    background_tasks.add_task(_run_pipeline, source.id, ws.id, data, file.filename or f"file.{suffix}")
+    background_tasks.add_task(
+        _run_pipeline, source.id, ws.id, data, file.filename or f"file.{suffix}", user
+    )
     _log.info(
         "ingest file accepted source_id=%s workspace_id=%s filename=%s bytes=%d queued=pipeline",
         source.id,
@@ -251,7 +273,7 @@ async def ingest_url(
     await db.refresh(source)
 
     fake_data = text.encode("utf-8")
-    background_tasks.add_task(_run_pipeline, source.id, ws.id, fake_data, "content.txt")
+    background_tasks.add_task(_run_pipeline, source.id, ws.id, fake_data, "content.txt", user)
     await _maybe_auto_health(background_tasks, db, ws)
     return {"source_id": source.id, "status": "converting"}
 
@@ -270,6 +292,6 @@ async def ingest_text(
     await db.refresh(source)
 
     fake_data = body.text.encode("utf-8")
-    background_tasks.add_task(_run_pipeline, source.id, ws.id, fake_data, "note.txt")
+    background_tasks.add_task(_run_pipeline, source.id, ws.id, fake_data, "note.txt", user)
     await _maybe_auto_health(background_tasks, db, ws)
     return {"source_id": source.id, "status": "converting"}

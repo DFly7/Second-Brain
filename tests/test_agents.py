@@ -31,10 +31,15 @@ async def test_broadcast_includes_context_ingest_default():
     published = []
 
     class FakeBroadcaster:
-        async def publish(self, event):
+        async def publish(self, event, *, audience_user_id: str):
             published.append(event)
 
-    tools = AgentTools(session=AsyncMock(), workspace_id="ws-1", broadcaster=FakeBroadcaster())
+    tools = AgentTools(
+        session=AsyncMock(),
+        workspace_id="ws-1",
+        broadcaster=FakeBroadcaster(),
+        audience_user_id="u-ingest",
+    )
     await tools._broadcast({"event": "agent:reading", "slug": "people/alice"})
     assert len(published) == 1
     assert published[0]["context"] == "ingest"
@@ -47,7 +52,7 @@ async def test_broadcast_includes_context_chat():
     published = []
 
     class FakeBroadcaster:
-        async def publish(self, event):
+        async def publish(self, event, *, audience_user_id: str):
             published.append(event)
 
     tools = AgentTools(
@@ -55,6 +60,7 @@ async def test_broadcast_includes_context_chat():
         workspace_id="ws-1",
         broadcaster=FakeBroadcaster(),
         context="chat",
+        audience_user_id="u-chat",
     )
     await tools._broadcast({"event": "agent:reading", "slug": "people/bob"})
     assert published[0]["context"] == "chat"
@@ -218,7 +224,7 @@ async def test_orchestrator_reads_directly_for_small_docs():
         mock_session.execute = AsyncMock(side_effect=[source_result, page_result])
         MockSession.return_value = mock_session
 
-        await ingest_agent.run("src-1", "ws-1")
+        await ingest_agent.run("src-1", "ws-1", "test-user")
 
     call_args = mock_acompletion.call_args
     tools_passed = call_args.kwargs.get("tools", [])
@@ -265,7 +271,7 @@ async def test_orchestrator_offers_spawn_for_large_docs():
         mock_session.execute = AsyncMock(side_effect=[source_result, page_result])
         MockSession.return_value = mock_session
 
-        await ingest_agent.run("src-1", "ws-1")
+        await ingest_agent.run("src-1", "ws-1", "test-user")
 
     call_args = mock_acompletion.call_args
     tools_passed = call_args.kwargs.get("tools", [])

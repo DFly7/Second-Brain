@@ -16,12 +16,13 @@ _PROMPTS = Path(__file__).parent / "prompts"
 SYSTEM_PROMPT = (_PROMPTS / "health.md").read_text()
 
 
-async def run(workspace_id: str) -> None:
+async def run(workspace_id: str, audience_user_id: str) -> None:
     async with AsyncSessionLocal() as session:
         tools = AgentTools(
             session=session,
             workspace_id=workspace_id,
             broadcaster=broadcaster,
+            audience_user_id=audience_user_id,
         )
 
         tool_names = ["list_pages", "search_pages", "read_page", "write_page", "create_page"]
@@ -89,4 +90,4 @@ async def run(workspace_id: str) -> None:
                 title="Health Report",
             )
 
-        await broadcaster.publish({"event": "health:done"})
+        await broadcaster.publish({"event": "health:done"}, audience_user_id=audience_user_id)

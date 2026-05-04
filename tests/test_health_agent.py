@@ -25,7 +25,7 @@ async def test_health_run_writes_report(db_session, workspace_id):
         mock_response.choices[0].message.content = "Health check complete."
         mock_llm.return_value = mock_response
 
-        await run(workspace_id=workspace_id)
+        await run(workspace_id=workspace_id, audience_user_id="test-user")
 
     # meta/health-report should now exist
     report = await tools.read_page("meta/health-report")

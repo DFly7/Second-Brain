@@ -59,9 +59,9 @@ async def send_message(
     if body.mode == "edit":
         from app.agents.edit_agent import run as run_edit
 
-        answer, cited = await run_edit(ws.id, body.message, history[:-1], db)
+        answer, cited = await run_edit(ws.id, body.message, history[:-1], db, user)
     else:
-        answer, cited = await run_query(ws.id, body.message, history[:-1], db)
+        answer, cited = await run_query(ws.id, body.message, history[:-1], db, user)
 
     assistant_msg = ChatMessage(
         session_id=session_obj.id, role="assistant", content=answer
@@ -76,7 +76,7 @@ async def send_message(
     )
     await db.commit()
 
-    background_tasks.add_task(_run_chat_monitor, session_obj.id, ws.id)
+    background_tasks.add_task(_run_chat_monitor, session_obj.id, ws.id, user)
 
     return {"session_id": session_obj.id, "answer": answer, "cited_pages": cited}
 
@@ -123,15 +123,15 @@ async def list_sessions(
 
 
 @router.get("/sse")
-async def sse_stream(_user: str = Depends(get_current_user)):
-    q = broadcaster.subscribe()
+async def sse_stream(user: str = Depends(get_current_user)):
+    q = broadcaster.subscribe(user)
 
     async def event_gen():
         try:
             async for chunk in broadcaster.stream(q):
                 yield chunk
         finally:
-            broadcaster.unsubscribe(q)
+            broadcaster.unsubscribe(user, q)
 
     return StreamingResponse(
         event_gen(),
@@ -140,8 +140,8 @@ async def sse_stream(_user: str = Depends(get_current_user)):
     )
 
 
-async def _run_chat_monitor(session_id: str, workspace_id: str):
+async def _run_chat_monitor(session_id: str, workspace_id: str, audience_user_id: str):
     from app.agents.chat_monitor import run as run_monitor
 
     async with AsyncSessionLocal() as session:
-        await run_monitor(session_id, workspace_id, session)
+        await run_monitor(session_id, workspace_id, session, audience_user_id)

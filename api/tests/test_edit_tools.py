@@ -165,6 +165,7 @@ async def test_move_page_broadcasts_and_returns_success(tools):
     broadcaster = MagicMock()
     broadcaster.publish = AsyncMock()
     tools.broadcaster = broadcaster
+    tools.audience_user_id = "u-test"
     tools._do_move_page = AsyncMock()
 
     out = await tools.dispatch(
@@ -174,7 +175,8 @@ async def test_move_page_broadcasts_and_returns_success(tools):
 
     tools._do_move_page.assert_awaited_once_with("people/alice", "people/alice-jones")
     broadcaster.publish.assert_awaited_once_with(
-        {"event": "agent:moving", "from": "people/alice", "to": "people/alice-jones"}
+        {"event": "agent:moving", "from": "people/alice", "to": "people/alice-jones"},
+        audience_user_id="u-test",
     )
     assert "moved" in out.lower()
 
@@ -232,6 +234,7 @@ async def test_delete_page_broadcasts_and_appends_log(tools):
     broadcaster = MagicMock()
     broadcaster.publish = AsyncMock()
     tools.broadcaster = broadcaster
+    tools.audience_user_id = "u-test"
     tools._do_delete_page = AsyncMock(return_value="Gone Title")
     tools._remove_from_index = AsyncMock()
     tools._append_deleted_log = AsyncMock()
@@ -242,7 +245,8 @@ async def test_delete_page_broadcasts_and_appends_log(tools):
     tools._remove_from_index.assert_awaited_once_with("people/alice")
     tools._append_deleted_log.assert_awaited_once_with("people/alice", "Gone Title")
     broadcaster.publish.assert_awaited_once_with(
-        {"event": "agent:deleting", "slug": "people/alice"}
+        {"event": "agent:deleting", "slug": "people/alice"},
+        audience_user_id="u-test",
     )
     assert "deleted" in out.lower()
 
@@ -296,6 +300,7 @@ async def test_move_folder_moves_all_and_broadcasts(tools, session):
     tools._do_move_page = AsyncMock()
     broadcaster = AsyncMock()
     tools.broadcaster = broadcaster
+    tools.audience_user_id = "u-test"
 
     result = await tools.move_folder("projects/2025", "archive/2025")
 
@@ -308,7 +313,8 @@ async def test_move_folder_moves_all_and_broadcasts(tools, session):
             "from": "projects/2025",
             "to": "archive/2025",
             "count": 2,
-        }
+        },
+        audience_user_id="u-test",
     )
     assert "2 pages" in result
 

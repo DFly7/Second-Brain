@@ -41,7 +41,7 @@ SPAWN_PAGE_READER_TOOL = {
 }
 
 
-async def run(source_id: str, workspace_id: str):
+async def run(source_id: str, workspace_id: str, audience_user_id: str):
     async with AsyncSessionLocal() as session:
         src_result = await session.execute(select(Source).where(Source.id == source_id))
         source = src_result.scalar_one_or_none()
@@ -63,6 +63,7 @@ async def run(source_id: str, workspace_id: str):
             workspace_id=workspace_id,
             broadcaster=broadcaster,
             source_id=source_id,
+            audience_user_id=audience_user_id,
         )
 
         wiki_tool_names = ["list_pages", "search_pages", "read_page", "write_page", "create_page"]
@@ -147,5 +148,6 @@ async def run(source_id: str, workspace_id: str):
         )
         await session.commit()
         await broadcaster.publish(
-            {"event": "agent:done", "pages_touched": pages_touched, "source_id": source_id}
+            {"event": "agent:done", "pages_touched": pages_touched, "source_id": source_id},
+            audience_user_id=audience_user_id,
         )
