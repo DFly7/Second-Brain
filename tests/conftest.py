@@ -26,6 +26,7 @@ os.environ.setdefault("S3_ENDPOINT", "http://localhost:9000")
 os.environ["S3_BUCKET"] = "wiki-test"
 os.environ.setdefault("S3_ACCESS_KEY", "minioadmin")
 os.environ.setdefault("VECTOR_SEARCH_ENABLED", "true")
+os.environ.setdefault("REDIS_URL", "redis://redis:6379")
 os.environ.setdefault("MARKER_URL", "http://marker:8001")
 os.environ.setdefault("VISION_MODEL", "")
 
