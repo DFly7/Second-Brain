@@ -35,6 +35,18 @@ docker compose run --rm api alembic upgrade head
 docker compose run --rm api pytest tests/ -v
 ```
 
+## Local vs production (Docker Compose)
+
+**Two stacks:**
+
+| | Local (`docker-compose.yml`) | Production (`docker-compose.prod.yml`) |
+|--|-------------------------------|----------------------------------------|
+| **API image** | `api/Dockerfile` (volume-mount `./api`; hot reload via uvicorn `--reload`) | `api/Dockerfile.prod` (Gunicorn + `uvicorn.workers.UvicornWorker`) |
+| **Python deps** | [`api/requirements.txt`](api/requirements.txt) | [`api/requirements-prod.txt`](api/requirements-prod.txt) only |
+| **Frontend** | Vite dev server on port 5173 | `frontend/Dockerfile.prod`: `npm run build` → nginx on 80 |
+
+**Critical:** Prod installs dependencies **only** from `requirements-prod.txt`. Anything the app imports at runtime must appear there **as well as** in `requirements.txt` (unless the package is test-only — e.g. pytest). Adding a dependency only to `requirements.txt` will break production with `ModuleNotFoundError` even when local `docker compose up` works. Rebuild prod API after edits: `docker compose -f docker-compose.prod.yml build --no-cache api` (or `up --build`) so cached layers reinstall.
+
 ## Key conventions
 
 - Migrations live in `api/alembic/versions/` — always generate via `alembic revision --autogenerate`

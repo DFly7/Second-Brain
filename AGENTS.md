@@ -32,6 +32,15 @@ docker compose run --rm api pytest tests/ -v
 | `frontend/src/` | React + TypeScript UI |
 | `tests/` | Pytest suite (mounted into API container) |
 | `postgres-init/` | SQL scripts run on fresh Postgres volume |
+| [`api/requirements.txt`](api/requirements.txt) | Local/dev API deps (mounted dev container) |
+| [`api/requirements-prod.txt`](api/requirements-prod.txt) | **Production-only** deps for [`api/Dockerfile.prod`](api/Dockerfile.prod) / `docker-compose.prod.yml` |
+
+## Local vs production (Docker Compose)
+
+- **Dev:** root `docker-compose.yml` → API built from `./api`; installs [`api/requirements.txt`](api/requirements.txt); frontend is Vite in dev mode.
+- **Prod:** [`docker-compose.prod.yml`](docker-compose.prod.yml) → API built via [`api/Dockerfile.prod`](api/Dockerfile.prod), which runs **`pip install -r requirements-prod.txt`** (not `requirements.txt`). Gunicorn workers boot the FastAPI app.
+- **When you add a runtime import:** mirror the package in **both** `requirements.txt` and `requirements-prod.txt` (keep versions aligned unless you have a reason not to). Test-only packages (pytest, etc.) stay in dev requirements only. Skipping prod causes `ModuleNotFoundError` on the server while local still runs.
+- **Frontend prod:** [`frontend/Dockerfile.prod`](frontend/Dockerfile.prod) — production build behind nginx.
 
 ## Development
 
