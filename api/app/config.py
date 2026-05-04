@@ -3,15 +3,17 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     database_url: str
-    jwt_secret: str = "dev-secret"
+    authentik_issuer: str
+    authentik_jwks_uri: str
+    authentik_client_id: str
+    authentik_token_url: str
+    authentik_redirect_uri: str
     litellm_model: str = "gemini/gemini-2.0-flash"
     gemini_api_key: str | None = None
     s3_endpoint: str = "http://minio:9000"
     s3_bucket: str = "wiki"
     s3_access_key: str = "minioadmin"
     s3_secret_key: str = "minioadmin"
-    single_user_email: str = "user@example.com"
-    single_user_password: str = "changeme"
     vector_search_enabled: bool = True
     # Conversion backend: "datalab" (managed API) or "local" (self-hosted marker container)
     marker_backend: str = "datalab"

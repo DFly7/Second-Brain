@@ -8,9 +8,15 @@ if str(ROOT_DIR) not in sys.path:
 
 # Force test credentials so docker-compose `env_file: .env` cannot override pytest.
 os.environ["DATABASE_URL"] = "postgresql+asyncpg://wiki:wiki@db:5432/wiki_test"
-os.environ["JWT_SECRET"] = "test-secret"
-os.environ["SINGLE_USER_EMAIL"] = "user@example.com"
-os.environ["SINGLE_USER_PASSWORD"] = "changeme"
+os.environ["AUTHENTIK_ISSUER"] = (
+    "https://auth.example.com/application/o/second-brain/"
+)
+os.environ["AUTHENTIK_JWKS_URI"] = (
+    "https://auth.example.com/application/o/second-brain/jwks/"
+)
+os.environ["AUTHENTIK_CLIENT_ID"] = "second-brain"
+os.environ["AUTHENTIK_TOKEN_URL"] = "https://auth.example.com/application/o/token/"
+os.environ["AUTHENTIK_REDIRECT_URI"] = "https://smoothstudy.ai/callback"
 os.environ.setdefault("LITELLM_MODEL", "gemini/gemini-2.0-flash")
 os.environ.setdefault("S3_ENDPOINT", "http://localhost:9000")
 os.environ["S3_BUCKET"] = "wiki-test"
