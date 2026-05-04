@@ -80,9 +80,14 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
-    environment:
-      VITE_API_URL: http://localhost:8000
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --url http://frontend:5173 --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - frontend
 
 volumes:
   pgdata:
