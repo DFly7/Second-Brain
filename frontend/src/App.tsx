@@ -1,32 +1,42 @@
-import { useState } from 'react'
-import type React from 'react'
-import { login } from './api/client'
+import { useEffect, useState } from 'react'
+import { redirectToAuthentik } from './auth'
 import Layout from './components/Layout'
 
+type AuthState = 'loading' | 'authenticated' | 'unauthenticated'
+
 export default function App() {
-  const [authed, setAuthed] = useState(!!localStorage.getItem('token'))
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [authState, setAuthState] = useState<AuthState>('loading')
 
-  if (!authed) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
-      <div style={{ background: '#161b22', padding: 32, borderRadius: 12, width: 320, border: '1px solid #30363d' }}>
-        <h2 style={{ marginBottom: 24, color: '#e6edf3' }}>LLM Wiki</h2>
-        <input value={email} onChange={e => setEmail(e.target.value)}
-          placeholder="Email" style={inputStyle} />
-        <input value={password} onChange={e => setPassword(e.target.value)}
-          placeholder="Password" type="password" style={inputStyle} />
-        <button onClick={() => login(email, password).then(() => setAuthed(true))}
-          style={btnStyle}>Login</button>
-      </div>
-    </div>
-  )
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('code')
 
+    if (code) {
+      const verifier = sessionStorage.getItem('pkce_verifier') ?? ''
+      sessionStorage.removeItem('pkce_verifier')
+      fetch('/api/auth/callback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ code, code_verifier: verifier }),
+      }).then(r => {
+        window.history.replaceState({}, '', '/')
+        setAuthState(r.ok ? 'authenticated' : 'unauthenticated')
+      })
+      return
+    }
+
+    fetch('/api/auth/me', { credentials: 'include' }).then(async r => {
+      if (r.ok) { setAuthState('authenticated'); return }
+      const refresh = await fetch('/api/auth/refresh', { method: 'POST', credentials: 'include' })
+      setAuthState(refresh.ok ? 'authenticated' : 'unauthenticated')
+    })
+  }, [])
+
+  useEffect(() => {
+    if (authState === 'unauthenticated') redirectToAuthentik()
+  }, [authState])
+
+  if (authState !== 'authenticated') return null
   return <Layout />
 }
-
-const inputStyle: React.CSSProperties = { width: '100%', marginBottom: 12, padding: '8px 12px',
-  background: '#0d1117', border: '1px solid #30363d', borderRadius: 6, color: '#e6edf3',
-  fontSize: 14, display: 'block' }
-const btnStyle: React.CSSProperties = { width: '100%', padding: '10px 0', background: '#238636',
-  border: 'none', borderRadius: 6, color: '#fff', fontSize: 14, cursor: 'pointer' }
