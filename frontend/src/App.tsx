@@ -4,6 +4,10 @@ import Layout from './components/Layout'
 
 type AuthState = 'loading' | 'authenticated' | 'unauthenticated'
 
+// Module-level flag prevents React StrictMode's double-invoke from firing
+// the OIDC callback twice (second run has no verifier and would 401).
+let _callbackInflight = false
+
 export default function App() {
   const [authState, setAuthState] = useState<AuthState>('loading')
 
@@ -12,15 +16,18 @@ export default function App() {
     const code = params.get('code')
 
     if (code) {
+      if (_callbackInflight) return
+      _callbackInflight = true
       const verifier = sessionStorage.getItem('pkce_verifier') ?? ''
       sessionStorage.removeItem('pkce_verifier')
+      window.history.replaceState({}, '', '/')
       fetch('/api/auth/callback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ code, code_verifier: verifier }),
       }).then(r => {
-        window.history.replaceState({}, '', '/')
+        _callbackInflight = false
         setAuthState(r.ok ? 'authenticated' : 'unauthenticated')
       })
       return

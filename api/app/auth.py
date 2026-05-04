@@ -1,6 +1,9 @@
+import logging
 import os
 
 import httpx
+
+log = logging.getLogger("app.auth")
 from authlib.jose import JsonWebKey, jwt
 from authlib.jose.errors import JoseError
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -52,8 +55,13 @@ async def _decode_token(token: str) -> dict:
 async def get_current_user(request: Request) -> str:
     token = request.cookies.get("access_token")
     if not token:
+        log.warning("get_current_user: no access_token cookie on %s", request.url.path)
         raise HTTPException(status_code=401, detail="Not authenticated")
-    payload = await _decode_token(token)
+    try:
+        payload = await _decode_token(token)
+    except HTTPException as e:
+        log.warning("get_current_user: token validation failed on %s: %s", request.url.path, e.detail)
+        raise
     return str(payload["sub"])
 
 
@@ -116,7 +124,7 @@ async def auth_callback(req: CallbackRequest, response: Response):
     if r.status_code != 200:
         raise HTTPException(status_code=401, detail="Token exchange failed")
     tokens = r.json()
-    _set_auth_cookies(response, tokens["access_token"], tokens["refresh_token"])
+    _set_auth_cookies(response, tokens["access_token"], tokens.get("refresh_token", ""))
     return {"ok": True}
 
 
