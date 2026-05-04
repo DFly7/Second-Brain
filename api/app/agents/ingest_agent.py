@@ -50,6 +50,7 @@ async def run(source_id: str, workspace_id: str, audience_user_id: str):
         src_result = await session.execute(select(Source).where(Source.id == source_id))
         source = src_result.scalar_one_or_none()
         if not source:
+            _log.warning("ingest_agent_source_missing", source_id=source_id, workspace_id=workspace_id)
             return
 
         pages_result = await session.execute(
