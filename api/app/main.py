@@ -1,50 +1,44 @@
-import logging
 import os
-import sys
 from contextlib import asynccontextmanager
 
 import litellm
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.auth import router as auth_router
-from app.routes.activity import router as activity_router
-from app.routes.chat import router as chat_router
-from app.routes.health import router as health_router
-from app.routes.ingest import router as ingest_router
-from app.routes.wiki import router as wiki_router
+from app.logging_config import configure_logging
+from app.middleware import RequestLoggingMiddleware
 
+configure_logging()
 
-def _configure_app_logging() -> None:
-    log = logging.getLogger("app")
-    if log.handlers:
-        return
-    log.setLevel(logging.INFO)
-    handler = logging.StreamHandler(sys.stderr)
-    handler.setFormatter(
-        logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s")
-    )
-    log.addHandler(handler)
-    log.propagate = False
+import structlog  # noqa: E402 — must import after configure_logging()
 
-
-_configure_app_logging()
-logging.getLogger("LiteLLM").setLevel(logging.WARNING)
-logging.getLogger("litellm").setLevel(logging.WARNING)
 litellm.suppress_debug_info = True
+
+log = structlog.get_logger()
+
+from app.auth import router as auth_router  # noqa: E402
+from app.routes.activity import router as activity_router  # noqa: E402
+from app.routes.chat import router as chat_router  # noqa: E402
+from app.routes.health import router as health_router  # noqa: E402
+from app.routes.ingest import router as ingest_router  # noqa: E402
+from app.routes.wiki import router as wiki_router  # noqa: E402
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.sse import broadcaster
 
-    await broadcaster.connect(os.environ.get("REDIS_URL", "redis://redis:6379"))
+    redis_url = os.environ.get("REDIS_URL", "redis://redis:6379")
+    log.info("startup", redis_url=redis_url)
+    await broadcaster.connect(redis_url)
     yield
     await broadcaster.disconnect()
+    log.info("shutdown")
 
 
 app = FastAPI(title="LLM Wiki", lifespan=lifespan)
 
+app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "https://smoothstudy.ai"],
