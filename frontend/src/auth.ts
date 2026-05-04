@@ -31,7 +31,9 @@ export async function logout(): Promise<void> {
 export async function redirectToAuthentik(): Promise<void> {
   const verifier = generateVerifier()
   const challenge = await generateChallenge(verifier)
+  const state = generateVerifier()
   sessionStorage.setItem('pkce_verifier', verifier)
+  sessionStorage.setItem('oauth_state', state)
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
     redirect_uri: REDIRECT_URI,
@@ -39,6 +41,7 @@ export async function redirectToAuthentik(): Promise<void> {
     scope: 'openid profile email offline_access',
     code_challenge: challenge,
     code_challenge_method: 'S256',
+    state,
   })
   window.location.href = `${AUTHENTIK_URL}/application/o/authorize/?${params}`
 }

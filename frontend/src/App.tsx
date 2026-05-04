@@ -46,6 +46,16 @@ export default function App() {
       if (_callbackInflight) return
       _callbackInflight = true
       const verifier = sessionStorage.getItem('pkce_verifier') ?? ''
+      const state = params.get('state') ?? ''
+      const expectedState = sessionStorage.getItem('oauth_state') ?? ''
+      if (!state || state !== expectedState) {
+        _callbackInflight = false
+        sessionStorage.removeItem('pkce_verifier')
+        sessionStorage.removeItem('oauth_state')
+        window.history.replaceState({}, '', '/')
+        setAuthState('unauthenticated')
+        return
+      }
       fetch('/api/auth/callback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -55,12 +65,14 @@ export default function App() {
         .then(r => {
           _callbackInflight = false
           sessionStorage.removeItem('pkce_verifier')
+          sessionStorage.removeItem('oauth_state')
           window.history.replaceState({}, '', '/')
           setAuthState(r.ok ? 'authenticated' : 'unauthenticated')
         })
         .catch(() => {
           _callbackInflight = false
           sessionStorage.removeItem('pkce_verifier')
+          sessionStorage.removeItem('oauth_state')
           window.history.replaceState({}, '', '/')
           setAuthState('unauthenticated')
         })

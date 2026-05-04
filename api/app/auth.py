@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 
 import httpx
 
@@ -14,11 +15,14 @@ from app.config import settings
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 _jwks_cache = None
+_jwks_fetched_at: float = 0.0
+_JWKS_TTL = 300  # 5 minutes
 
 
 def reset_jwks_cache() -> None:
-    global _jwks_cache
+    global _jwks_cache, _jwks_fetched_at
     _jwks_cache = None
+    _jwks_fetched_at = 0.0
 
 
 def _cookie_secure() -> bool:
@@ -27,13 +31,18 @@ def _cookie_secure() -> bool:
     return settings.authentik_redirect_uri.startswith("https://")
 
 
+async def _fetch_jwks():
+    async with httpx.AsyncClient() as client:
+        r = await client.get(settings.authentik_jwks_uri)
+        r.raise_for_status()
+    return JsonWebKey.import_key_set(r.json())
+
+
 async def _get_jwks():
-    global _jwks_cache
-    if _jwks_cache is None:
-        async with httpx.AsyncClient() as client:
-            r = await client.get(settings.authentik_jwks_uri)
-            r.raise_for_status()
-        _jwks_cache = JsonWebKey.import_key_set(r.json())
+    global _jwks_cache, _jwks_fetched_at
+    if _jwks_cache is None or time.monotonic() - _jwks_fetched_at > _JWKS_TTL:
+        _jwks_cache = await _fetch_jwks()
+        _jwks_fetched_at = time.monotonic()
     return _jwks_cache
 
 
@@ -44,7 +53,15 @@ async def _decode_token(token: str) -> dict:
         claims.validate()
         payload = dict(claims)
     except JoseError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+        # Key may have rotated — bust cache and retry once
+        reset_jwks_cache()
+        try:
+            jwks = await _get_jwks()
+            claims = jwt.decode(token, jwks)
+            claims.validate()
+            payload = dict(claims)
+        except JoseError:
+            raise HTTPException(status_code=401, detail="Invalid token")
     if payload.get("iss") != settings.authentik_issuer:
         raise HTTPException(status_code=401, detail="Invalid token")
     if payload.get("sub") is None:
