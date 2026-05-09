@@ -1,0 +1,5 @@
+BACKEND_URL = https://smoothstudy.ai
+AUTHENTIK_AUTHORIZE_URL = https://auth.smoothstudy.ai/application/o/authorize/
+AUTHENTIK_TOKEN_URL = https://auth.smoothstudy.ai/application/o/token/
+AUTHENTIK_CLIENT_ID = second-brain
+AUTHENTIK_REDIRECT_URI = secondbrain://auth/callback
