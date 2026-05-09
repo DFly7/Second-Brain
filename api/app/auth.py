@@ -95,10 +95,23 @@ async def _decode_token(token: str) -> dict:
     return payload
 
 
-async def get_current_user(request: Request) -> str:
+_BEARER_PREFIX = "Bearer "
+
+
+def _resolve_raw_access_token(request: Request) -> str | None:
     token = request.cookies.get("access_token")
+    if token:
+        return token
+    authorization = request.headers.get("Authorization") or ""
+    if authorization.startswith(_BEARER_PREFIX):
+        return authorization[len(_BEARER_PREFIX) :].strip() or None
+    return None
+
+
+async def get_current_user(request: Request) -> str:
+    token = _resolve_raw_access_token(request)
     if not token:
-        log.warning("no_access_token_cookie", path=request.url.path)
+        log.warning("no_access_token", path=request.url.path)
         raise HTTPException(status_code=401, detail="Not authenticated")
     if settings.dev_auth_bypass:
         if token == "dev":
@@ -263,7 +276,7 @@ async def auth_logout(response: Response):
 
 @router.get("/me")
 async def auth_me(request: Request):
-    token = request.cookies.get("access_token")
+    token = _resolve_raw_access_token(request)
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     if settings.dev_auth_bypass:

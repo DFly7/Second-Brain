@@ -17,6 +17,42 @@ async def test_me_returns_sub_when_authenticated():
 
 
 @pytest.mark.asyncio
+async def test_get_current_user_accepts_bearer_token():
+    token = make_access_token(sub="mobile-user-456")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        with mock_jwks():
+            resp = await client.get(
+                "/auth/me",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+    assert resp.status_code == 200
+    assert resp.json()["sub"] == "mobile-user-456"
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_cookie_takes_precedence_over_bearer():
+    cookie_token = make_access_token(sub="cookie-user")
+    bearer_token = make_access_token(sub="bearer-user")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        with mock_jwks():
+            resp = await client.get(
+                "/auth/me",
+                cookies={"access_token": cookie_token},
+                headers={"Authorization": f"Bearer {bearer_token}"},
+            )
+    assert resp.status_code == 200
+    assert resp.json()["sub"] == "cookie-user"
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_returns_401_with_no_token():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        with mock_jwks():
+            resp = await client.get("/auth/me")
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_me_returns_401_with_no_cookie():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         with mock_jwks():
