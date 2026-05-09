@@ -111,11 +111,14 @@ final class AuthService: NSObject {
 extension AuthService: ASWebAuthenticationPresentationContextProviding {
     nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
         MainActor.assumeIsolated {
-            if let anchor = _presentationAnchor { return anchor }
-            guard let window = UIApplication.preferredPresentationWindow() else {
-                preconditionFailure("presentationAnchor: no window (use signIn(from:) with a visible window)")
+            if let anchor = _presentationAnchor {
+                return anchor
             }
-            return window
+            if let window = UIApplication.preferredPresentationWindow() {
+                return window
+            }
+            // Rare: authentication callback without a retained anchor — avoid crashing in release builds.
+            return UIWindow(frame: UIScreen.main.bounds)
         }
     }
 }
