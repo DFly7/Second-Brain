@@ -17,12 +17,8 @@ struct AuthView: View {
             }
 
             Button("Sign in") {
-                Task {
-                    guard let window = UIApplication.shared.connectedScenes
-                        .compactMap({ $0 as? UIWindowScene })
-                        .flatMap({ $0.windows })
-                        .first(where: { $0.isKeyWindow })
-                    else { return }
+                Task { @MainActor in
+                    guard let window = UIApplication.preferredPresentationWindow() else { return }
                     await authService.signIn(from: window)
                 }
             }

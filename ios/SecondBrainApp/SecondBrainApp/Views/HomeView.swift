@@ -26,7 +26,7 @@ struct HomeView: View {
             }
 
             Button {
-                Task {
+                Task { @MainActor in
                     isLoading = true
                     healthStatus = nil
                     errorMessage = nil
