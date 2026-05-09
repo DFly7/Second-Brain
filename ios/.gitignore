@@ -1,4 +1,5 @@
 *.xcworkspace/
+Derived/
 DerivedData/
 *.xcuserstate
 xcuserdata/

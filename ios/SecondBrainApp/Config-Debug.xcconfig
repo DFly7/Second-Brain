@@ -1,6 +1,7 @@
 // Local dev — replace YOUR_MACHINE_IP with Mac LAN IP (e.g. from: ipconfig getifaddr en0)
-BACKEND_URL = http://YOUR_MACHINE_IP:8000
-AUTHENTIK_AUTHORIZE_URL = https://auth.smoothstudy.ai/application/o/authorize/
-AUTHENTIK_TOKEN_URL = https://auth.smoothstudy.ai/application/o/token/
+SLASH = /
+BACKEND_URL = http:$(SLASH)$(SLASH)YOUR_MACHINE_IP:8000
+AUTHENTIK_AUTHORIZE_URL = https:$(SLASH)$(SLASH)auth.smoothstudy.ai/application/o/authorize/
+AUTHENTIK_TOKEN_URL = https:$(SLASH)$(SLASH)auth.smoothstudy.ai/application/o/token/
 AUTHENTIK_CLIENT_ID = second-brain
-AUTHENTIK_REDIRECT_URI = secondbrain://auth/callback
+AUTHENTIK_REDIRECT_URI = secondbrain:$(SLASH)$(SLASH)auth/callback
