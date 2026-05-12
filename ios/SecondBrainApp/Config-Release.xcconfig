@@ -1,5 +1,6 @@
 SLASH = /
-BACKEND_URL = https:$(SLASH)$(SLASH)smoothstudy.ai
+// API is served under /api/ via prod nginx (frontend proxy). base + "/health" in code => /api/health
+BACKEND_URL = https:$(SLASH)$(SLASH)smoothstudy.ai$(SLASH)api
 AUTHENTIK_AUTHORIZE_URL = https:$(SLASH)$(SLASH)auth.smoothstudy.ai/application/o/authorize/
 AUTHENTIK_TOKEN_URL = https:$(SLASH)$(SLASH)auth.smoothstudy.ai/application/o/token/
 AUTHENTIK_CLIENT_ID = second-brain
