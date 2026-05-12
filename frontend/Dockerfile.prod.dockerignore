@@ -1,0 +1,10 @@
+# Used only when building with Dockerfile.prod (prod compose). Dev Dockerfile keeps using .dockerignore.
+# Omit .env.local so VITE_DEV_AUTH_BYPASS etc. never leak into production bundles.
+.git
+__pycache__
+.venv
+node_modules
+dist
+.pytest_cache
+*.pyc
+.env.local

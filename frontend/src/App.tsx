@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { redirectToAuthentik, devLogin, DEV_AUTH_BYPASS } from './auth'
+import { redirectToAuthentik, devLogin, DEV_AUTH_BYPASS, saveAccessToken, getStoredAccessToken, clearStoredTokens } from './auth'
 import Layout from './components/Layout'
 
 type AuthState = 'loading' | 'authenticated' | 'unauthenticated'
@@ -41,12 +41,13 @@ let _callbackInflight = false
 
 export default function App() {
   const hasCode = new URLSearchParams(window.location.search).has('code')
-  // Start authenticated immediately if we know the token is still fresh — eliminates the
-  // "Signing you in…" splash on normal return visits. Fall back to loading for OAuth callbacks,
-  // expired tokens, or missing cookies so the async check/refresh can run.
   const [authState, setAuthState] = useState<AuthState>(() => {
-    if (!hasCode && !hasLoggedInCookie()) return 'unauthenticated'
-    if (!hasCode && isAccessTokenFresh()) return 'authenticated'
+    if (!hasCode) {
+      // Prefer the sessionStorage token (works even when cookies are stripped by Cloudflare).
+      if (getStoredAccessToken()) return 'authenticated'
+      if (!hasLoggedInCookie()) return 'unauthenticated'
+      if (isAccessTokenFresh()) return 'authenticated'
+    }
     return 'loading'
   })
 
@@ -74,12 +75,20 @@ export default function App() {
         credentials: 'include',
         body: JSON.stringify({ code, code_verifier: verifier }),
       })
-        .then(r => {
+        .then(async r => {
           _callbackInflight = false
           sessionStorage.removeItem('pkce_verifier')
           sessionStorage.removeItem('oauth_state')
           window.history.replaceState({}, '', '/')
-          setAuthState(r.ok ? 'authenticated' : 'unauthenticated')
+          if (r.ok) {
+            try {
+              const data = await r.json()
+              if (data.access_token) saveAccessToken(data.access_token, data.expires_in)
+            } catch { /* ignore */ }
+            setAuthState('authenticated')
+          } else {
+            setAuthState('unauthenticated')
+          }
         })
         .catch(() => {
           _callbackInflight = false
@@ -91,26 +100,39 @@ export default function App() {
       return
     }
 
-    if (!hasLoggedInCookie()) return  // already initialised as unauthenticated above
+    if (!hasLoggedInCookie() && !getStoredAccessToken()) return  // already initialised as unauthenticated above
 
-    // Strict Mode runs this effect twice: first pass clears the URL during callback handling,
-    // second pass would hit /me before cookies exist and redirect back to Authentik.
     if (_callbackInflight) return
 
-    if (isAccessTokenFresh()) {
-      // Token is fresh — already started as authenticated. Silently revalidate in the background
-      // so a clock-skewed or otherwise invalid cookie gets caught without blocking the UI.
-      fetch('/api/auth/me', { credentials: 'include' }).then(r => {
+    const storedToken = getStoredAccessToken()
+    const meHeaders: Record<string, string> = storedToken ? { Authorization: `Bearer ${storedToken}` } : {}
+
+    if (storedToken || isAccessTokenFresh()) {
+      fetch('/api/auth/me', { credentials: 'include', headers: meHeaders }).then(r => {
         if (!r.ok) setAuthState('unauthenticated')
       })
       return
     }
 
-    fetch('/api/auth/me', { credentials: 'include' }).then(async r => {
+    fetch('/api/auth/me', { credentials: 'include', headers: meHeaders }).then(async r => {
       if (r.ok) { setAuthState('authenticated'); return }
       const refresh = await fetch('/api/auth/refresh', { method: 'POST', credentials: 'include' })
-      setAuthState(refresh.ok ? 'authenticated' : 'unauthenticated')
+      if (refresh.ok) {
+        try {
+          const data = await refresh.clone().json()
+          if (data.access_token) saveAccessToken(data.access_token, data.expires_in)
+        } catch { /* ignore */ }
+        setAuthState('authenticated')
+      } else {
+        setAuthState('unauthenticated')
+      }
     })
+  }, [])
+
+  useEffect(() => {
+    const handler = () => { clearStoredTokens(); setAuthState('unauthenticated') }
+    window.addEventListener('auth:unauthenticated', handler)
+    return () => window.removeEventListener('auth:unauthenticated', handler)
   }, [])
 
   useEffect(() => {

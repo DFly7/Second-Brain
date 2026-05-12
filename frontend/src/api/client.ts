@@ -1,3 +1,5 @@
+import { getStoredAccessToken, saveAccessToken } from '../auth'
+
 const BASE = '/api'
 
 /** One in-flight refresh so parallel 401s don't stampede Authentik. */
@@ -7,10 +9,11 @@ function sleep(ms: number): Promise<void> {
   return new Promise(res => setTimeout(res, ms))
 }
 
-/**
- * POST /auth/refresh with backoff — covers brief Authentik/API outages that used to
- * force reload + full OAuth (see smoothstudy poll every 10s + single-shot refresh).
- */
+function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const token = getStoredAccessToken()
+  return token ? { Authorization: `Bearer ${token}`, ...extra } : extra
+}
+
 function postRefreshWithRetries(): Promise<Response> {
   if (refreshInflight !== null) return refreshInflight
   const promiseRef: { current: Promise<Response> | null } = { current: null }
@@ -20,7 +23,13 @@ function postRefreshWithRetries(): Promise<Response> {
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
           last = await fetch(`${BASE}/auth/refresh`, { method: 'POST', credentials: 'include' })
-          if (last.ok) return last
+          if (last.ok) {
+            try {
+              const data = await last.clone().json()
+              if (data.access_token) saveAccessToken(data.access_token, data.expires_in)
+            } catch { /* ignore */ }
+            return last
+          }
         } catch {
           last = undefined
         }
@@ -36,15 +45,19 @@ function postRefreshWithRetries(): Promise<Response> {
 }
 
 async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
-  const opts: RequestInit = { ...options, credentials: 'include' }
+  const opts: RequestInit = {
+    ...options,
+    credentials: 'include',
+    headers: authHeaders(options.headers as Record<string, string> ?? {}),
+  }
   let r = await fetch(url, opts)
   if (r.status !== 401) return r
   const refresh = await postRefreshWithRetries()
   if (!refresh.ok) {
-    window.location.href = '/'
+    window.dispatchEvent(new CustomEvent('auth:unauthenticated'))
     return r
   }
-  r = await fetch(url, opts)
+  r = await fetch(url, { ...opts, headers: authHeaders(options.headers as Record<string, string> ?? {}) })
   return r
 }
 
@@ -120,7 +133,9 @@ export async function getActivity(limit = 50) {
 }
 
 export function createSSE(onEvent: (data: unknown) => void): () => void {
-  const es = new EventSource(`${BASE}/chat/sse`, { withCredentials: true })
+  const token = getStoredAccessToken()
+  const sseUrl = token ? `${BASE}/chat/sse?token=${encodeURIComponent(token)}` : `${BASE}/chat/sse`
+  const es = new EventSource(sseUrl, { withCredentials: true })
   es.onmessage = (e) => {
     try {
       onEvent(JSON.parse(e.data))

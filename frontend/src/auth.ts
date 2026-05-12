@@ -1,5 +1,37 @@
 export const DEV_AUTH_BYPASS = import.meta.env.VITE_DEV_AUTH_BYPASS === 'true'
 
+const _AT_KEY = 'sb_at'
+const _AT_EXP_KEY = 'sb_at_exp'
+
+export function saveAccessToken(token: string, expiresIn?: number | null): void {
+  try {
+    sessionStorage.setItem(_AT_KEY, token)
+    if (expiresIn) {
+      sessionStorage.setItem(_AT_EXP_KEY, String(Math.floor(Date.now() / 1000) + expiresIn))
+    }
+  } catch { /* storage unavailable */ }
+}
+
+export function getStoredAccessToken(): string | null {
+  try {
+    const exp = sessionStorage.getItem(_AT_EXP_KEY)
+    if (exp && parseInt(exp, 10) < Math.floor(Date.now() / 1000)) {
+      clearStoredTokens()
+      return null
+    }
+    return sessionStorage.getItem(_AT_KEY)
+  } catch {
+    return null
+  }
+}
+
+export function clearStoredTokens(): void {
+  try {
+    sessionStorage.removeItem(_AT_KEY)
+    sessionStorage.removeItem(_AT_EXP_KEY)
+  } catch { /* ignore */ }
+}
+
 const AUTHENTIK_URL = DEV_AUTH_BYPASS ? '' : (import.meta.env.VITE_AUTHENTIK_URL as string ?? '').replace(/\/$/, '')
 const CLIENT_ID = DEV_AUTH_BYPASS ? '' : import.meta.env.VITE_AUTHENTIK_CLIENT_ID as string
 const REDIRECT_URI = DEV_AUTH_BYPASS ? '' : import.meta.env.VITE_REDIRECT_URI as string
@@ -27,6 +59,7 @@ export async function devLogin(): Promise<void> {
 }
 
 export async function logout(): Promise<void> {
+  clearStoredTokens()
   await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
   if (DEV_AUTH_BYPASS) {
     window.location.reload()

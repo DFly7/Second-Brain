@@ -77,18 +77,19 @@ async def _decode_token(token: str) -> dict:
         claims = jwt.decode(token, jwks)
         claims.validate()
         payload = dict(claims)
-    except (JoseError, ValueError):
-        # Key may have rotated, or JWKS was incomplete — bust cache and retry once.
-        # authlib can raise ValueError('Invalid JSON Web Key Set') for kid mismatch; don't 500.
+    except (JoseError, ValueError) as first_err:
+        log.warning("jwt_decode_first_attempt_failed", error=str(first_err), error_type=type(first_err).__name__)
         reset_jwks_cache()
         try:
             jwks = await _get_jwks()
             claims = jwt.decode(token, jwks)
             claims.validate()
             payload = dict(claims)
-        except (JoseError, ValueError):
+        except (JoseError, ValueError) as second_err:
+            log.warning("jwt_decode_second_attempt_failed", error=str(second_err), error_type=type(second_err).__name__)
             raise HTTPException(status_code=401, detail="Invalid token")
     if payload.get("iss") != settings.authentik_issuer:
+        log.warning("jwt_issuer_mismatch", token_iss=payload.get("iss"), expected=settings.authentik_issuer)
         raise HTTPException(status_code=401, detail="Invalid token")
     if payload.get("sub") is None:
         raise HTTPException(status_code=401, detail="Invalid token")
@@ -103,8 +104,19 @@ def _resolve_raw_access_token(request: Request) -> str | None:
     if token:
         return token
     authorization = request.headers.get("Authorization") or ""
+    log.warning(
+        "auth_resolve",
+        path=request.url.path,
+        has_auth_header=bool(authorization),
+        has_qp_token=bool(request.query_params.get("token")),
+        cookie_keys=list(request.cookies.keys()),
+    )
     if authorization.startswith(_BEARER_PREFIX):
         return authorization[len(_BEARER_PREFIX) :].strip() or None
+    # EventSource doesn't support custom headers — accept token as query param for SSE endpoints.
+    qp_token = request.query_params.get("token")
+    if qp_token:
+        return qp_token
     return None
 
 
@@ -139,7 +151,7 @@ def _set_auth_cookies(
         access_token,
         httponly=True,
         secure=sec,
-        samesite="strict",
+        samesite="lax",
         max_age=access_token_ttl,  # None = session cookie; set from token response expires_in
     )
     response.set_cookie(
@@ -147,7 +159,7 @@ def _set_auth_cookies(
         refresh_token,
         httponly=True,
         secure=sec,
-        samesite="strict",
+        samesite="lax",
         max_age=_REFRESH_MAX_AGE,
     )
     # JS-readable flag so the frontend can skip async auth checks when not logged in.
@@ -158,7 +170,7 @@ def _set_auth_cookies(
         "1",
         httponly=False,
         secure=sec,
-        samesite="strict",
+        samesite="lax",
         max_age=_REFRESH_MAX_AGE,
     )
     # JS-readable expiry hint so the frontend can skip the /me round-trip on page load when
@@ -169,7 +181,7 @@ def _set_auth_cookies(
             str(int(time.time()) + access_token_ttl),
             httponly=False,
             secure=sec,
-            samesite="strict",
+            samesite="lax",
             max_age=access_token_ttl,
         )
 
@@ -181,28 +193,28 @@ def _clear_auth_cookies(response: Response) -> None:
         path="/",
         secure=sec,
         httponly=True,
-        samesite="strict",
+        samesite="lax",
     )
     response.delete_cookie(
         "refresh_token",
         path="/",
         secure=sec,
         httponly=True,
-        samesite="strict",
+        samesite="lax",
     )
     response.delete_cookie(
         "logged_in",
         path="/",
         secure=sec,
         httponly=False,
-        samesite="strict",
+        samesite="lax",
     )
     response.delete_cookie(
         "token_expires_at",
         path="/",
         secure=sec,
         httponly=False,
-        samesite="strict",
+        samesite="lax",
     )
 
 
@@ -240,7 +252,7 @@ async def auth_callback(req: CallbackRequest, response: Response):
         raise HTTPException(status_code=401, detail="Token exchange failed")
     tokens = r.json()
     _set_auth_cookies(response, tokens["access_token"], tokens.get("refresh_token", ""), tokens.get("expires_in"))
-    return {"ok": True}
+    return {"ok": True, "access_token": tokens["access_token"], "expires_in": tokens.get("expires_in")}
 
 
 @router.post("/refresh")
@@ -265,7 +277,7 @@ async def auth_refresh(request: Request, response: Response):
         raise HTTPException(status_code=401, detail="Refresh failed")
     tokens = r.json()
     _set_auth_cookies(response, tokens["access_token"], tokens["refresh_token"], tokens.get("expires_in"))
-    return {"ok": True}
+    return {"ok": True, "access_token": tokens["access_token"], "expires_in": tokens.get("expires_in")}
 
 
 @router.post("/logout")
