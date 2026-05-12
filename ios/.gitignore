@@ -1,6 +1,7 @@
 *.xcworkspace/
 Derived/
 DerivedData/
+DerivedDataRun/
 *.xcuserstate
 xcuserdata/
 .build/

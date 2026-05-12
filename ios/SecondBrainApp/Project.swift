@@ -24,6 +24,13 @@ let project = Project(
             ]),
             sources: ["SecondBrainApp/**"],
             settings: .settings(
+                base: [
+                    // Ensures xcodebuild exposes iOS Simulator destinations (not device-only).
+                    "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator",
+                    // Tuist still emits SDKROOT=iphoneos; these make simulator SDK resolution explicit.
+                    "SDKROOT[sdk=iphonesimulator*]": "iphonesimulator",
+                    "SDKROOT[sdk=iphoneos*]": "iphoneos",
+                ],
                 configurations: [
                     .debug(name: "Debug", xcconfig: .relativeToManifest("Config-Debug.xcconfig")),
                     .release(name: "Release", xcconfig: .relativeToManifest("Config-Release.xcconfig")),

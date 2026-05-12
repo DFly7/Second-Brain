@@ -1,3 +1,7 @@
+// Tuist sets SDKROOT=iphoneos on the target; sdk-scoped overrides keep simulator builds valid.
+SDKROOT[sdk=iphonesimulator*] = iphonesimulator
+SDKROOT[sdk=iphoneos*] = iphoneos
+
 SLASH = /
 // API is served under /api/ via prod nginx (frontend proxy). base + "/health" in code => /api/health
 BACKEND_URL = https:$(SLASH)$(SLASH)smoothstudy.ai$(SLASH)api
