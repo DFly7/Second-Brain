@@ -47,6 +47,12 @@ docker compose run --rm api pytest tests/ -v
 
 **Critical:** Prod installs dependencies **only** from `requirements-prod.txt`. Anything the app imports at runtime must appear there **as well as** in `requirements.txt` (unless the package is test-only — e.g. pytest). Adding a dependency only to `requirements.txt` will break production with `ModuleNotFoundError` even when local `docker compose up` works. Rebuild prod API after edits: `docker compose -f docker-compose.prod.yml build --no-cache api` (or `up --build`) so cached layers reinstall.
 
+## Auth configuration pitfalls
+
+**`DEV_AUTH_BYPASS` must be `false` in production.** With `DEV_AUTH_BYPASS=true`, the backend short-circuits all JWT validation and only accepts the literal string `"dev"` as a valid token. A real Authentik JWT will be rejected with 401 on every request, causing an infinite redirect loop between the app and Authentik. The frontend `.env` does not set `VITE_DEV_AUTH_BYPASS`, so the frontend always runs the real PKCE flow — if the backend is in bypass mode, auth will never work.
+
+Check `.env` before debugging any auth loop: `grep DEV_AUTH_BYPASS .env`
+
 ## Key conventions
 
 - Migrations live in `api/alembic/versions/` — always generate via `alembic revision --autogenerate`

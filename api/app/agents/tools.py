@@ -770,9 +770,10 @@ class AgentTools:
                 args["slug"], args["body_md"], args.get("summary", "")
             )
         if name == "create_page":
+            title = args.get("title") or args["slug"].split("/")[-1].replace("-", " ").title()
             return await self.create_page(
                 args["slug"],
-                args["title"],
+                title,
                 args["body_md"],
                 args.get("summary", ""),
             )
