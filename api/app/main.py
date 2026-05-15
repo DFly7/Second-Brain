@@ -47,7 +47,10 @@ async def lifespan(app: FastAPI):
     from app.sse import broadcaster
 
     redis_url = os.environ.get("REDIS_URL", "redis://redis:6379")
+    from app.config import settings
     log.info("startup", redis_url=_sanitize_redis_url_for_log(redis_url))
+    if settings.dev_auth_bypass:
+        log.warning("dev_auth_bypass_enabled", hint="all JWT validation is disabled — set DEV_AUTH_BYPASS=false in production")
     await broadcaster.connect(redis_url)
     yield
     await broadcaster.disconnect()

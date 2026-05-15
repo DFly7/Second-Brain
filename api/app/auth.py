@@ -251,7 +251,10 @@ async def auth_callback(req: CallbackRequest, response: Response):
     if r.status_code != 200:
         raise HTTPException(status_code=401, detail="Token exchange failed")
     tokens = r.json()
-    _set_auth_cookies(response, tokens["access_token"], tokens.get("refresh_token", ""), tokens.get("expires_in"))
+    refresh_token = tokens.get("refresh_token") or ""
+    if not refresh_token:
+        log.warning("auth_callback_no_refresh_token", hint="offline_access scope may not be granted by the provider")
+    _set_auth_cookies(response, tokens["access_token"], refresh_token, tokens.get("expires_in"))
     return {"ok": True, "access_token": tokens["access_token"], "expires_in": tokens.get("expires_in")}
 
 
