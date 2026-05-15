@@ -78,8 +78,12 @@ class DatalabMarkerClient:
         }
         ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
         mime = MIME_TYPES.get(ext, "application/octet-stream")
+        _IMAGE_EXTS = {"png", "jpg", "jpeg", "gif", "tiff", "webp"}
+        is_image = ext in _IMAGE_EXTS
         files = {"file": (filename, data, mime)}
-        form = {"output_format": "markdown", "paginate": "true", "mode": self.mode}
+        form: dict[str, str] = {"output_format": "markdown", "mode": self.mode}
+        if not is_image:
+            form["paginate"] = "true"
 
         async with httpx.AsyncClient(timeout=_DATALAB_SUBMIT_TIMEOUT) as client:
             resp = await client.post(
@@ -118,20 +122,20 @@ class DatalabMarkerClient:
                     f"Datalab conversion timed out after {MAX_WAIT}s source_id={source_id or '-'}"
                 )
 
-        chunks = result.get("chunks") or []
         _log.info(
             "datalab_conversion_complete",
             source_id=source_id or "-",
             request_id=submission["request_id"],
             markdown_null=result.get("markdown") is None,
             markdown_len=len(result.get("markdown") or ""),
-            chunks_count=len(chunks),
-            chunks_sample=str(chunks[0])[:200] if chunks else None,
-            result_keys=list(result.keys()),
         )
-        return _parse_paginated_markdown(
-            result.get("markdown") or "", result.get("images") or {}
-        )
+        markdown = result.get("markdown") or ""
+        images = result.get("images") or {}
+        if is_image:
+            if not markdown:
+                return []
+            return [PageData(page_num=1, markdown=markdown.strip(), images=[])]
+        return _parse_paginated_markdown(markdown, images)
 
 
 class LocalMarkerClient:
