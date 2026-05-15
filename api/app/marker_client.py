@@ -143,14 +143,20 @@ class DatalabMarkerClient:
                     f"Datalab conversion timed out after {MAX_WAIT}s source_id={source_id or '-'}"
                 )
 
+        datalab_error = result.get("error") or None
+        markdown = result.get("markdown") or ""
         _log.info(
             "datalab_conversion_complete",
             source_id=source_id or "-",
             request_id=submission["request_id"],
-            markdown_null=result.get("markdown") is None,
-            markdown_len=len(result.get("markdown") or ""),
+            success=result.get("success"),
+            page_count=result.get("page_count"),
+            markdown_len=len(markdown),
+            datalab_error=datalab_error,
+            markdown_sample=markdown[:200] if markdown else None,
         )
-        markdown = result.get("markdown") or ""
+        if datalab_error:
+            _log.warning("datalab_conversion_error", source_id=source_id or "-", error=datalab_error)
         images = result.get("images") or {}
         if is_image:
             if not markdown:
