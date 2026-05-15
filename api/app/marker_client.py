@@ -118,12 +118,15 @@ class DatalabMarkerClient:
                     f"Datalab conversion timed out after {MAX_WAIT}s source_id={source_id or '-'}"
                 )
 
+        chunks = result.get("chunks") or []
         _log.info(
             "datalab_conversion_complete",
             source_id=source_id or "-",
             request_id=submission["request_id"],
             markdown_null=result.get("markdown") is None,
             markdown_len=len(result.get("markdown") or ""),
+            chunks_count=len(chunks),
+            chunks_sample=str(chunks[0])[:200] if chunks else None,
             result_keys=list(result.keys()),
         )
         return _parse_paginated_markdown(
