@@ -122,6 +122,9 @@ class DatalabMarkerClient:
             "datalab_conversion_complete",
             source_id=source_id or "-",
             request_id=submission["request_id"],
+            markdown_null=result.get("markdown") is None,
+            markdown_len=len(result.get("markdown") or ""),
+            result_keys=list(result.keys()),
         )
         return _parse_paginated_markdown(
             result.get("markdown") or "", result.get("images") or {}
