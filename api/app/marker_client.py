@@ -124,7 +124,7 @@ class DatalabMarkerClient:
             request_id=submission["request_id"],
         )
         return _parse_paginated_markdown(
-            result.get("markdown", ""), result.get("images") or {}
+            result.get("markdown") or "", result.get("images") or {}
         )
 
 
