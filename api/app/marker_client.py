@@ -1,14 +1,33 @@
 import asyncio
+import io
 import re
 import time
 from dataclasses import dataclass, field
 
 import httpx
 import structlog
+from PIL import Image
 
 from app.config import settings
 
 _log = structlog.get_logger()
+
+_DATALAB_MAX_PX = 4800
+
+
+def _resize_image_if_needed(data: bytes, filename: str) -> bytes:
+    img = Image.open(io.BytesIO(data))
+    w, h = img.size
+    if w <= _DATALAB_MAX_PX and h <= _DATALAB_MAX_PX:
+        return data
+    scale = _DATALAB_MAX_PX / max(w, h)
+    img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+    buf = io.BytesIO()
+    fmt = img.format or "PNG"
+    img.save(buf, format=fmt)
+    _log.info("image_resized", filename=filename, original=(w, h), resized=img.size)
+    return buf.getvalue()
+
 
 DATALAB_CONVERT_URL = "https://www.datalab.to/api/v1/convert"
 _PAGE_SEP = re.compile(r"\n\n\d+\n-{48}\n\n")
@@ -80,6 +99,8 @@ class DatalabMarkerClient:
         mime = MIME_TYPES.get(ext, "application/octet-stream")
         _IMAGE_EXTS = {"png", "jpg", "jpeg", "gif", "tiff", "webp"}
         is_image = ext in _IMAGE_EXTS
+        if is_image:
+            data = _resize_image_if_needed(data, filename)
         files = {"file": (filename, data, mime)}
         form: dict[str, str] = {"output_format": "markdown", "mode": self.mode}
         if not is_image:
