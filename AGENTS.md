@@ -55,6 +55,15 @@ docker compose run --rm api alembic upgrade head
 docker compose run --rm api pytest tests/ -v
 ```
 
+## Pi deployment
+
+Two stacks on `darragh@pi-server.local`, started in order:
+
+1. **Auth** (`~/auth-compose/auth-config/`) — Authentik + its Cloudflare tunnel
+2. **App** (`~/second-brain/Second-Brain/`) — this repo via `docker-compose.prod.yml`
+
+Env files live only on the Mac and must be scp'd before first deploy — see `CLAUDE.md` for the exact commands. The app stack needs Authentik healthy before starting or the JWKS endpoint won't be reachable on boot.
+
 ## Conventions
 
 - Generate migrations with `alembic revision --autogenerate -m "description"`, then review before applying

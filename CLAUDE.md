@@ -53,6 +53,37 @@ docker compose run --rm api pytest tests/ -v
 
 Check `.env` before debugging any auth loop: `grep DEV_AUTH_BYPASS .env`
 
+## Pi deployment
+
+Two stacks live on the Pi — auth first, app second:
+
+- Auth stack: `darragh@pi-server.local:/home/darragh/auth-compose/auth-config/` (Authentik + Cloudflare tunnel)
+- App stack: `darragh@pi-server.local:/home/darragh/second-brain/Second-Brain/` (this repo, prod compose)
+
+**Copying env files from Mac before first deploy (or after secret rotation):**
+
+```bash
+scp /Users/darraghflynn/Documents/Second-Brain/.env darragh@pi-server.local:/home/darragh/second-brain/Second-Brain/.env
+scp /Users/darraghflynn/Documents/Second-Brain/frontend/.env darragh@pi-server.local:/home/darragh/second-brain/Second-Brain/frontend/.env
+scp /Users/darraghflynn/Documents/auth-config/.env darragh@pi-server.local:/home/darragh/auth-compose/auth-config/.env
+```
+
+**Starting both stacks (order matters):**
+
+```bash
+# 1. Auth stack first
+cd ~/auth-compose/auth-config && docker compose up -d
+
+# 2. App stack (wait ~30s for Authentik to be healthy)
+cd ~/second-brain/Second-Brain
+docker compose -f docker-compose.prod.yml up --build -d
+
+# First time only
+docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
+```
+
+Verify `https://auth.smoothstudy.ai` is responding before testing `https://smoothstudy.ai`.
+
 ## Key conventions
 
 - Migrations live in `api/alembic/versions/` — always generate via `alembic revision --autogenerate`
