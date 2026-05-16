@@ -41,11 +41,11 @@ Single-user web app: ingest documents and notes, let an LLM merge them into a **
    docker compose up --build
    ```
 
-3. **Database (first time or after new migrations)**
+3. **Database**
 
-   ```bash
-   docker compose run --rm api alembic upgrade head
-   ```
+   Migrations run automatically when the **API container starts** (`api/docker-entrypoint.sh` runs `alembic upgrade head`). To apply migrations without starting the full app: `docker compose run --rm api alembic upgrade head`.
+
+   **Debug only — skip migrations on start:** set `SKIP_DB_MIGRATE=1` in the `api` service `environment` in compose (see `CLAUDE.md`).
 
 4. **Open**
 
@@ -69,7 +69,7 @@ Single-user web app: ingest documents and notes, let an LLM merge them into a **
 ## Development
 
 - **API tests:** `docker compose run --rm api pytest tests/ -v`
-- **Migrations:** add a revision under `api/alembic/versions/`, then `alembic upgrade head` inside the API container context.
+- **Migrations:** revisions live under `api/alembic/versions/`. The API container runs `alembic upgrade head` on start; override with `SKIP_DB_MIGRATE=1` only for debugging (see `CLAUDE.md`).
 
 ---
 

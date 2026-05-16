@@ -48,12 +48,14 @@ docker compose run --rm api pytest tests/ -v
 # Start stack
 docker compose up --build
 
-# Migrations
+# Migrations run on API container start (api/docker-entrypoint.sh). Manual run without starting the app:
 docker compose run --rm api alembic upgrade head
 
 # Tests (safe — wiki_test only)
 docker compose run --rm api pytest tests/ -v
 ```
+
+**Skip migrations on start (debug only):** set `SKIP_DB_MIGRATE=1` on the `api` service environment. See `CLAUDE.md` → Database migrations.
 
 ## Pi deployment
 

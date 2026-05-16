@@ -28,12 +28,27 @@ docker compose run --rm api pytest tests/ -v
 # Start everything
 docker compose up --build
 
-# Run migrations (first time or after adding a revision)
+# Migrations without starting the API (optional — see “Database migrations” below)
 docker compose run --rm api alembic upgrade head
 
 # Run tests (safe — targets wiki_test only)
 docker compose run --rm api pytest tests/ -v
 ```
+
+## Database migrations
+
+The API image runs **`alembic upgrade head` on every container start** via `api/docker-entrypoint.sh` (before uvicorn or Gunicorn). If the database is already at the latest revision, this is effectively a no-op.
+
+To **disable migrations** for a given start (debug only — e.g. investigating a bad revision), set on the `api` service:
+
+```yaml
+environment:
+  SKIP_DB_MIGRATE: "1"
+```
+
+(Or add the same under `environment` in `docker-compose.yml` / `docker-compose.prod.yml` next to your other API vars.)
+
+You can still run migrations manually without booting the app: `docker compose run --rm api alembic upgrade head`.
 
 ## Local vs production (Docker Compose)
 
@@ -78,8 +93,8 @@ cd ~/auth-compose/auth-config && docker compose up -d
 cd ~/second-brain/Second-Brain
 docker compose -f docker-compose.prod.yml up --build -d
 
-# First time only
-docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
+# Migrations run when the API container starts. Optional manual run if needed:
+# docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
 ```
 
 Verify `https://auth.smoothstudy.ai` is responding before testing `https://smoothstudy.ai`.

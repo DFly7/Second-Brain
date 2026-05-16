@@ -18,8 +18,11 @@ RUN pip install --no-cache-dir -r requirements-prod.txt \
 
 COPY --chown=appuser:appuser . .
 
+RUN chmod +x /app/docker-entrypoint.sh
+
 USER appuser
 
 EXPOSE 8000
 
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["sh", "-c", "exec gunicorn app.main:app -w ${WEB_CONCURRENCY:-4} -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000"]
