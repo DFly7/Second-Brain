@@ -56,6 +56,14 @@ idle → recording → done
 | `liveTranscript` | `String` | Updates word-by-word during recording via partial results |
 | `errorMessage` | `String?` | Permission denial or engine failure |
 
+### Methods
+
+| Method | Description |
+|---|---|
+| `startRecording()` | Starts audio engine + recognition request, sets state to `.recording` |
+| `stopRecording()` | Finalises recognition request, sets state to `.done` |
+| `discard()` | Clears `liveTranscript`, resets state to `.idle` — no ingest |
+
 ### Recording triggers
 
 Two entry points, both call the same `startRecording()` / `stopRecording()` logic:
@@ -91,7 +99,7 @@ Two entry points, both call the same `startRecording()` / `stopRecording()` logi
 │  └───────────────────────┘  │
 │                             │
 │        [● Hold to Record]   │  ← hold OR tap-to-toggle
-│        [✓ Ingest Note]      │  ← appears when state == .done
+│   [🗑 Discard] [✓ Ingest]   │  ← both appear when state == .done
 │                             │
 │  ────────── or ──────────   │
 │                             │
@@ -108,6 +116,10 @@ Two entry points, both call the same `startRecording()` / `stopRecording()` logi
 | `idle` | Mic icon, label "Hold or tap to record" |
 | `recording` | Red pulsing circle, label "Recording…" |
 | `done` | Checkmark, label "Done" |
+
+### Discard action
+
+When `state == .done`, a **trash/retake button** appears alongside "Ingest Note". Tapping it calls `voiceRecorder.discard()` which clears `liveTranscript` and resets state to `idle` — no ingest is triggered. This lets the user redo a fumbled recording without awkwardly recording over it.
 
 ### Image ingest
 
