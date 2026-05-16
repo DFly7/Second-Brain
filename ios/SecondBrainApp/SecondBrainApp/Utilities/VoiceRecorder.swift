@@ -18,6 +18,7 @@ final class VoiceRecorder: NSObject {
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private let audioEngine = AVAudioEngine()
+    private var isAudioTapInstalled = false
 
     func startRecording() {
         guard state == .idle else { return }
@@ -33,7 +34,10 @@ final class VoiceRecorder: NSObject {
     func stopRecording() {
         guard state == .recording else { return }
         audioEngine.stop()
-        audioEngine.inputNode.removeTap(onBus: 0)
+        if isAudioTapInstalled {
+            audioEngine.inputNode.removeTap(onBus: 0)
+            isAudioTapInstalled = false
+        }
         recognitionRequest?.endAudio()
         state = .done
         recognitionTask?.cancel()
@@ -44,7 +48,10 @@ final class VoiceRecorder: NSObject {
 
     func discard() {
         audioEngine.stop()
-        audioEngine.inputNode.removeTap(onBus: 0)
+        if isAudioTapInstalled {
+            audioEngine.inputNode.removeTap(onBus: 0)
+            isAudioTapInstalled = false
+        }
         recognitionRequest?.endAudio()
         recognitionTask?.cancel()
         recognitionRequest = nil
@@ -83,6 +90,7 @@ final class VoiceRecorder: NSObject {
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
             self?.recognitionRequest?.append(buffer)
         }
+        isAudioTapInstalled = true
 
         recognitionTask = recognizer.recognitionTask(with: recognitionRequest) { [weak self] result, error in
             Task { @MainActor [weak self] in
