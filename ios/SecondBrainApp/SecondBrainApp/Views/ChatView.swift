@@ -15,7 +15,16 @@ struct ChatView: View {
                 messageList
                 Divider()
                 inputBar
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 4)
+                }
             }
+            .animation(.default, value: errorMessage)
             .navigationTitle("Chat")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -48,12 +57,6 @@ struct ChatView: View {
                         }
                         .padding(.horizontal, 16)
                         .id("loading")
-                    }
-                    if let error = errorMessage {
-                        Text(error)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                            .padding(.horizontal, 16)
                     }
                 }
                 .padding(.vertical, 12)
