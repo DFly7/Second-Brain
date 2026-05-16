@@ -13,7 +13,7 @@ final class APIService {
     // MARK: - Existing
 
     func health() async throws -> String {
-        let url = URL(string: APIConfig.shared.backendURL + "/health")!
+        let url = try url("/health")
         let data: [String: String] = try await performRequest(url: url, method: "GET")
         return data["status"] ?? "unknown"
     }
@@ -21,13 +21,13 @@ final class APIService {
     // MARK: - Ingest
 
     func ingestText(text: String, title: String) async throws {
-        let url = URL(string: APIConfig.shared.backendURL + "/ingest/text")!
+        let url = try url("/ingest/text")
         let body = try JSONEncoder().encode(["text": text, "title": title])
         let _: IngestResponse = try await performRequest(url: url, method: "POST", body: body, contentType: "application/json")
     }
 
     func ingestFile(data: Data, filename: String, mimeType: String) async throws {
-        let url = URL(string: APIConfig.shared.backendURL + "/ingest/file")!
+        let url = try url("/ingest/file")
         let boundary = "Boundary-\(UUID().uuidString)"
         let body = multipartBody(data: data, filename: filename, mimeType: mimeType, boundary: boundary)
         let _: IngestResponse = try await performRequest(
@@ -41,7 +41,7 @@ final class APIService {
     // MARK: - Chat
 
     func sendMessage(text: String, sessionId: String?) async throws -> (answer: String, sessionId: String) {
-        let url = URL(string: APIConfig.shared.backendURL + "/chat/message")!
+        let url = try url("/chat/message")
         var payload: [String: String?] = ["message": text, "mode": "query"]
         payload["session_id"] = sessionId
         let body = try JSONEncoder().encode(payload)
@@ -50,6 +50,14 @@ final class APIService {
     }
 
     // MARK: - Private helpers
+
+    private func url(_ path: String) throws -> URL {
+        let absolute = APIConfig.shared.backendURL + path
+        guard let url = URL(string: absolute) else {
+            throw APIError.invalidURL
+        }
+        return url
+    }
 
     private func performRequest<T: Decodable>(
         url: URL,
@@ -76,14 +84,24 @@ final class APIService {
     }
 
     private func multipartBody(data: Data, filename: String, mimeType: String, boundary: String) -> Data {
+        let safeFilename = sanitizedMultipartFilename(filename)
         var body = Data()
         let crlf = "\r\n"
         body.append("--\(boundary)\(crlf)".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\(crlf)".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(safeFilename)\"\(crlf)".data(using: .utf8)!)
         body.append("Content-Type: \(mimeType)\(crlf)\(crlf)".data(using: .utf8)!)
         body.append(data)
         body.append("\(crlf)--\(boundary)--\(crlf)".data(using: .utf8)!)
         return body
+    }
+
+    private func sanitizedMultipartFilename(_ filename: String) -> String {
+        filename.map { ch in
+            switch ch {
+            case "\"", "\r", "\n", "\\": "_"
+            default: ch
+            }
+        }.reduce(into: "") { $0.append($1) }
     }
 }
 
@@ -108,11 +126,15 @@ private struct ChatMessageResponse: Decodable {
 }
 
 enum APIError: LocalizedError {
+    case invalidURL
     case requestFailed(statusCode: Int)
 
     var errorDescription: String? {
         switch self {
-        case .requestFailed(let code): "Request failed (HTTP \(code))"
+        case .invalidURL:
+            return "The API base URL is invalid. Check BACKEND_URL in configuration."
+        case .requestFailed(let code):
+            return "Request failed (HTTP \(code))"
         }
     }
 }
