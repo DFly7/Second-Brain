@@ -393,7 +393,7 @@ class AgentTools:
                 (PageLink.from_page_id == page.id) | (PageLink.to_page_id == page.id)
             )
         )
-        self.session.delete(page)
+        await self.session.delete(page)
         await self.session.flush()
         for linking_page in linking_pages:
             await sync_links(self.session, linking_page)
