@@ -8,7 +8,7 @@ struct RootView: View {
             TabView {
                 CaptureView()
                     .tabItem {
-                        Label("Capture", systemImage: "camera.fill")
+                        Label("Capture", systemImage: "mic.fill")
                     }
 
                 ChatView()
