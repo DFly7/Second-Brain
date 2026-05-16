@@ -228,8 +228,29 @@ struct CaptureView: View {
     }
 
     private func ingestFileData(_ data: Data, filename: String, mimeType: String) async {
+        var uploadData = data
+        var uploadFilename = filename
+        var uploadMime = mimeType
+
+        let lowerName = filename.lowercased()
+        let lowerMime = mimeType.lowercased()
+        let indicatesHeic =
+            lowerName.hasSuffix(".heic")
+            || lowerMime.contains("heic")
+            || lowerMime.contains("heif")
+
+        if indicatesHeic,
+           let image = UIImage(data: data),
+           let jpeg = image.jpegData(compressionQuality: 0.9)
+        {
+            uploadData = jpeg
+            let base = (filename as NSString).deletingPathExtension
+            uploadFilename = base.isEmpty ? "image.jpg" : "\(base).jpg"
+            uploadMime = "image/jpeg"
+        }
+
         do {
-            try await apiService.ingestFile(data: data, filename: filename, mimeType: mimeType)
+            try await apiService.ingestFile(data: uploadData, filename: uploadFilename, mimeType: uploadMime)
             showToast("Image ingested")
         } catch {
             showToast("Failed: \(error.localizedDescription)")
@@ -268,10 +289,12 @@ private struct CameraPickerView: UIViewControllerRepresentable {
         return picker
     }
 
-    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {
+        context.coordinator.onCapture = onCapture
+    }
 
     final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
-        let onCapture: (UIImage) -> Void
+        var onCapture: (UIImage) -> Void
         init(onCapture: @escaping (UIImage) -> Void) { self.onCapture = onCapture }
 
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
@@ -299,10 +322,12 @@ private struct LibraryPickerView: UIViewControllerRepresentable {
         return picker
     }
 
-    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
+    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {
+        context.coordinator.onPick = onPick
+    }
 
     final class Coordinator: NSObject, PHPickerViewControllerDelegate {
-        let onPick: (UIImage) -> Void
+        var onPick: (UIImage) -> Void
         init(onPick: @escaping (UIImage) -> Void) { self.onPick = onPick }
 
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
@@ -329,17 +354,19 @@ private struct FilesPickerView: UIViewControllerRepresentable {
         return picker
     }
 
-    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {
+        context.coordinator.onPick = onPick
+    }
 
     final class Coordinator: NSObject, UIDocumentPickerDelegate {
-        let onPick: (Data, String) -> Void
+        var onPick: (Data, String) -> Void
         init(onPick: @escaping (Data, String) -> Void) { self.onPick = onPick }
 
         func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-            guard let url = urls.first,
-                  url.startAccessingSecurityScopedResource(),
-                  let data = try? Data(contentsOf: url) else { return }
-            url.stopAccessingSecurityScopedResource()
+            guard let url = urls.first else { return }
+            guard url.startAccessingSecurityScopedResource() else { return }
+            defer { url.stopAccessingSecurityScopedResource() }
+            guard let data = try? Data(contentsOf: url) else { return }
             DispatchQueue.main.async { self.onPick(data, url.lastPathComponent) }
         }
     }
