@@ -1,13 +1,13 @@
 import { useState, useEffect, useMemo } from 'react'
 import type React from 'react'
-import { logout } from '../auth'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import WikiSidebar from './WikiSidebar'
 import WikiContent from './WikiContent'
 import ChatPanel from './ChatPanel'
 import IngestModal from './IngestModal'
 import ActivityLog from './ActivityLog'
-import { createSSE } from '../api/client'
+import TopBar from './TopBar'
+import { useSse } from '../hooks/useSse'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   loadQueueState,
@@ -55,97 +55,104 @@ export default function Layout() {
     return () => clearInterval(t)
   }, [queueActions])
 
-  useEffect(() => {
-    const unsub = createSSE((data: unknown) => {
-      const event = data as {
-        event: string
-        slug?: string
-        source_id?: string
-        filename?: string
-        pages_touched?: string[]
-        context?: string
-      }
-      if (event.context === 'chat') {
-        if (event.event === 'agent:done') {
-          qc.invalidateQueries({ queryKey: ['pages'] })
-          qc.invalidateQueries({ queryKey: ['activity'] })
-        } else {
-          setChatSseEvent({ event: event.event, slug: event.slug })
-        }
-        return
-      }
-      const STATUS_MAP: Partial<Record<string, QueueItem['status']>> = {
-        'agent:queued': 'queued',
-        'agent:converting': 'converting',
-        'agent:ingesting': 'processing',
-        'agent:done': 'done',
-        'agent:error': 'error',
-      }
-      const queueStatus = STATUS_MAP[event.event]
-      if (queueStatus && event.source_id) {
-        queueActions.patchBySource(event.source_id, { status: queueStatus })
-      }
-      if (event.event === 'agent:error') {
-        setHighlightedSlug(null)
-        setAgentStatus(null)
-      }
-      if (event.event === 'agent:queued') {
-        const label = event.filename ?? (event.source_id ? `source ${event.source_id.slice(0, 8)}…` : null)
-        setAgentStatus(label ? `Queued ${label}…` : 'Queued…')
-      } else if (event.event === 'agent:converting') {
-        const label = event.filename ?? (event.source_id ? `source ${event.source_id.slice(0, 8)}…` : null)
-        setAgentStatus(label ? `Converting ${label}…` : 'Converting document…')
-      } else if (event.event === 'agent:ingesting') {
-        const label = event.filename ?? (event.source_id ? `source ${event.source_id.slice(0, 8)}…` : null)
-        setAgentStatus(label ? `Updating wiki from ${label}…` : 'Updating wiki from ingested source…')
-      } else if (event.event === 'agent:reading') {
-        setHighlightedSlug(event.slug || null)
-        setAgentStatus(`Reading ${event.slug}…`)
-      } else if (event.event === 'agent:writing') {
-        setHighlightedSlug(event.slug || null)
-        setAgentStatus(`Writing ${event.slug}…`)
-      } else if (event.event === 'agent:moving') {
-        const e = event as { event: string; from?: string; to?: string }
-        setHighlightedSlug(e.to || null)
-        setAgentStatus(e.from && e.to ? `Moving ${e.from} → ${e.to}…` : 'Moving page…')
-      } else if (event.event === 'agent:deleting') {
-        setHighlightedSlug(null)
-        setAgentStatus(event.slug ? `Deleting ${event.slug}…` : 'Deleting page…')
-      } else if (event.event === 'agent:moved_folder') {
-        const e = event as { event: string; from?: string; to?: string; count?: number }
-        setHighlightedSlug(null)
-        setAgentStatus(
-          e.from && e.to
-            ? `Moved ${e.count ?? '?'} pages: ${e.from} → ${e.to}`
-            : 'Folder move complete',
-        )
-      } else if (event.event === 'agent:done') {
-        setHighlightedSlug(null)
-        setAgentStatus(null)
+  useSse((data: unknown) => {
+    const event = data as {
+      event: string
+      slug?: string
+      source_id?: string
+      filename?: string
+      pages_touched?: string[]
+      context?: string
+    }
+    if (event.context === 'chat') {
+      if (event.event === 'agent:done') {
         qc.invalidateQueries({ queryKey: ['pages'] })
         qc.invalidateQueries({ queryKey: ['activity'] })
+      } else {
+        setChatSseEvent({ event: event.event, slug: event.slug })
       }
-    })
-    return unsub
-  }, [qc, queueActions])
+      return
+    }
+    const STATUS_MAP: Partial<Record<string, QueueItem['status']>> = {
+      'agent:queued': 'queued',
+      'agent:converting': 'converting',
+      'agent:ingesting': 'processing',
+      'agent:done': 'done',
+      'agent:error': 'error',
+    }
+    const queueStatus = STATUS_MAP[event.event]
+    if (queueStatus && event.source_id) {
+      queueActions.patchBySource(event.source_id, { status: queueStatus })
+    }
+    if (event.event === 'agent:error') {
+      setHighlightedSlug(null)
+      setAgentStatus(null)
+    }
+    if (event.event === 'agent:queued') {
+      const label = event.filename ?? (event.source_id ? `source ${event.source_id.slice(0, 8)}…` : null)
+      setAgentStatus(label ? `Queued ${label}…` : 'Queued…')
+    } else if (event.event === 'agent:converting') {
+      const label = event.filename ?? (event.source_id ? `source ${event.source_id.slice(0, 8)}…` : null)
+      setAgentStatus(label ? `Converting ${label}…` : 'Converting document…')
+    } else if (event.event === 'agent:ingesting') {
+      const label = event.filename ?? (event.source_id ? `source ${event.source_id.slice(0, 8)}…` : null)
+      setAgentStatus(label ? `Updating wiki from ${label}…` : 'Updating wiki from ingested source…')
+    } else if (event.event === 'agent:reading') {
+      setHighlightedSlug(event.slug || null)
+      setAgentStatus(`Reading ${event.slug}…`)
+    } else if (event.event === 'agent:writing') {
+      setHighlightedSlug(event.slug || null)
+      setAgentStatus(`Writing ${event.slug}…`)
+    } else if (event.event === 'agent:moving') {
+      const e = event as { event: string; from?: string; to?: string }
+      setHighlightedSlug(e.to || null)
+      setAgentStatus(e.from && e.to ? `Moving ${e.from} → ${e.to}…` : 'Moving page…')
+    } else if (event.event === 'agent:deleting') {
+      setHighlightedSlug(null)
+      setAgentStatus(event.slug ? `Deleting ${event.slug}…` : 'Deleting page…')
+    } else if (event.event === 'agent:moved_folder') {
+      const e = event as { event: string; from?: string; to?: string; count?: number }
+      setHighlightedSlug(null)
+      setAgentStatus(
+        e.from && e.to
+          ? `Moved ${e.count ?? '?'} pages: ${e.from} → ${e.to}`
+          : 'Folder move complete',
+      )
+    } else if (event.event === 'agent:done') {
+      setHighlightedSlug(null)
+      setAgentStatus(null)
+      qc.invalidateQueries({ queryKey: ['pages'] })
+      qc.invalidateQueries({ queryKey: ['activity'] })
+    }
+  })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      {/* Topbar */}
-      <div style={{
-        display: 'flex', alignItems: 'center', padding: '8px 16px',
-        background: '#161b22', borderBottom: '1px solid #30363d',
-        gap: 12, flexShrink: 0,
-      }}>
-        <span style={{ fontWeight: 600, fontSize: 15, color: '#e6edf3' }}>LLM Wiki</span>
-        {agentStatus && (
-          <span style={{ fontSize: 12, color: '#58a6ff', marginLeft: 8 }}>⟳ {agentStatus}</span>
-        )}
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <button type="button" onClick={() => setShowIngest(true)} style={topBtnStyle}>+ Ingest</button>
-          <button type="button" onClick={() => setShowActivity(!showActivity)} style={topBtnStyle}>Activity</button>
-          <button type="button" onClick={logout} style={topBtnStyle}>Sign out</button>
-        </div>
+      <TopBar agentStatus={agentStatus} onShowIngest={() => setShowIngest(true)} />
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'flex-end',
+          padding: '4px 16px',
+          background: '#161b22',
+          borderBottom: '1px solid #30363d',
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setShowActivity(!showActivity)}
+          style={{
+            padding: '2px 10px',
+            background: '#21262d',
+            border: '1px solid #30363d',
+            borderRadius: 6,
+            color: '#e6edf3',
+            cursor: 'pointer',
+            fontSize: 12,
+          }}
+        >
+          Activity
+        </button>
       </div>
 
       {/* Resizable panels */}
@@ -188,11 +195,6 @@ export default function Layout() {
       )}
     </div>
   )
-}
-
-const topBtnStyle: React.CSSProperties = {
-  padding: '4px 12px', background: '#21262d', border: '1px solid #30363d',
-  borderRadius: 6, color: '#e6edf3', cursor: 'pointer', fontSize: 13,
 }
 
 const resizeHandleStyle: React.CSSProperties = {

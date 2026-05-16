@@ -237,6 +237,7 @@ async def ingest_file(
         kind=suffix,
         s3_key=s3_key,
         status="converting",
+        filename=file.filename,
     )
     db.add(source)
     await db.commit()
@@ -267,7 +268,13 @@ async def ingest_url(
 
     ws = await _ensure_workspace(db, user)
     text = await extract_main_content(body.url)
-    source = Source(workspace_id=ws.id, kind="url", s3_key=None, status="converting")
+    source = Source(
+        workspace_id=ws.id,
+        kind="url",
+        s3_key=None,
+        status="converting",
+        filename=body.url,
+    )
     db.add(source)
     await db.commit()
     await db.refresh(source)
@@ -286,7 +293,13 @@ async def ingest_text(
     user: str = Depends(get_current_user),
 ):
     ws = await _ensure_workspace(db, user)
-    source = Source(workspace_id=ws.id, kind="text", s3_key=None, status="converting")
+    source = Source(
+        workspace_id=ws.id,
+        kind="text",
+        s3_key=None,
+        status="converting",
+        filename=body.title,
+    )
     db.add(source)
     await db.commit()
     await db.refresh(source)

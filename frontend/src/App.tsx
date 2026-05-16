@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { redirectToAuthentik, devLogin, DEV_AUTH_BYPASS, saveAccessToken, getStoredAccessToken, clearStoredTokens } from './auth'
 import Layout from './components/Layout'
+import FilesView from './components/FilesView'
 
 type AuthState = 'loading' | 'authenticated' | 'unauthenticated'
 
@@ -139,7 +141,17 @@ export default function App() {
     if (authState === 'unauthenticated' && !DEV_AUTH_BYPASS) redirectToAuthentik()
   }, [authState])
 
-  if (authState === 'authenticated') return <Layout />
+  if (authState === 'authenticated') {
+    return (
+      <BrowserRouter>
+        <Routes>
+          <Route path="/wiki" element={<Layout />} />
+          <Route path="/files" element={<FilesView />} />
+          <Route path="*" element={<Navigate to="/wiki" replace />} />
+        </Routes>
+      </BrowserRouter>
+    )
+  }
 
   if (authState === 'unauthenticated' && DEV_AUTH_BYPASS) {
     return (

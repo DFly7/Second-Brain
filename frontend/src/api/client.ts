@@ -165,3 +165,31 @@ export async function getSessionMessages(
   if (!r.ok) return []
   return r.json()
 }
+
+export interface SourceItem {
+  id: string
+  kind: string
+  filename: string | null
+  status: string
+  has_file: boolean
+  has_markdown: boolean
+  created_at: string
+}
+
+export async function listSources(): Promise<SourceItem[]> {
+  const r = await fetchWithAuth(`${BASE}/sources`)
+  if (!r.ok) throw new Error(`listSources failed: ${r.status}`)
+  return r.json()
+}
+
+export async function fetchSourceFile(sourceId: string): Promise<Blob> {
+  const r = await fetchWithAuth(`${BASE}/sources/${sourceId}/file`)
+  if (!r.ok) throw new Error(`fetchSourceFile failed: ${r.status}`)
+  return r.blob()
+}
+
+export async function fetchSourceMarkdown(sourceId: string): Promise<string> {
+  const r = await fetchWithAuth(`${BASE}/sources/${sourceId}/markdown`)
+  if (!r.ok) throw new Error(`fetchSourceMarkdown failed: ${r.status}`)
+  return r.text()
+}
