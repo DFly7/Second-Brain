@@ -36,6 +36,10 @@ final class VoiceRecorder: NSObject {
         audioEngine.inputNode.removeTap(onBus: 0)
         recognitionRequest?.endAudio()
         state = .done
+        recognitionTask?.cancel()
+        recognitionTask = nil
+        recognitionRequest = nil
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
     func discard() {
@@ -45,6 +49,7 @@ final class VoiceRecorder: NSObject {
         recognitionTask?.cancel()
         recognitionRequest = nil
         recognitionTask = nil
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         liveTranscript = ""
         state = .idle
     }
@@ -53,7 +58,10 @@ final class VoiceRecorder: NSObject {
 
     private func requestPermissions(completion: @escaping (Bool) -> Void) {
         SFSpeechRecognizer.requestAuthorization { status in
-            guard status == .authorized else { completion(false); return }
+            guard status == .authorized else {
+                DispatchQueue.main.async { completion(false) }
+                return
+            }
             AVAudioApplication.requestRecordPermission { granted in
                 DispatchQueue.main.async { completion(granted) }
             }
@@ -61,6 +69,11 @@ final class VoiceRecorder: NSObject {
     }
 
     private func beginRecording() {
+        guard let recognizer = speechRecognizer, recognizer.isAvailable else {
+            errorMessage = "Speech recognition isn't available."
+            return
+        }
+
         recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
         guard let recognitionRequest else { return }
         recognitionRequest.shouldReportPartialResults = true
@@ -71,14 +84,16 @@ final class VoiceRecorder: NSObject {
             self?.recognitionRequest?.append(buffer)
         }
 
-        recognitionTask = speechRecognizer?.recognitionTask(with: recognitionRequest) { [weak self] result, error in
-            guard let self else { return }
-            if let result {
-                self.liveTranscript = result.bestTranscription.formattedString
-            }
-            if error != nil || result?.isFinal == true {
-                if self.state == .recording {
-                    self.stopRecording()
+        recognitionTask = recognizer.recognitionTask(with: recognitionRequest) { [weak self] result, error in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if let result, self.state == .recording {
+                    self.liveTranscript = result.bestTranscription.formattedString
+                }
+                if error != nil || result?.isFinal == true {
+                    if self.state == .recording {
+                        self.stopRecording()
+                    }
                 }
             }
         }
