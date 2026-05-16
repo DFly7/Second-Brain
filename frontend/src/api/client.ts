@@ -193,3 +193,9 @@ export async function fetchSourceMarkdown(sourceId: string): Promise<string> {
   if (!r.ok) throw new Error(`fetchSourceMarkdown failed: ${r.status}`)
   return r.text()
 }
+
+export async function fetchSourceImage(sourceId: string, filename: string): Promise<Blob> {
+  const r = await fetchWithAuth(`${BASE}/sources/${sourceId}/images/${encodeURIComponent(filename)}`)
+  if (!r.ok) throw new Error(`fetchSourceImage failed: ${r.status}`)
+  return r.blob()
+}

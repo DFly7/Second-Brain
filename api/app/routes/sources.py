@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_user
 from app.database import get_db
-from app.models import Source
+from app.models import Source, SourcePage
 from app.routes.wiki import _ensure_workspace
 from app.storage import download_file
 
@@ -84,6 +84,47 @@ async def get_source_file(
         raise HTTPException(status_code=404, detail="File not found")
     data = download_file(source.s3_key)
     content_type = _CONTENT_TYPE.get(source.kind, "application/octet-stream")
+    return Response(content=data, media_type=content_type)
+
+
+@router.get("/{source_id}/images/{filename:path}")
+async def get_source_image(
+    source_id: str,
+    filename: str,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(get_current_user),
+):
+    ws = await _ensure_workspace(db, user)
+    result = await db.execute(
+        select(Source).where(Source.id == source_id, Source.workspace_id == ws.id)
+    )
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+
+    pages_result = await db.execute(
+        select(SourcePage).where(SourcePage.source_id == source_id)
+    )
+    pages = pages_result.scalars().all()
+
+    img_key = None
+    for page in pages:
+        for key in (page.image_s3_keys or []):
+            if key.endswith(f"-{filename}") or key.endswith(f"/{filename}"):
+                img_key = key
+                break
+        if img_key:
+            break
+
+    if img_key is None:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    try:
+        data = download_file(img_key)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Image not found in storage")
+
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "png"
+    content_type = "image/jpeg" if ext == "jpg" else f"image/{ext}"
     return Response(content=data, media_type=content_type)
 
 
