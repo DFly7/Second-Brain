@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
+import 'github-markdown-css/github-markdown-dark.css'
 import { fetchSourceFile, fetchSourceImage } from '../api/client'
 import { useSourceMarkdown } from '../hooks/useSources'
 import type { SourceItem } from '../hooks/useSources'
@@ -70,117 +71,8 @@ function AuthedImg({ src, alt, sourceId }: { src?: string; alt?: string; sourceI
   return <img src={blobUrl} alt={alt ?? ''} style={{ maxWidth: '100%', borderRadius: 4 }} />
 }
 
-const mdComponents = (sourceId: string): React.ComponentProps<typeof ReactMarkdown>['components'] => ({
+const imgComponents = (sourceId: string): React.ComponentProps<typeof ReactMarkdown>['components'] => ({
   img: ({ src, alt }) => <AuthedImg src={src} alt={alt} sourceId={sourceId} />,
-  h1: ({ children }) => (
-    <h1 style={{ color: '#e6edf3', fontSize: 22, fontWeight: 700, margin: '20px 0 10px', borderBottom: '1px solid #21262d', paddingBottom: 6 }}>
-      {children}
-    </h1>
-  ),
-  h2: ({ children }) => (
-    <h2 style={{ color: '#e6edf3', fontSize: 18, fontWeight: 600, margin: '18px 0 8px', borderBottom: '1px solid #21262d', paddingBottom: 4 }}>
-      {children}
-    </h2>
-  ),
-  h3: ({ children }) => (
-    <h3 style={{ color: '#e6edf3', fontSize: 16, fontWeight: 600, margin: '14px 0 6px' }}>
-      {children}
-    </h3>
-  ),
-  h4: ({ children }) => (
-    <h4 style={{ color: '#e6edf3', fontSize: 14, fontWeight: 600, margin: '12px 0 4px' }}>
-      {children}
-    </h4>
-  ),
-  p: ({ children }) => (
-    <p style={{ margin: '0 0 12px', lineHeight: 1.7 }}>{children}</p>
-  ),
-  a: ({ href, children }) => (
-    <a href={href} target="_blank" rel="noreferrer" style={{ color: '#58a6ff', textDecoration: 'none' }}>
-      {children}
-    </a>
-  ),
-  code: ({ inline, children, ...props }: { inline?: boolean; children?: React.ReactNode }) =>
-    inline ? (
-      <code
-        style={{
-          background: '#1c2128',
-          border: '1px solid #30363d',
-          borderRadius: 3,
-          padding: '1px 5px',
-          fontSize: 12,
-          fontFamily: 'monospace',
-          color: '#e6edf3',
-        }}
-        {...props}
-      >
-        {children}
-      </code>
-    ) : (
-      <code style={{ fontFamily: 'monospace', fontSize: 12 }} {...props}>
-        {children}
-      </code>
-    ),
-  pre: ({ children }) => (
-    <pre
-      style={{
-        background: '#1c2128',
-        border: '1px solid #30363d',
-        borderRadius: 6,
-        padding: '12px 16px',
-        overflowX: 'auto',
-        fontSize: 12,
-        lineHeight: 1.6,
-        margin: '0 0 12px',
-        color: '#e6edf3',
-      }}
-    >
-      {children}
-    </pre>
-  ),
-  blockquote: ({ children }) => (
-    <blockquote
-      style={{
-        borderLeft: '3px solid #30363d',
-        margin: '0 0 12px',
-        padding: '4px 0 4px 16px',
-        color: '#8b949e',
-      }}
-    >
-      {children}
-    </blockquote>
-  ),
-  table: ({ children }) => (
-    <div style={{ overflowX: 'auto', marginBottom: 12 }}>
-      <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13 }}>{children}</table>
-    </div>
-  ),
-  th: ({ children }) => (
-    <th
-      style={{
-        border: '1px solid #30363d',
-        padding: '6px 12px',
-        background: '#161b22',
-        color: '#e6edf3',
-        fontWeight: 600,
-        textAlign: 'left',
-      }}
-    >
-      {children}
-    </th>
-  ),
-  td: ({ children }) => (
-    <td style={{ border: '1px solid #30363d', padding: '6px 12px' }}>{children}</td>
-  ),
-  ul: ({ children }) => (
-    <ul style={{ margin: '0 0 12px', paddingLeft: 24, lineHeight: 1.7 }}>{children}</ul>
-  ),
-  ol: ({ children }) => (
-    <ol style={{ margin: '0 0 12px', paddingLeft: 24, lineHeight: 1.7 }}>{children}</ol>
-  ),
-  li: ({ children }) => <li style={{ marginBottom: 2 }}>{children}</li>,
-  hr: () => <hr style={{ border: 'none', borderTop: '1px solid #21262d', margin: '16px 0' }} />,
-  strong: ({ children }) => <strong style={{ color: '#e6edf3', fontWeight: 600 }}>{children}</strong>,
 })
 
 function MarkdownPane({ source }: { source: SourceItem }) {
@@ -233,11 +125,11 @@ function MarkdownPane({ source }: { source: SourceItem }) {
             {markdown}
           </pre>
         ) : (
-          <div style={{ lineHeight: 1.7, fontSize: 14, color: '#c9d1d9', maxWidth: 800 }}>
+          <div className="markdown-body" style={{ maxWidth: 800 }}>
             <ReactMarkdown
               remarkPlugins={[remarkGfm, remarkMath]}
               rehypePlugins={[rehypeKatex]}
-              components={mdComponents(source.id)}
+              components={imgComponents(source.id)}
             >
               {markdown ?? ''}
             </ReactMarkdown>
