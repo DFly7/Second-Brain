@@ -5,7 +5,17 @@ struct RootView: View {
 
     var body: some View {
         if authService.isAuthenticated {
-            HomeView()
+            TabView {
+                CaptureView()
+                    .tabItem {
+                        Label("Capture", systemImage: "mic.fill")
+                    }
+
+                ChatView()
+                    .tabItem {
+                        Label("Chat", systemImage: "bubble.left.and.bubble.right.fill")
+                    }
+            }
         } else {
             AuthView()
         }

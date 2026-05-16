@@ -21,6 +21,10 @@ let project = Project(
                 "AUTHENTIK_TOKEN_URL": "$(AUTHENTIK_TOKEN_URL)",
                 "AUTHENTIK_CLIENT_ID": "$(AUTHENTIK_CLIENT_ID)",
                 "AUTHENTIK_REDIRECT_URI": "$(AUTHENTIK_REDIRECT_URI)",
+                "NSMicrophoneUsageDescription": "Second Brain needs the microphone to record voice notes.",
+                "NSSpeechRecognitionUsageDescription": "Second Brain uses speech recognition to transcribe your voice notes.",
+                "NSPhotoLibraryUsageDescription": "Second Brain needs photo access to ingest images into your wiki.",
+                "NSCameraUsageDescription": "Second Brain uses the camera to capture images for your wiki.",
             ]),
             sources: ["SecondBrainApp/**"],
             settings: .settings(
