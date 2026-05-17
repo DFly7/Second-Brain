@@ -194,6 +194,7 @@ export default function Layout() {
           borderTop: '2px solid #30363d',
           background: '#161b22',
           flexShrink: 0,
+          paddingBottom: 'env(safe-area-inset-bottom)',
         }}>
           {([
             { id: 'pages', label: '≡ Pages' },
