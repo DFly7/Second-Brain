@@ -15,9 +15,10 @@ const NO_FILE_KINDS = ['url', 'text', 'md', 'markdown', 'txt']
 
 interface FileViewerProps {
   source: SourceItem | null
+  onBack?: () => void
 }
 
-export default function FileViewer({ source }: FileViewerProps) {
+export default function FileViewer({ source, onBack }: FileViewerProps) {
   const defaultView = (s: SourceItem | null) =>
     s?.has_markdown ? 'markdown' : 'original'
 
@@ -31,8 +32,15 @@ export default function FileViewer({ source }: FileViewerProps) {
 
   if (!source) {
     return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8b949e', fontSize: 13 }}>
-        Select a file to view it.
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {onBack && (
+          <div style={{ padding: '8px 14px', borderBottom: '1px solid #21262d', flexShrink: 0 }}>
+            <button type="button" onClick={onBack} style={btnStyle}>← Back</button>
+          </div>
+        )}
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8b949e', fontSize: 13 }}>
+          Select a file to view it.
+        </div>
       </div>
     )
   }
@@ -50,6 +58,9 @@ export default function FileViewer({ source }: FileViewerProps) {
         borderBottom: '1px solid #21262d',
         flexShrink: 0,
       }}>
+        {onBack && (
+          <button type="button" onClick={onBack} style={btnStyle}>← Back</button>
+        )}
         <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: '#e6edf3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {source.title ?? `${source.kind} · ${source.id.slice(0, 8).toUpperCase()}`}
         </span>
