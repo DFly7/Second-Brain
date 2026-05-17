@@ -170,6 +170,8 @@ export interface SourceItem {
   id: string
   kind: string
   filename: string | null
+  title: string | null
+  description: string | null
   status: string
   has_file: boolean
   has_markdown: boolean
@@ -216,4 +218,17 @@ export async function fetchSourceImage(sourceId: string, filename: string): Prom
   const r = await fetchWithAuth(`${BASE}/sources/${sourceId}/images/${encodeURIComponent(filename)}`)
   if (!r.ok) throw new Error(`fetchSourceImage failed: ${r.status}`)
   return r.blob()
+}
+
+export async function patchSource(
+  sourceId: string,
+  patch: { title?: string; description?: string },
+): Promise<SourceItem> {
+  const r = await fetchWithAuth(`${BASE}/sources/${sourceId}`, {
+    method: 'PATCH',
+    headers: jsonHeaders(),
+    body: JSON.stringify(patch),
+  })
+  if (!r.ok) throw new Error(`patchSource failed: ${r.status}`)
+  return r.json()
 }
