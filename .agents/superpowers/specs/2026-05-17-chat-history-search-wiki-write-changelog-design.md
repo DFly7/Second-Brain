@@ -45,7 +45,13 @@ A new `AgentTools` method and tool definition that searches raw `ChatMessage` co
 
 ### Prompt guidance (`query.md`)
 
-Add explicit instruction: use `search_chat_history` **only** when the user explicitly references something from a past conversation ("remember when we discussed X", "what were those plans from last month", "we talked about this before"). Do not call it speculatively or as a default first step — it is a fallback for explicit past-conversation references.
+The tool ordering for past-conversation references must be explicit:
+
+1. **Wiki pages first** — `meta/index` then relevant `read_page` calls (existing behaviour, unchanged)
+2. **`system/history` second** — `grep_page("system/history", keyword)` for session summaries; this is fast and often sufficient
+3. **`search_chat_history` last resort** — only when the user explicitly references something from a past conversation ("remember when we discussed X", "what were those plans from last month") AND the `system/history` summaries don't contain enough detail
+
+Do not call `search_chat_history` speculatively, as a default step, or before checking `system/history` first.
 
 ---
 
