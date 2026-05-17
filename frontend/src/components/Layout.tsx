@@ -8,6 +8,7 @@ import IngestModal from './IngestModal'
 import ActivityLog from './ActivityLog'
 import TopBar from './TopBar'
 import { useSse } from '../hooks/useSse'
+import { useIsMobile } from '../hooks/useIsMobile'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   loadQueueState,
@@ -125,6 +126,121 @@ export default function Layout() {
       qc.invalidateQueries({ queryKey: ['activity'] })
     }
   })
+
+  const isMobile = useIsMobile()
+  const [activeTab, setActiveTab] = useState<'pages' | 'content' | 'chat'>('content')
+
+  function handleMobileSelect(slug: string) {
+    setSelectedSlug(slug)
+    if (isMobile) setActiveTab('content')
+  }
+
+  function handleMobileNavigate(slug: string) {
+    setSelectedSlug(slug)
+    if (isMobile) setActiveTab('content')
+  }
+
+  if (isMobile) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+        <TopBar agentStatus={agentStatus} onShowIngest={() => setShowIngest(true)} />
+
+        {/* Activity row */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'flex-end',
+          padding: '4px 16px',
+          background: '#161b22',
+          borderBottom: '1px solid #30363d',
+        }}>
+          <button
+            type="button"
+            onClick={() => setShowActivity(!showActivity)}
+            style={{
+              padding: '2px 10px',
+              background: '#21262d',
+              border: '1px solid #30363d',
+              borderRadius: 6,
+              color: '#e6edf3',
+              cursor: 'pointer',
+              fontSize: 12,
+            }}
+          >
+            Activity
+          </button>
+        </div>
+
+        {/* Active panel */}
+        <div style={{ flex: 1, overflow: 'hidden' }}>
+          {activeTab === 'pages' && (
+            <WikiSidebar
+              selectedSlug={selectedSlug}
+              highlightedSlug={highlightedSlug}
+              onSelect={handleMobileSelect}
+            />
+          )}
+          {activeTab === 'content' && (
+            <WikiContent selectedSlug={selectedSlug} onNavigate={handleMobileNavigate} />
+          )}
+          {activeTab === 'chat' && (
+            <ChatPanel onNavigate={handleMobileNavigate} activeSseEvent={chatSseEvent} />
+          )}
+        </div>
+
+        {/* Bottom tab bar */}
+        <div style={{
+          display: 'flex',
+          borderTop: '2px solid #30363d',
+          background: '#161b22',
+          flexShrink: 0,
+        }}>
+          {([
+            { id: 'pages', label: '≡ Pages' },
+            { id: 'content', label: '□ Content' },
+            { id: 'chat', label: '◎ Chat' },
+          ] as const).map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setActiveTab(id)}
+              style={{
+                flex: 1,
+                padding: '12px 0',
+                border: 'none',
+                borderTop: activeTab === id ? '2px solid #58a6ff' : '2px solid transparent',
+                marginTop: -2,
+                background: 'none',
+                color: activeTab === id ? '#58a6ff' : '#6e7681',
+                fontSize: 13,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {showActivity && (
+          <ActivityLog
+            onClose={() => setShowActivity(false)}
+            queue={queue}
+            onClearQueue={() => queueActions.clear()}
+          />
+        )}
+        {showIngest && (
+          <IngestModal
+            onClose={() => setShowIngest(false)}
+            queue={queue}
+            onUpsertQueueItems={items => queueActions.upsertMany(items)}
+            onPatchQueueById={(id, patch) =>
+              setQueue(s => reduceQueue(s, { type: 'patch_by_id', id, patch }))
+            }
+          />
+        )}
+      </div>
+    )
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
