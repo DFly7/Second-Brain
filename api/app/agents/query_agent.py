@@ -4,6 +4,7 @@ from pathlib import Path
 
 import litellm
 import structlog
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.assistant_message import assistant_message_for_litellm
@@ -11,6 +12,7 @@ from app.agents.log_context import agent_run_context
 from app.agents.prompt_render import render_system_prompt
 from app.agents.tools import AgentTools
 from app.config import settings
+from app.models import Page
 from app.sse import broadcaster
 
 
@@ -44,11 +46,17 @@ async def run(
         )
         tool_defs = tools.as_litellm_tools(allowed=READ_ONLY_TOOLS)
 
-        user_memory = await tools.read_page("system/memory")
-        if user_memory.startswith("[Page 'system/memory' not found]"):
-            system_prompt = SYSTEM_PROMPT
-        else:
+        # Fetch system/memory directly — bypasses SSE broadcast since this is internal setup
+        _mem_row = await session.execute(
+            select(Page.body_md).where(
+                Page.slug == "system/memory", Page.workspace_id == workspace_id
+            )
+        )
+        user_memory = _mem_row.scalar_one_or_none()
+        if user_memory:
             system_prompt = f"<user_context>\n{user_memory}\n</user_context>\n\n{SYSTEM_PROMPT}"
+        else:
+            system_prompt = SYSTEM_PROMPT
 
         system_prompt = render_system_prompt(
             system_prompt, model=settings.litellm_model
