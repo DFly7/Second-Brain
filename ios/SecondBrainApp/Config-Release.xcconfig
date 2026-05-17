@@ -2,6 +2,9 @@
 SDKROOT[sdk=iphonesimulator*] = iphonesimulator
 SDKROOT[sdk=iphoneos*] = iphoneos
 
+CODE_SIGN_STYLE = Automatic
+DEVELOPMENT_TEAM = V8S6S975CD
+
 SLASH = /
 // API is served under /api/ via prod nginx (frontend proxy). base + "/health" in code => /api/health
 BACKEND_URL = https:$(SLASH)$(SLASH)smoothstudy.ai$(SLASH)api

@@ -34,7 +34,7 @@ docker compose run --rm api pytest tests/ -v
 | `postgres-init/` | SQL scripts run on fresh Postgres volume |
 | [`api/requirements.txt`](api/requirements.txt) | Local/dev API deps (mounted dev container) |
 | [`api/requirements-prod.txt`](api/requirements-prod.txt) | **Production-only** deps for [`api/Dockerfile.prod`](api/Dockerfile.prod) / `docker-compose.prod.yml` |
-| `ios/SecondBrainApp/` | Tuist iOS app; Debug vs Release xcconfigs set `BACKEND_URL` (see Makefile / `scripts/ios-sim.sh`) |
+| `ios/SecondBrainApp/` | Tuist iOS app; Debug vs Release xcconfigs set `BACKEND_URL`; `make ios-run` / `make ios-device` wrap [`scripts/ios-sim.sh`](scripts/ios-sim.sh) / [`scripts/ios-device.sh`](scripts/ios-device.sh) |
 
 ## Local vs production (Docker Compose)
 
@@ -60,11 +60,19 @@ make ios-run
 
 # Same against production API URL (Release xcconfig → https://smoothstudy.ai/api)
 make ios-run ARGS="--release"
+
+# Physical iPhone (default Release / prod API; Developer Mode required). Signing: DEVELOPMENT_TEAM in ios Config-*.xcconfig (`IOS_DEVICE_TEAM=…` only to override)
+
+make ios-device
+make ios-device ARGS="--debug"   # Debug xcconfig + local BACKEND_URL
+make ios-devices                 # list paired devices (devicectl)
 ```
 
 **Skip migrations on start (debug only):** set `SKIP_DB_MIGRATE=1` on the `api` service environment. See `CLAUDE.md` → Database migrations.
 
-**iOS Debug vs Release:** Debug expects a reachable API at `BACKEND_URL` in `Config-Debug.xcconfig` (placeholder `YOUR_MACHINE_IP`). Use `make ios-run ARGS="--release"` to exercise Authentik + prod API like the shipped app; see `CLAUDE.md` → iOS Simulator for other `scripts/ios-sim.sh` flags (`--logs`, `--udid`, …).
+**iOS Debug vs Release:** Simulator default is Debug; use `make ios-run ARGS="--release"` for prod API URL. **Physical device** defaults to **Release** via `make ios-device` (prod API); use `make ios-device ARGS="--debug"` for `Config-Debug.xcconfig` / local API. Full notes: `CLAUDE.md` → iOS app (Simulator & physical device).
+
+**Changing Apple Team ID:** edit `DEVELOPMENT_TEAM` in `ios/SecondBrainApp/Config-Debug.xcconfig` and `Config-Release.xcconfig`, then `make ios-gen`.
 
 ## Pi deployment
 

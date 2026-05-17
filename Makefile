@@ -5,6 +5,13 @@
 #   make ios-run ARGS="--regen --logs"
 #   make ios-run ARGS="--udid <UDID>"
 #
+# Physical iPhone (Core Device / devicectl — Developer Mode required; Team ID is in xcconfig):
+#   make ios-device                              # Release / prod API URL (default on device)
+#   make ios-device ARGS="--debug"             # Debug xcconfig (local BACKEND_URL)
+#   IOS_DEVICE_TEAM=XXXXXXXXXX make ios-device # optional CLI override only (ci / different Apple account)
+#   make ios-device ARGS="--udid <UDID>"
+#   make ios-devices                          # list paired devices (devicectl table)
+#
 # Usage examples:
 #   make ios-sims                    # all available devices + UDIDs
 #   make ios-sims-iphone             # section headers + iPhone rows only
@@ -14,7 +21,7 @@
 #   make ios-open                  # open the .xcworkspace in Xcode (then Settings → Components / Platforms)
 #   make ios-run ARGS="--udid <UDID>"
 
-.PHONY: help ios-gen ios-run ios-build ios-sims ios-sims-iphone ios-toolchain ios-destinations ios-components-check ios-platform-download ios-open
+.PHONY: help ios-gen ios-run ios-device ios-devices ios-build ios-sims ios-sims-iphone ios-toolchain ios-destinations ios-components-check ios-platform-download ios-open
 
 help: ## Show targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' Makefile \
@@ -26,6 +33,13 @@ ios-gen: ## tuist install + generate (no open)
 ios-run: ## Regenerate project, build (Debug), boot sim, install & launch (use ARGS="--release" for prod API URL)
 	@$(MAKE) ios-gen
 	./scripts/ios-sim.sh $(ARGS)
+
+ios-device: ## Physical iPhone: generate, Release build (prod API), install & launch (ARGS="--debug" for Debug)
+	@$(MAKE) ios-gen
+	./scripts/ios-device.sh $(ARGS)
+
+ios-devices: ## List paired devices (physical iPhones etc.) visible to devicectl
+	xcrun devicectl list devices
 
 ios-build: ## Simulator build only (no install/launch); no specific simulator required
 	set -o pipefail && cd ios/SecondBrainApp && xcodebuild build \

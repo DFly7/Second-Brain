@@ -9,6 +9,9 @@ dist/
 .superpowers/
 .worktrees/
 
+# iOS: xcodebuild -derivedDataPath output (e.g. scripts/ios-sim.sh, scripts/ios-device.sh)
+ios/**/DerivedData*/
+
 # Marker `converted.md` dumps from MinIO — ignore exports, keep downloader scripts tracked
 marker-export/**
 !marker-export/download_marker_exports.py

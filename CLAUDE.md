@@ -35,7 +35,9 @@ docker compose run --rm api alembic upgrade head
 docker compose run --rm api pytest tests/ -v
 ```
 
-## iOS Simulator (Makefile / Tuist)
+## iOS app (Makefile / Tuist)
+
+### Simulator
 
 From the repo root, `make ios-run` runs Tuist generate, builds **Debug**, picks an iPhone simulator, installs, and launches `SecondBrainApp`. Debug reads [`ios/SecondBrainApp/Config-Debug.xcconfig`](ios/SecondBrainApp/Config-Debug.xcconfig) (`BACKEND_URL` is `http://YOUR_MACHINE_IP:8000` until you substitute your Mac’s LAN IP for local API testing).
 
@@ -45,7 +47,18 @@ To build **Release** on the simulator (uses [`Config-Release.xcconfig`](ios/Seco
 make ios-run ARGS="--release"
 ```
 
-Flags are forwarded to [`scripts/ios-sim.sh`](scripts/ios-sim.sh); combine as needed, e.g. `make ios-run ARGS="--release --logs"` or `ARGS="--udid <UDID>"`. Open the workspace with `make ios-open`.
+Flags are forwarded to [`scripts/ios-sim.sh`](scripts/ios-sim.sh); combine as needed, e.g. `make ios-run ARGS="--release --logs"` or `ARGS="--udid <SIMULATOR_UDID>"`. Open the workspace with `make ios-open`.
+
+### Physical iPhone
+
+`make ios-device` runs Tuist generate, builds **`Release` / `iphoneos`** by default (uses [`Config-Release.xcconfig`](ios/SecondBrainApp/Config-Release.xcconfig) — prod API base `https://smoothstudy.ai/api`). It installs with **`devicectl`** and launches on a **paired physical iPhone** (USB or local-network Core Device). **Developer Mode** is required on the phone. **Signing** uses `CODE_SIGN_STYLE` + `DEVELOPMENT_TEAM` from [`Config-Debug.xcconfig`](ios/SecondBrainApp/Config-Debug.xcconfig) / [`Config-Release.xcconfig`](ios/SecondBrainApp/Config-Release.xcconfig), wired via [`Project.swift`](ios/SecondBrainApp/Project.swift). For **Debug** / local `BACKEND_URL` on device, use `make ios-device ARGS="--debug"`. Override team only when needed (another Apple account / CI):
+
+```bash
+make ios-device ARGS="--debug"
+IOS_DEVICE_TEAM=OTHER_ID make ios-device
+```
+
+See [`scripts/ios-device.sh`](scripts/ios-device.sh) for flags (`--logs`, `--regen`, etc.). Xcode 15+ with Core Device support is expected (`devicectl`).
 
 ## Database migrations
 

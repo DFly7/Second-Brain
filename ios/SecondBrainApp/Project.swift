@@ -30,6 +30,8 @@ let project = Project(
             sources: ["SecondBrainApp/**"],
             settings: .settings(
                 base: [
+                    // Signing: DEVELOPMENT_TEAM + CODE_SIGN_STYLE come from Config-*.xcconfig.
+                    "DEVELOPMENT_TEAM": "$(DEVELOPMENT_TEAM)",
                     // Ensures xcodebuild exposes iOS Simulator destinations (not device-only).
                     "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator",
                     // Tuist still emits SDKROOT=iphoneos; these make simulator SDK resolution explicit.

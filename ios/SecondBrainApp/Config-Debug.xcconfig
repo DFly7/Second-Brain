@@ -5,6 +5,9 @@
 SDKROOT[sdk=iphonesimulator*] = iphonesimulator
 SDKROOT[sdk=iphoneos*] = iphoneos
 
+CODE_SIGN_STYLE = Automatic
+DEVELOPMENT_TEAM = V8S6S975CD
+
 SLASH = /
 BACKEND_URL = http:$(SLASH)$(SLASH)YOUR_MACHINE_IP:8000
 AUTHENTIK_AUTHORIZE_URL = https:$(SLASH)$(SLASH)auth.smoothstudy.ai/application/o/authorize/
