@@ -8,6 +8,7 @@ struct ChatView: View {
     @State private var inputText: String = ""
     @State private var isLoading: Bool = false
     @State private var errorMessage: String?
+    @FocusState private var isInputFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -26,14 +27,24 @@ struct ChatView: View {
             }
             .animation(.default, value: errorMessage)
             .navigationTitle("Chat")
+            .onDisappear {
+                isInputFocused = false
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("New Chat") {
+                        isInputFocused = false
                         messages = []
                         sessionId = nil
                         errorMessage = nil
                     }
                     .disabled(messages.isEmpty)
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        isInputFocused = false
+                    }
                 }
             }
         }
@@ -61,6 +72,7 @@ struct ChatView: View {
                 }
                 .padding(.vertical, 12)
             }
+            .scrollDismissesKeyboard(.interactively)
             .onChange(of: messages.count) { _, _ in
                 if let last = messages.last {
                     withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
@@ -79,6 +91,7 @@ struct ChatView: View {
             TextField("Ask your wiki…", text: $inputText, axis: .vertical)
                 .textFieldStyle(.roundedBorder)
                 .lineLimit(1 ... 4)
+                .focused($isInputFocused)
                 .onSubmit { Task { await send() } }
 
             Button {

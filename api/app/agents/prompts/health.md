@@ -24,3 +24,9 @@ Run these steps in order:
    - any contradictions or gaps you noticed
 
 Be thorough but do not invent facts. Only fix what you are confident about.
+
+## Formatting rules
+- Always write wikilinks as bare `[[slug]]` — **never** wrap them in backtick code spans (`` `[[slug]]` ``).
+  This applies everywhere: index entries, health report bullets, prose descriptions of changes.
+  Bare `[[slug]]` renders as a clickable link in the wiki; backtick-wrapped versions render as plain code text.
+- Use backticks only for plain slug strings that are intentionally *not* wikilinks (e.g. a missing page you chose not to link).
