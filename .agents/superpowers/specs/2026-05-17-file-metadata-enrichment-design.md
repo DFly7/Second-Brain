@@ -33,11 +33,17 @@ At the end of `_run_pipeline()` in `api/app/routes/ingest.py`, just before setti
 
 1. Take the first ~2000 chars of the converted markdown
 2. Make one LLM call with the content and the original `filename` (if present)
-3. The prompt instructs the model to:
+3. **Input selection** — choose what to send to the LLM based on available content:
+   - `len(converted_markdown.strip()) >= 100`: send the first ~2000 chars of markdown (normal path)
+   - `len(converted_markdown.strip()) < 100` AND `kind in {png, jpg, jpeg, webp}`: send the image bytes directly — Claude is multimodal and can generate a meaningful title from the visual content (e.g. "Whiteboard — OAuth2 login flow")
+   - `len(converted_markdown.strip()) < 100` AND non-image kind: send just `filename` + `kind` with a prompt that acknowledges limited context; model produces a best-effort title (e.g. "PDF document — no text extracted")
+   - Voice notes are transcribed before the pipeline runs, so their markdown is always populated — no special case needed
+
+4. The prompt instructs the model to:
    - Judge whether the filename is already descriptive of the actual content
    - If descriptive: derive a clean title from it (strip extension, fix casing); generate description from content
-   - If not descriptive (or filename is null): generate both title and description from content
-4. Parse the JSON response `{ "title": "...", "description": "..." }` and write to the `Source` row
+   - If not descriptive (or filename is null/a hash): generate both title and description from the provided content
+5. Parse the JSON response `{ "title": "...", "description": "..." }` and write to the `Source` row
 
 **Error handling:** if the LLM call fails for any reason, swallow the error and leave both fields null. Ingestion completes successfully either way.
 
