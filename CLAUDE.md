@@ -35,6 +35,18 @@ docker compose run --rm api alembic upgrade head
 docker compose run --rm api pytest tests/ -v
 ```
 
+## iOS Simulator (Makefile / Tuist)
+
+From the repo root, `make ios-run` runs Tuist generate, builds **Debug**, picks an iPhone simulator, installs, and launches `SecondBrainApp`. Debug reads [`ios/SecondBrainApp/Config-Debug.xcconfig`](ios/SecondBrainApp/Config-Debug.xcconfig) (`BACKEND_URL` is `http://YOUR_MACHINE_IP:8000` until you substitute your Mac’s LAN IP for local API testing).
+
+To build **Release** on the simulator (uses [`Config-Release.xcconfig`](ios/SecondBrainApp/Config-Release.xcconfig): prod API base `https://smoothstudy.ai/api`, matching production):
+
+```bash
+make ios-run ARGS="--release"
+```
+
+Flags are forwarded to [`scripts/ios-sim.sh`](scripts/ios-sim.sh); combine as needed, e.g. `make ios-run ARGS="--release --logs"` or `ARGS="--udid <UDID>"`. Open the workspace with `make ios-open`.
+
 ## Database migrations
 
 The API image runs **`alembic upgrade head` on every container start** via `api/docker-entrypoint.sh` (before uvicorn or Gunicorn). If the database is already at the latest revision, this is effectively a no-op.

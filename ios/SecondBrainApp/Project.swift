@@ -25,6 +25,7 @@ let project = Project(
                 "NSSpeechRecognitionUsageDescription": "Second Brain uses speech recognition to transcribe your voice notes.",
                 "NSPhotoLibraryUsageDescription": "Second Brain needs photo access to ingest images into your wiki.",
                 "NSCameraUsageDescription": "Second Brain uses the camera to capture images for your wiki.",
+                "UILaunchScreen": [:],
             ]),
             sources: ["SecondBrainApp/**"],
             settings: .settings(

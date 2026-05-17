@@ -8,17 +8,20 @@
 #   ./scripts/ios-sim.sh --udid <UDID>  # target a specific simulator
 #   ./scripts/ios-sim.sh --logs         # stream console after launch
 #   ./scripts/ios-sim.sh --regen --logs # combine flags
+#   ./scripts/ios-sim.sh --release      # Release config (prod BACKEND_URL / smoothstudy.ai)
 
 set -euo pipefail
 
 REGEN=false
 LOGS=false
 TARGET_UDID=""
+CONFIGURATION="Debug"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     --regen) REGEN=true;  shift ;;
     --logs)  LOGS=true;   shift ;;
+    --release) CONFIGURATION="Release"; shift ;;
     --udid)  TARGET_UDID="$2"; shift 2 ;;
     -h|--help)
       sed -n '/^# Usage/,/^$/p' "$0" | sed 's/^# \{0,2\}//'
@@ -35,7 +38,7 @@ cd "$IOS_DIR"
 WORKSPACE="SecondBrainApp.xcworkspace"
 SCHEME="SecondBrainApp"
 DERIVED_DATA="./DerivedDataRun"
-APP_PATH="$DERIVED_DATA/Build/Products/Debug-iphonesimulator/SecondBrainApp.app"
+APP_PATH="$DERIVED_DATA/Build/Products/${CONFIGURATION}-iphonesimulator/SecondBrainApp.app"
 
 for cmd in xcodebuild xcrun python3; do
   command -v "$cmd" &>/dev/null || { echo "Error: '$cmd' not found."; exit 1; }
@@ -143,11 +146,11 @@ fi
 echo "→ Simulator: ${SIM_NAME} (${TARGET_UDID})"
 
 # Explicit simulator id matches the install target; generic destination can fail when SDKROOT skews to iphoneos.
-echo "→ Building ${SCHEME} (Debug) for iOS Simulator…"
+echo "→ Building ${SCHEME} (${CONFIGURATION}) for iOS Simulator…"
 xcodebuild build \
   -workspace "$WORKSPACE" \
   -scheme "$SCHEME" \
-  -configuration Debug \
+  -configuration "$CONFIGURATION" \
   -sdk iphonesimulator \
   -destination "platform=iOS Simulator,id=$TARGET_UDID" \
   -derivedDataPath "$DERIVED_DATA" \

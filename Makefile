@@ -1,6 +1,7 @@
 # Run from the repo root: make <target>
 # ios-run passes flags through to scripts/ios-sim.sh, e.g.:
 #   make ios-run ARGS="--logs"
+#   make ios-run ARGS="--release"           # Release → Config-Release.xcconfig (prod API URL)
 #   make ios-run ARGS="--regen --logs"
 #   make ios-run ARGS="--udid <UDID>"
 #
@@ -22,7 +23,7 @@ help: ## Show targets
 ios-gen: ## tuist install + generate (no open)
 	cd ios/SecondBrainApp && tuist install && tuist generate --no-open
 
-ios-run: ## Regenerate project, build, boot sim, install & launch SecondBrainApp
+ios-run: ## Regenerate project, build (Debug), boot sim, install & launch (use ARGS="--release" for prod API URL)
 	@$(MAKE) ios-gen
 	./scripts/ios-sim.sh $(ARGS)
 

@@ -34,6 +34,7 @@ docker compose run --rm api pytest tests/ -v
 | `postgres-init/` | SQL scripts run on fresh Postgres volume |
 | [`api/requirements.txt`](api/requirements.txt) | Local/dev API deps (mounted dev container) |
 | [`api/requirements-prod.txt`](api/requirements-prod.txt) | **Production-only** deps for [`api/Dockerfile.prod`](api/Dockerfile.prod) / `docker-compose.prod.yml` |
+| `ios/SecondBrainApp/` | Tuist iOS app; Debug vs Release xcconfigs set `BACKEND_URL` (see Makefile / `scripts/ios-sim.sh`) |
 
 ## Local vs production (Docker Compose)
 
@@ -53,9 +54,17 @@ docker compose run --rm api alembic upgrade head
 
 # Tests (safe — wiki_test only)
 docker compose run --rm api pytest tests/ -v
+
+# iOS Simulator: Tuist generate + build + install + launch (Debug xcconfig by default)
+make ios-run
+
+# Same against production API URL (Release xcconfig → https://smoothstudy.ai/api)
+make ios-run ARGS="--release"
 ```
 
 **Skip migrations on start (debug only):** set `SKIP_DB_MIGRATE=1` on the `api` service environment. See `CLAUDE.md` → Database migrations.
+
+**iOS Debug vs Release:** Debug expects a reachable API at `BACKEND_URL` in `Config-Debug.xcconfig` (placeholder `YOUR_MACHINE_IP`). Use `make ios-run ARGS="--release"` to exercise Authentik + prod API like the shipped app; see `CLAUDE.md` → iOS Simulator for other `scripts/ios-sim.sh` flags (`--logs`, `--udid`, …).
 
 ## Pi deployment
 
