@@ -1,5 +1,5 @@
 import os
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -21,6 +21,9 @@ os.environ["AUTHENTIK_CLIENT_ID"] = "second-brain"
 os.environ["AUTHENTIK_TOKEN_URL"] = "https://auth.example.com/application/o/token/"
 os.environ["AUTHENTIK_REDIRECT_URI"] = "https://smoothstudy.ai/callback"
 
+# Disable vector search so tests never trigger embedding API calls.
+os.environ.setdefault("VECTOR_SEARCH_ENABLED", "false")
+
 # Safety nets: blow up loudly if something upstream pointed us at the wrong resources.
 assert "test" in os.environ["DATABASE_URL"], (
     f"Refusing to run tests against non-test DB: {os.environ['DATABASE_URL']}"
@@ -28,6 +31,15 @@ assert "test" in os.environ["DATABASE_URL"], (
 assert "test" in os.environ["S3_BUCKET"], (
     f"Refusing to run tests against non-test S3 bucket: {os.environ['S3_BUCKET']}"
 )
+
+
+@pytest.fixture(autouse=True)
+def _mock_broadcaster():
+    """Block Redis connections so tests run without a Redis instance."""
+    with patch("app.sse.broadcaster.connect", new_callable=AsyncMock), patch(
+        "app.sse.broadcaster.disconnect", new_callable=AsyncMock
+    ):
+        yield
 
 
 @pytest.fixture(autouse=True)

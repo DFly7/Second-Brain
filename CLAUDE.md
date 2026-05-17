@@ -6,21 +6,45 @@ Single-user LLM wiki app. FastAPI + async SQLAlchemy backend, React 18 + Vite fr
 
 ## Running tests
 
-**CRITICAL — tests use a separate `wiki_test` database, NOT the production `wiki` database.**
+Tests mock the database session, Redis, and S3 — **no Docker required for the test suite**.
 
-`tests/conftest.py` has an `autouse` fixture (`clean_db`) that runs `drop_all` + `create_all` before every test. This completely destroys and recreates all tables. If tests ever pointed at `wiki`, all production data would be wiped.
+### Local (preferred for agents and fast iteration)
 
-- Tests must always connect to `postgresql+asyncpg://wiki:wiki@db:5432/wiki_test`
-- `conftest.py` unconditionally sets `DATABASE_URL` to `wiki_test` — do NOT change this to `setdefault`, as the container environment already has `DATABASE_URL` pointing at the production DB
-- A `assert "test" in DATABASE_URL` guard in `conftest.py` will blow up loudly if anything is misconfigured
-- The `wiki_test` database is created automatically on fresh volumes via `postgres-init/01-create-test-db.sql`
-- For an existing running container: `docker compose exec db psql -U wiki -c "CREATE DATABASE wiki_test;"`
+One-time setup:
+```bash
+cd api && pip3 install -r requirements.txt
+# If asyncpg fails to build: brew install libpq first
+```
 
-Run tests inside the compose network:
+Then:
+```bash
+make test-local        # pytest without Docker (~10s)
+make lint              # ruff + mypy static analysis (~5s)
+```
+
+See `AGENT.md` for the full agent verification guide and test-writing patterns.
+
+### Docker (integration / CI)
 
 ```bash
-docker compose run --rm api pytest tests/ -v
+make test-docker       # docker compose run --rm api pytest tests/ -v
 ```
+
+**CRITICAL — tests use a separate `wiki_test` database, NOT the production `wiki` database.**
+
+- `conftest.py` unconditionally sets `DATABASE_URL` to `wiki_test` — do NOT change this to `setdefault`, as the container environment already has `DATABASE_URL` pointing at the production DB
+- A `assert “test” in DATABASE_URL` guard in `conftest.py` will blow up loudly if anything is misconfigured
+- The `wiki_test` database is created automatically on fresh volumes via `postgres-init/01-create-test-db.sql`
+- For an existing running container: `docker compose exec db psql -U wiki -c “CREATE DATABASE wiki_test;”`
+
+### How the mocks work
+
+`conftest.py` applies three autouse fixtures to every test:
+- `_mock_broadcaster` — patches Redis connect/disconnect so the FastAPI lifespan never dials out
+- `_mock_s3` — blocks upload/download; raises loudly if a test hits real storage
+- `VECTOR_SEARCH_ENABLED=false` — prevents any embedding API calls
+
+Tests override FastAPI's `get_db` and `get_current_user` dependencies. No real Postgres connection is ever attempted.
 
 ## Development commands
 
@@ -31,8 +55,11 @@ docker compose up --build
 # Migrations without starting the API (optional — see “Database migrations” below)
 docker compose run --rm api alembic upgrade head
 
-# Run tests (safe — targets wiki_test only)
-docker compose run --rm api pytest tests/ -v
+# Run tests — no Docker needed
+make test-local
+
+# Static analysis only
+make lint
 ```
 
 ## iOS app (Makefile / Tuist)

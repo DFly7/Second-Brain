@@ -21,11 +21,26 @@
 #   make ios-open                  # open the .xcworkspace in Xcode (then Settings → Components / Platforms)
 #   make ios-run ARGS="--udid <UDID>"
 
-.PHONY: help ios-gen ios-run ios-device ios-devices ios-build ios-sims ios-sims-iphone ios-toolchain ios-destinations ios-components-check ios-platform-download ios-open
+.PHONY: help test test-local test-docker lint ios-gen ios-run ios-device ios-devices ios-build ios-sims ios-sims-iphone ios-toolchain ios-destinations ios-components-check ios-platform-download ios-open
 
 help: ## Show targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' Makefile \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
+
+# ── API tests ────────────────────────────────────────────────────────────────
+
+test-local: ## Run API tests locally without Docker (requires: pip3 install -r api/requirements.txt)
+	cd api && python3 -m pytest tests/ -v
+
+test-docker: ## Run API tests inside Docker Compose (uses wiki_test DB)
+	docker compose run --rm api pytest tests/ -v
+
+test: test-local ## Alias for test-local
+
+lint: ## Ruff + mypy static analysis on API source (no infrastructure needed)
+	cd api && ruff check app/ tests/ && mypy app/
+
+# ── iOS ──────────────────────────────────────────────────────────────────────
 
 ios-gen: ## tuist install + generate (no open)
 	cd ios/SecondBrainApp && tuist install && tuist generate --no-open

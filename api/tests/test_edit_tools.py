@@ -9,7 +9,7 @@ from app.agents.tools import AgentTools
 def session():
     s = AsyncMock(spec=AsyncSession)
     s.add = MagicMock()
-    s.delete = MagicMock()
+    s.delete = AsyncMock()
     return s
 
 
@@ -175,7 +175,7 @@ async def test_move_page_broadcasts_and_returns_success(tools):
 
     tools._do_move_page.assert_awaited_once_with("people/alice", "people/alice-jones")
     broadcaster.publish.assert_awaited_once_with(
-        {"event": "agent:moving", "from": "people/alice", "to": "people/alice-jones"},
+        {"context": "ingest", "event": "agent:moving", "from": "people/alice", "to": "people/alice-jones"},
         audience_user_id="u-test",
     )
     assert "moved" in out.lower()
@@ -245,7 +245,7 @@ async def test_delete_page_broadcasts_and_appends_log(tools):
     tools._remove_from_index.assert_awaited_once_with("people/alice")
     tools._append_deleted_log.assert_awaited_once_with("people/alice", "Gone Title")
     broadcaster.publish.assert_awaited_once_with(
-        {"event": "agent:deleting", "slug": "people/alice"},
+        {"context": "ingest", "event": "agent:deleting", "slug": "people/alice"},
         audience_user_id="u-test",
     )
     assert "deleted" in out.lower()
@@ -295,6 +295,7 @@ async def test_move_folder_moves_all_and_broadcasts(tools, session):
     session.execute.side_effect = [
         MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[page_a, page_b])))),
         MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))),  # no collisions
+        MagicMock(fetchone=MagicMock(return_value=MagicMock())),  # _append_changelog UPDATE
     ]
 
     tools._do_move_page = AsyncMock()
@@ -309,6 +310,7 @@ async def test_move_folder_moves_all_and_broadcasts(tools, session):
     tools._do_move_page.assert_any_call("projects/2025/beta", "archive/2025/beta")
     broadcaster.publish.assert_awaited_once_with(
         {
+            "context": "ingest",
             "event": "agent:moved_folder",
             "from": "projects/2025",
             "to": "archive/2025",
@@ -329,6 +331,7 @@ async def test_move_folder_suppresses_writing_sse_while_moving(tools, session):
     session.execute.side_effect = [
         MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[page_a])))),
         MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))),
+        MagicMock(fetchone=MagicMock(return_value=MagicMock())),  # _append_changelog UPDATE
     ]
 
     seen: list[bool] = []
