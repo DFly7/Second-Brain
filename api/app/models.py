@@ -69,6 +69,8 @@ class Source(Base):
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"))
     kind: Mapped[str] = mapped_column(String)
     filename: Mapped[str | None] = mapped_column(String, nullable=True)
+    title: Mapped[str | None] = mapped_column(String, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     s3_key: Mapped[str | None] = mapped_column(String, nullable=True)
     extracted_text: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String, default="done")

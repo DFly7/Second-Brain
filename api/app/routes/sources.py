@@ -37,10 +37,31 @@ class SourceOut(BaseModel):
     id: str
     kind: str
     filename: str | None
+    title: str | None
+    description: str | None
     status: str
     has_file: bool
     has_markdown: bool
     created_at: datetime
+
+
+class SourcePatch(BaseModel):
+    title: str | None = None
+    description: str | None = None
+
+
+def _source_to_out(s: Source) -> SourceOut:
+    return SourceOut(
+        id=s.id,
+        kind=s.kind,
+        filename=s.filename,
+        title=s.title,
+        description=s.description,
+        status=s.status,
+        has_file=s.s3_key is not None,
+        has_markdown=s.markdown_s3_key is not None,
+        created_at=s.created_at,
+    )
 
 
 @router.get("", response_model=list[SourceOut])
@@ -55,18 +76,30 @@ async def list_sources(
         .order_by(Source.created_at.desc())
     )
     sources = result.scalars().all()
-    return [
-        SourceOut(
-            id=s.id,
-            kind=s.kind,
-            filename=s.filename,
-            status=s.status,
-            has_file=s.s3_key is not None,
-            has_markdown=s.markdown_s3_key is not None,
-            created_at=s.created_at,
-        )
-        for s in sources
-    ]
+    return [_source_to_out(s) for s in sources]
+
+
+@router.patch("/{source_id}", response_model=SourceOut)
+async def patch_source(
+    source_id: str,
+    body: SourcePatch,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(get_current_user),
+):
+    ws = await _ensure_workspace(db, user)
+    result = await db.execute(
+        select(Source).where(Source.id == source_id, Source.workspace_id == ws.id)
+    )
+    source = result.scalar_one_or_none()
+    if source is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    if body.title is not None:
+        source.title = body.title
+    if body.description is not None:
+        source.description = body.description
+    await db.commit()
+    await db.refresh(source)
+    return _source_to_out(source)
 
 
 @router.get("/{source_id}/file")

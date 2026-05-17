@@ -41,6 +41,8 @@ def _make_mock_source(
     s3_key="sources/doc.pdf",
     markdown_s3_key="sources/doc.md",
     created_at=None,
+    title=None,
+    description=None,
 ):
     s = MagicMock()
     s.id = source_id
@@ -50,6 +52,8 @@ def _make_mock_source(
     s.s3_key = s3_key
     s.markdown_s3_key = markdown_s3_key
     s.created_at = created_at or datetime(2026, 5, 1, 10, 0, 0)
+    s.title = title
+    s.description = description
     return s
 
 
@@ -153,6 +157,162 @@ def test_list_sources_returns_empty_list_when_none(sources_client):
             r = sources_client.get("/sources")
             assert r.status_code == 200
             assert r.json() == []
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+def test_list_sources_includes_title_and_description(sources_client):
+    mock_ws = _make_mock_ws()
+    src = _make_mock_source(
+        source_id="src-1",
+        title="Lecture notes",
+        description="Week 3 summary",
+        created_at=datetime(2026, 5, 2, 0, 0, 0),
+    )
+
+    db_result = MagicMock()
+    db_result.scalars.return_value.all.return_value = [src]
+
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=db_result)
+    session.delete = AsyncMock()
+
+    async def override_db():
+        yield session
+
+    app.dependency_overrides[get_db] = override_db
+
+    try:
+        with patch(
+            "app.routes.sources._ensure_workspace",
+            new_callable=AsyncMock,
+            return_value=mock_ws,
+        ):
+            r = sources_client.get("/sources")
+            assert r.status_code == 200
+            data = r.json()
+            assert len(data) == 1
+            assert data[0]["id"] == "src-1"
+            assert data[0]["title"] == "Lecture notes"
+            assert data[0]["description"] == "Week 3 summary"
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+# ---------------------------------------------------------------------------
+# PATCH /sources/{source_id}
+# ---------------------------------------------------------------------------
+
+
+def test_patch_source_updates_title_and_description(sources_client):
+    mock_ws = _make_mock_ws()
+    mock_source = _make_mock_source(title="Old T", description="Old D")
+
+    source_result = MagicMock()
+    source_result.scalar_one_or_none.return_value = mock_source
+
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=source_result)
+    session.commit = AsyncMock()
+    session.refresh = AsyncMock()
+    session.delete = AsyncMock()
+
+    async def override_db():
+        yield session
+
+    app.dependency_overrides[get_db] = override_db
+
+    try:
+        with patch(
+            "app.routes.sources._ensure_workspace",
+            new_callable=AsyncMock,
+            return_value=mock_ws,
+        ):
+            r = sources_client.patch(
+                f"/sources/{SOURCE_ID}",
+                json={"title": "New T", "description": "New D"},
+            )
+            assert r.status_code == 200
+            data = r.json()
+            assert data["title"] == "New T"
+            assert data["description"] == "New D"
+            assert mock_source.title == "New T"
+            assert mock_source.description == "New D"
+            session.commit.assert_awaited_once()
+            session.refresh.assert_awaited_once_with(mock_source)
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+def test_patch_source_title_only_preserves_description(sources_client):
+    mock_ws = _make_mock_ws()
+    mock_source = _make_mock_source(title="Old", description="Keep me")
+
+    source_result = MagicMock()
+    source_result.scalar_one_or_none.return_value = mock_source
+
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=source_result)
+    session.commit = AsyncMock()
+    session.refresh = AsyncMock()
+    session.delete = AsyncMock()
+
+    async def override_db():
+        yield session
+
+    app.dependency_overrides[get_db] = override_db
+
+    try:
+        with patch(
+            "app.routes.sources._ensure_workspace",
+            new_callable=AsyncMock,
+            return_value=mock_ws,
+        ):
+            r = sources_client.patch(
+                f"/sources/{SOURCE_ID}",
+                json={"title": "New"},
+            )
+            assert r.status_code == 200
+            data = r.json()
+            assert data["title"] == "New"
+            assert data["description"] == "Keep me"
+            assert mock_source.title == "New"
+            assert mock_source.description == "Keep me"
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+def test_patch_source_returns_404_when_not_found(sources_client):
+    mock_ws = _make_mock_ws()
+
+    source_result = MagicMock()
+    source_result.scalar_one_or_none.return_value = None
+
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=source_result)
+    session.commit = AsyncMock()
+    session.refresh = AsyncMock()
+    session.delete = AsyncMock()
+
+    async def override_db():
+        yield session
+
+    app.dependency_overrides[get_db] = override_db
+
+    try:
+        with patch(
+            "app.routes.sources._ensure_workspace",
+            new_callable=AsyncMock,
+            return_value=mock_ws,
+        ):
+            r = sources_client.patch(
+                f"/sources/{SOURCE_ID}",
+                json={"title": "x"},
+            )
+            assert r.status_code == 404
+            assert r.json()["detail"] == "Source not found"
+            session.commit.assert_not_called()
+            session.refresh.assert_not_called()
     finally:
         app.dependency_overrides.pop(get_db, None)
 
