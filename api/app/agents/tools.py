@@ -3,10 +3,18 @@ import time
 from datetime import datetime
 
 import structlog
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import ActivityLog, Page, PageLink, Revision, SourcePage
+from app.models import (
+    ActivityLog,
+    ChatMessage,
+    ChatSession,
+    Page,
+    PageLink,
+    Revision,
+    SourcePage,
+)
 from app.search import search_pages as _search
 from app.sse import SSEBroadcaster
 from app.wikilinks import sync_links
@@ -15,6 +23,14 @@ _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)+$")
 _FOLDER_RE = re.compile(r"^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$")
 
 _LOG = structlog.get_logger()
+
+_CHANGELOG_EXCLUDED = frozenset({
+    "system/changelog",
+    "system/memory",
+    "system/history",
+    "meta/index",
+    "meta/deleted-log",
+})
 
 _LARGE_ARG_KEYS = frozenset({
     "body_md",
@@ -63,6 +79,7 @@ class AgentTools:
         self.audience_user_id = audience_user_id
         # Set True during move_folder so each _do_move_page does not spam agent:writing (and index updates).
         self._suppress_agent_writing_sse = False
+        self._suppress_changelog: bool = False
 
     async def _broadcast(self, event: dict):
         if not self.broadcaster:
@@ -106,6 +123,7 @@ class AgentTools:
             select(Page).where(Page.slug == slug, Page.workspace_id == self.workspace_id)
         )
         page = result.scalar_one_or_none()
+        was_new = page is None
         if page:
             self.session.add(Revision(page_id=page.id, body_md=page.body_md))
             page.body_md = body_md
@@ -142,6 +160,8 @@ class AgentTools:
         await self.session.commit()
         await self.session.refresh(page)
         await self.update_index(slug, page.title, page.summary)
+        if not self._suppress_changelog and slug not in _CHANGELOG_EXCLUDED:
+            await self._append_changelog("created" if was_new else "updated", f"[[{slug}]]")
         return f"Page '{slug}' saved."
 
     async def append_to_page(self, slug: str, content: str) -> str:
@@ -200,6 +220,82 @@ class AgentTools:
             results.append("\n".join(lines[start:end]))
 
         return "\n---\n".join(results)
+
+    async def search_chat_history(
+        self, query: str, context_window_chars: int = 2000
+    ) -> str:
+        matches_result = await self.session.execute(
+            select(ChatMessage)
+            .join(ChatSession, ChatMessage.session_id == ChatSession.id)
+            .where(ChatSession.workspace_id == self.workspace_id)
+            .where(ChatMessage.content.ilike(f"%{query}%"))
+            .order_by(ChatMessage.created_at.desc())
+            .limit(20)
+        )
+        matches = matches_result.scalars().all()
+
+        if not matches:
+            return "No matching messages found in chat history."
+
+        # Collect up to 5 unique sessions, preserving order of relevance
+        seen_sessions: dict[str, list[str]] = {}
+        for m in matches:
+            if m.session_id not in seen_sessions:
+                seen_sessions[m.session_id] = []
+            seen_sessions[m.session_id].append(m.id)
+            if len(seen_sessions) >= 5:
+                break
+
+        excerpts: list[str] = []
+        for session_id, match_ids in seen_sessions.items():
+            session_msgs_result = await self.session.execute(
+                select(ChatMessage)
+                .where(ChatMessage.session_id == session_id)
+                .order_by(ChatMessage.created_at)
+            )
+            all_msgs = session_msgs_result.scalars().all()
+
+            match_id_set = set(match_ids)
+            first_match_idx = next(
+                (i for i, m in enumerate(all_msgs) if m.id in match_id_set), 0
+            )
+
+            selected = [first_match_idx]
+            chars_used = len(all_msgs[first_match_idx].content)
+            left = first_match_idx - 1
+            right = first_match_idx + 1
+
+            while chars_used < context_window_chars:
+                grew = False
+                if left >= 0:
+                    c = len(all_msgs[left].content)
+                    if chars_used + c <= context_window_chars:
+                        selected.append(left)
+                        chars_used += c
+                        left -= 1
+                        grew = True
+                    else:
+                        left = -1
+                if right < len(all_msgs):
+                    c = len(all_msgs[right].content)
+                    if chars_used + c <= context_window_chars:
+                        selected.append(right)
+                        chars_used += c
+                        right += 1
+                        grew = True
+                    else:
+                        right = len(all_msgs)
+                if not grew:
+                    break
+
+            session_date = all_msgs[0].created_at.strftime("%Y-%m-%d")
+            lines = [f"[Session {session_date}]"]
+            for i in sorted(set(selected)):
+                msg = all_msgs[i]
+                lines.append(f"{msg.role.upper()}: {msg.content}")
+            excerpts.append("\n".join(lines))
+
+        return "\n---\n".join(excerpts)
 
     async def create_page(
         self, slug: str, title: str, body_md: str, summary: str = ""
@@ -327,7 +423,7 @@ class AgentTools:
                 (PageLink.from_page_id == old_page.id) | (PageLink.to_page_id == old_page.id)
             )
         )
-        self.session.delete(old_page)
+        await self.session.delete(old_page)
         await self._remove_from_index(old_slug)
         await self.session.commit()
 
@@ -337,11 +433,15 @@ class AgentTools:
                 f"Invalid new_slug '{new_slug}': use lowercase path segments with hyphens "
                 f"(e.g. people/alice-jones)."
             )
+        self._suppress_changelog = True
         try:
             await self._do_move_page(old_slug, new_slug)
         except ValueError as exc:
             return str(exc)
+        finally:
+            self._suppress_changelog = False
         await self._broadcast({"event": "agent:moving", "from": old_slug, "to": new_slug})
+        await self._append_changelog("moved", f"[[{new_slug}]] ← [[{old_slug}]]")
         return f"Page moved from '{old_slug}' to '{new_slug}'."
 
     async def _append_deleted_log(self, slug: str, title: str) -> None:
@@ -363,6 +463,37 @@ class AgentTools:
             summary="Audit trail of deleted wiki pages",
             title="Deleted log",
         )
+
+    async def _append_changelog(self, action: str, page_display: str) -> None:
+        ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
+        row = f"\n| {ts} | {action} | {page_display} |"
+
+        result = await self.session.execute(
+            text(
+                "UPDATE pages SET body_md = body_md || :row "
+                "WHERE slug = 'system/changelog' AND workspace_id = :workspace_id "
+                "RETURNING id"
+            ),
+            {"row": row, "workspace_id": self.workspace_id},
+        )
+        updated = result.fetchone()
+        await self.session.commit()
+
+        if updated:
+            # Raw UPDATE bypasses ORM; expire instances so reads see appended rows (expire_on_commit=False).
+            self.session.expire_all()
+            return
+
+        header = "# Wiki Changelog\n\n| When | Action | Page |\n| --- | --- | --- |"
+        changelog_page = Page(
+            workspace_id=self.workspace_id,
+            slug="system/changelog",
+            title="Wiki Changelog",
+            body_md=header + row,
+            summary="Audit trail of wiki page changes",
+        )
+        self.session.add(changelog_page)
+        await self.session.commit()
 
     async def _do_delete_page(self, slug: str) -> str:
         result = await self.session.execute(
@@ -405,9 +536,19 @@ class AgentTools:
             title = await self._do_delete_page(slug)
         except ValueError as exc:
             return str(exc)
+        self.session.add(
+            ActivityLog(
+                workspace_id=self.workspace_id,
+                event_type="page_deleted",
+                payload={"slug": slug},
+            )
+        )
+        await self.session.commit()
         await self._remove_from_index(slug)
         await self._append_deleted_log(slug, title)
         await self._broadcast({"event": "agent:deleting", "slug": slug})
+        if not self._suppress_changelog:
+            await self._append_changelog("deleted", slug)
         return f"Page '{slug}' deleted."
 
     async def move_folder(self, old_prefix: str, new_prefix: str) -> str:
@@ -447,11 +588,13 @@ class AgentTools:
             return f"Error: Destination already has conflicting pages: {conflict_list}."
 
         self._suppress_agent_writing_sse = True
+        self._suppress_changelog = True
         try:
             for page, new_slug in zip(pages, new_slugs, strict=True):
                 await self._do_move_page(page.slug, new_slug)
         finally:
             self._suppress_agent_writing_sse = False
+            self._suppress_changelog = False
 
         count = len(pages)
         await self._broadcast(
@@ -461,6 +604,9 @@ class AgentTools:
                 "to": new_prefix,
                 "count": count,
             }
+        )
+        await self._append_changelog(
+            "moved folder", f"`{old_prefix}/` → `{new_prefix}/` ({count} pages)"
         )
         return f"Moved {count} pages from '{old_prefix}/' to '{new_prefix}/'."
 
@@ -647,6 +793,36 @@ class AgentTools:
             {
                 "type": "function",
                 "function": {
+                    "name": "search_chat_history",
+                    "description": (
+                        "Search raw past conversation messages by keyword. "
+                        "Use ONLY when the user explicitly references a past conversation "
+                        "(e.g. 'remember when we discussed X', 'what were those plans from last month') "
+                        "AND grep_page('system/history', ...) did not have enough detail. "
+                        "Do not call speculatively — check wiki pages and system/history first."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "Keyword or phrase to search for in past messages",
+                            },
+                            "context_window_chars": {
+                                "type": "integer",
+                                "description": (
+                                    "Max total characters of excerpt text per session around each match "
+                                    "(default 2000)."
+                                ),
+                            },
+                        },
+                        "required": ["query"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
                     "name": "move_page",
                     "description": "Move a wiki page to a new slug, rewriting backlinks.",
                     "parameters": {
@@ -787,6 +963,11 @@ class AgentTools:
                 args["query"],
                 context_lines=args.get("context_lines", 5),
                 regex=args.get("regex", False),
+            )
+        if name == "search_chat_history":
+            return await self.search_chat_history(
+                args["query"],
+                context_window_chars=args.get("context_window_chars", 2000),
             )
         if name == "move_page":
             return await self.move_page(args["old_slug"], args["new_slug"])

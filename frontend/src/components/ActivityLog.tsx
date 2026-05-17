@@ -6,9 +6,24 @@ import type { QueueState, QueueStatus } from '../state/ingestQueue'
 const labels: Record<string, string> = {
   page_created: 'Page created',
   page_updated: 'Page updated',
+  page_deleted: 'Page deleted',
   source_ingested: 'Source ingested',
   chat_ingested: 'Saved from chat',
   chat_message: 'Chat message',
+}
+
+const CHANGE_EVENTS = new Set(['page_created', 'page_updated', 'page_deleted'])
+
+const CHANGE_ACTION_LABEL: Record<string, string> = {
+  page_created: 'Created',
+  page_updated: 'Updated',
+  page_deleted: 'Deleted',
+}
+
+const CHANGE_ACTION_COLOR: Record<string, string> = {
+  page_created: '#3fb950',
+  page_updated: '#58a6ff',
+  page_deleted: '#f85149',
 }
 
 const QUEUE_STATUS_LABEL: Record<QueueStatus, string> = {
@@ -40,15 +55,35 @@ export default function ActivityLog({
   queue: QueueState
   onClearQueue: () => void
 }) {
-  const [tab, setTab] = useState<'activity' | 'queue'>('activity')
+  const [tab, setTab] = useState<'activity' | 'changes' | 'queue'>('activity')
   const { data: events = [] } = useQuery<{ id: string; event_type: string; payload: Record<string, unknown>; created_at: string }[]>({
     queryKey: ['activity'],
     queryFn: () => getActivity(),
     refetchInterval: 5000,
   })
 
+  const changeEvents = events.filter(e => CHANGE_EVENTS.has(e.event_type))
+
   const queueSortedNewestFirst = [...queue.items].sort((a, b) =>
     a.createdAt < b.createdAt ? 1 : -1,
+  )
+
+  const tabBtn = (id: typeof tab, label: string) => (
+    <button
+      type="button"
+      onClick={() => setTab(id)}
+      style={{
+        padding: '4px 12px',
+        background: tab === id ? '#238636' : '#21262d',
+        border: '1px solid #30363d',
+        borderRadius: 6,
+        color: '#e6edf3',
+        cursor: 'pointer',
+        fontSize: 12,
+      }}
+    >
+      {label}
+    </button>
   )
 
   return (
@@ -56,39 +91,10 @@ export default function ActivityLog({
       borderLeft: '1px solid #30363d', zIndex: 50, display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         padding: '12px 16px', borderBottom: '1px solid #30363d', gap: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ display: 'flex', gap: 4 }}>
-            <button
-              type="button"
-              onClick={() => setTab('activity')}
-              style={{
-                padding: '4px 12px',
-                background: tab === 'activity' ? '#238636' : '#21262d',
-                border: '1px solid #30363d',
-                borderRadius: 6,
-                color: '#e6edf3',
-                cursor: 'pointer',
-                fontSize: 12,
-              }}
-            >
-              Activity
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab('queue')}
-              style={{
-                padding: '4px 12px',
-                background: tab === 'queue' ? '#238636' : '#21262d',
-                border: '1px solid #30363d',
-                borderRadius: 6,
-                color: '#e6edf3',
-                cursor: 'pointer',
-                fontSize: 12,
-              }}
-            >
-              Queue
-            </button>
-          </div>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {tabBtn('activity', 'Activity')}
+          {tabBtn('changes', 'Changes')}
+          {tabBtn('queue', 'Queue')}
         </div>
         <button onClick={onClose} type="button" style={{ background: 'none', border: 'none', color: '#8b949e',
           cursor: 'pointer', fontSize: 18, flexShrink: 0 }}>×</button>
@@ -96,7 +102,7 @@ export default function ActivityLog({
       <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
         {tab === 'activity' && (
           <>
-            {events.map((e: { id: string; event_type: string; payload: Record<string, unknown>; created_at: string }) => (
+            {events.map(e => (
               <div key={e.id} style={{ marginBottom: 12, padding: '8px 12px', background: '#0d1117',
                 borderRadius: 6, border: '1px solid #21262d' }}>
                 <div style={{ fontSize: 12, color: '#3fb950', marginBottom: 4 }}>
@@ -114,6 +120,29 @@ export default function ActivityLog({
             {events.length === 0 && (
               <div style={{ color: '#8b949e', fontSize: 13, textAlign: 'center', marginTop: 40 }}>
                 No activity yet. Ingest something!
+              </div>
+            )}
+          </>
+        )}
+        {tab === 'changes' && (
+          <>
+            {changeEvents.map(e => (
+              <div key={e.id} style={{ marginBottom: 12, padding: '8px 12px', background: '#0d1117',
+                borderRadius: 6, border: '1px solid #21262d' }}>
+                <div style={{ fontSize: 12, color: CHANGE_ACTION_COLOR[e.event_type] ?? '#8b949e', marginBottom: 4 }}>
+                  {CHANGE_ACTION_LABEL[e.event_type] ?? e.event_type}
+                </div>
+                <div style={{ fontSize: 11, color: '#8b949e', fontFamily: 'monospace' }}>
+                  {e.payload.slug ? `[[${e.payload.slug}]]` : '—'}
+                </div>
+                <div style={{ fontSize: 10, color: '#484f58', marginTop: 4 }}>
+                  {new Date(e.created_at).toLocaleString()}
+                </div>
+              </div>
+            ))}
+            {changeEvents.length === 0 && (
+              <div style={{ color: '#8b949e', fontSize: 13, textAlign: 'center', marginTop: 40 }}>
+                No wiki changes yet.
               </div>
             )}
           </>

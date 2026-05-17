@@ -19,7 +19,17 @@ from app.sse import broadcaster
 _PROMPTS = Path(__file__).parent / "prompts"
 SYSTEM_PROMPT = (_PROMPTS / "query.md").read_text()
 
-READ_ONLY_TOOLS = ["list_pages", "search_pages", "read_page", "grep_page"]
+QUERY_TOOLS = [
+    "list_pages",
+    "search_pages",
+    "read_page",
+    "grep_page",
+    "search_chat_history",
+    "write_page",
+    "create_page",
+    "append_to_page",
+    "patch_page",
+]
 
 _log = structlog.get_logger()
 
@@ -44,7 +54,7 @@ async def run(
             context="chat",
             audience_user_id=audience_user_id,
         )
-        tool_defs = tools.as_litellm_tools(allowed=READ_ONLY_TOOLS)
+        tool_defs = tools.as_litellm_tools(allowed=QUERY_TOOLS)
 
         # Fetch system/memory directly — bypasses SSE broadcast since this is internal setup
         _mem_row = await session.execute(
