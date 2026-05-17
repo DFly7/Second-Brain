@@ -22,9 +22,11 @@ export default function FileViewer({ source }: FileViewerProps) {
     s?.has_markdown ? 'markdown' : 'original'
 
   const [view, setView] = useState<'original' | 'markdown'>(() => defaultView(source))
+  const [blobUrl, setBlobUrl] = useState<string | null>(null)
 
   useEffect(() => {
     setView(defaultView(source))
+    setBlobUrl(null)
   }, [source?.id])
 
   if (!source) {
@@ -36,6 +38,7 @@ export default function FileViewer({ source }: FileViewerProps) {
   }
 
   const showToggle = source.has_file && source.has_markdown
+  const filename = source.filename ?? `file.${source.kind}`
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -50,6 +53,12 @@ export default function FileViewer({ source }: FileViewerProps) {
         <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: '#e6edf3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {source.title ?? `${source.kind} · ${source.id.slice(0, 8).toUpperCase()}`}
         </span>
+        {view === 'original' && blobUrl && (
+          <div style={{ display: 'flex', gap: 6 }}>
+            <a href={blobUrl} download={filename} style={linkBtnStyle}>⬇ Download</a>
+            <a href={blobUrl} target="_blank" rel="noreferrer" style={linkBtnStyle}>↗ Open</a>
+          </div>
+        )}
         {showToggle && (
           <div style={{ display: 'flex', background: '#21262d', borderRadius: 6, padding: 2, gap: 2 }}>
             {(['original', 'markdown'] as const).map((v) => (
@@ -75,8 +84,10 @@ export default function FileViewer({ source }: FileViewerProps) {
           </div>
         )}
       </div>
-      <div style={{ flex: 1, overflow: 'auto' }}>
-        {view === 'markdown' ? <MarkdownPane source={source} /> : <OriginalPane source={source} />}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {view === 'markdown'
+          ? <MarkdownPane source={source} />
+          : <OriginalPane source={source} onBlobUrl={setBlobUrl} />}
       </div>
     </div>
   )
@@ -145,7 +156,7 @@ function MarkdownPane({ source }: { source: SourceItem }) {
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <div style={headerStyle}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 16px', borderBottom: '1px solid #21262d', background: '#161b22', flexShrink: 0 }}>
         <span style={{ color: '#e6edf3', fontWeight: 600 }}>
           {source.filename ?? source.kind} — markdown
         </span>
@@ -182,7 +193,7 @@ function MarkdownPane({ source }: { source: SourceItem }) {
   )
 }
 
-function OriginalPane({ source }: { source: SourceItem }) {
+function OriginalPane({ source, onBlobUrl }: { source: SourceItem; onBlobUrl: (url: string | null) => void }) {
   const needsFetch = !NO_FILE_KINDS.includes(source.kind) && source.has_file
   const [blobUrl, setBlobUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(needsFetch)
@@ -196,12 +207,14 @@ function OriginalPane({ source }: { source: SourceItem }) {
     setLoading(true)
     setError(false)
     setBlobUrl(null)
+    onBlobUrl(null)
     setProgress(null)
 
     fetchSourceFile(source.id, (received, total) => setProgress({ received, total }))
       .then((blob) => {
         objectUrl = URL.createObjectURL(blob)
         setBlobUrl(objectUrl)
+        onBlobUrl(objectUrl)
         setLoading(false)
         setProgress(null)
       })
@@ -213,6 +226,7 @@ function OriginalPane({ source }: { source: SourceItem }) {
 
     return () => {
       if (objectUrl) URL.revokeObjectURL(objectUrl)
+      onBlobUrl(null)
     }
   }, [source.id, source.kind, source.has_file, needsFetch, retryCount])
 
@@ -234,44 +248,17 @@ function OriginalPane({ source }: { source: SourceItem }) {
 
   const filename = source.filename ?? `file.${source.kind}`
 
-  return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <div style={headerStyle}>
-        <span style={{ color: '#e6edf3', fontWeight: 600 }}>{filename}</span>
-        {blobUrl && (
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-            <a href={blobUrl} download={filename} style={linkBtnStyle}>
-              ⬇ Download
-            </a>
-            <a href={blobUrl} target="_blank" rel="noreferrer" style={linkBtnStyle}>
-              ↗ Open in tab
-            </a>
-          </div>
-        )}
+  if (blobUrl && source.kind === 'pdf') {
+    return <iframe src={blobUrl} style={{ flex: 1, width: '100%', height: '100%', border: 'none', display: 'block' }} title={filename} />
+  }
+  if (blobUrl && IMAGE_KINDS.includes(source.kind)) {
+    return (
+      <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', alignItems: 'flex-start', justifyContent: 'center' }}>
+        <img src={blobUrl} alt={filename} style={{ maxWidth: '100%' }} />
       </div>
-
-      {blobUrl && source.kind === 'pdf' && (
-        <iframe src={blobUrl} style={{ flex: 1, border: 'none' }} title={filename} />
-      )}
-      {blobUrl && IMAGE_KINDS.includes(source.kind) && (
-        <div
-          style={{
-            flex: 1,
-            overflowY: 'auto',
-            padding: 16,
-            display: 'flex',
-            alignItems: 'flex-start',
-            justifyContent: 'center',
-          }}
-        >
-          <img src={blobUrl} alt={filename} style={{ maxWidth: '100%' }} />
-        </div>
-      )}
-      {blobUrl && !IMAGE_KINDS.includes(source.kind) && source.kind !== 'pdf' && (
-        <Centered>This file type cannot be previewed. Use the buttons above to download or open it.</Centered>
-      )}
-    </div>
-  )
+    )
+  }
+  return <Centered>This file type cannot be previewed. Use Download or Open to view it.</Centered>
 }
 
 function LoadingBar({ progress }: { progress: { received: number; total: number | null } | null }) {
@@ -327,16 +314,6 @@ function Centered({ children }: { children: React.ReactNode }) {
       {children}
     </div>
   )
-}
-
-const headerStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 8,
-  padding: '8px 16px',
-  borderBottom: '1px solid #21262d',
-  background: '#161b22',
-  flexShrink: 0,
 }
 
 const btnStyle: React.CSSProperties = {
