@@ -5,6 +5,7 @@ interface FilesListProps {
   selectedId: string | null
   onSelect: (id: string) => void
   onInfo: (id: string) => void
+  fullWidth?: boolean
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -40,17 +41,17 @@ function fileIcon(kind: string): string {
   return '📄'
 }
 
-export default function FilesList({ sources, selectedId, onSelect, onInfo }: FilesListProps) {
+export default function FilesList({ sources, selectedId, onSelect, onInfo, fullWidth }: FilesListProps) {
   if (sources.length === 0) {
     return (
-      <div style={{ width: 240, borderRight: '1px solid #21262d', padding: 16, color: '#8b949e', fontSize: 13 }}>
+      <div style={{ width: fullWidth ? '100%' : 240, borderRight: fullWidth ? 'none' : '1px solid #21262d', padding: 16, color: '#8b949e', fontSize: 13 }}>
         No files ingested yet.
       </div>
     )
   }
 
   return (
-    <div style={{ width: 240, borderRight: '1px solid #21262d', overflowY: 'auto', padding: 8, flexShrink: 0 }}>
+    <div style={{ width: fullWidth ? '100%' : 240, borderRight: fullWidth ? 'none' : '1px solid #21262d', overflowY: 'auto', padding: 8, flexShrink: 0 }}>
       {sources.map((source) => {
         const title = source.title ?? `${source.kind} · ${source.id.slice(0, 8).toUpperCase()}`
         const isSelected = source.id === selectedId
