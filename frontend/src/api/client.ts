@@ -193,6 +193,7 @@ export async function fetchSourceFile(
   if (!onProgress || !r.body) return r.blob()
 
   const total = r.headers.get('Content-Length') ? parseInt(r.headers.get('Content-Length')!, 10) : null
+  const contentType = r.headers.get('Content-Type') ?? undefined
   const reader = r.body.getReader()
   const chunks: BlobPart[] = []
   let received = 0
@@ -205,7 +206,7 @@ export async function fetchSourceFile(
     onProgress(received, total)
   }
 
-  return new Blob(chunks)
+  return new Blob(chunks, { type: contentType })
 }
 
 export async function fetchSourceMarkdown(sourceId: string): Promise<string> {
