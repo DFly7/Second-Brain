@@ -15,33 +15,75 @@ const NO_FILE_KINDS = ['url', 'text', 'md', 'markdown', 'txt']
 
 interface FileViewerProps {
   source: SourceItem | null
-  view: 'original' | 'markdown'
 }
 
-function isProcessingStatus(status: string): boolean {
-  return status === 'converting' || status === 'ingesting' || status === 'processing'
-}
+export default function FileViewer({ source }: FileViewerProps) {
+  const defaultView = (s: SourceItem | null) =>
+    s?.has_markdown ? 'markdown' : 'original'
 
-export default function FileViewer({ source, view }: FileViewerProps) {
+  const [view, setView] = useState<'original' | 'markdown'>(() => defaultView(source))
+
+  useEffect(() => {
+    setView(defaultView(source))
+  }, [source?.id])
+
   if (!source) {
     return (
-      <div
-        style={{
-          flex: 1,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: '#8b949e',
-          fontSize: 13,
-        }}
-      >
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8b949e', fontSize: 13 }}>
         Select a file to view it.
       </div>
     )
   }
 
-  if (view === 'markdown') return <MarkdownPane source={source} />
-  return <OriginalPane source={source} />
+  const showToggle = source.has_file && source.has_markdown
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '8px 14px',
+        borderBottom: '1px solid #21262d',
+        flexShrink: 0,
+      }}>
+        <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: '#e6edf3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {source.title ?? `${source.kind} · ${source.id.slice(0, 8).toUpperCase()}`}
+        </span>
+        {showToggle && (
+          <div style={{ display: 'flex', background: '#21262d', borderRadius: 6, padding: 2, gap: 2 }}>
+            {(['original', 'markdown'] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setView(v)}
+                style={{
+                  padding: '3px 10px',
+                  borderRadius: 4,
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  background: view === v ? '#0d1117' : 'transparent',
+                  color: view === v ? '#e6edf3' : '#6e7681',
+                  boxShadow: view === v ? '0 1px 3px rgba(0,0,0,0.4)' : 'none',
+                }}
+              >
+                {v === 'original' ? 'Original' : 'Markdown'}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        {view === 'markdown' ? <MarkdownPane source={source} /> : <OriginalPane source={source} />}
+      </div>
+    </div>
+  )
+}
+
+function isProcessingStatus(status: string): boolean {
+  return status === 'converting' || status === 'ingesting' || status === 'processing'
 }
 
 function AuthedImg({ src, alt, sourceId }: { src?: string; alt?: string; sourceId: string }) {
