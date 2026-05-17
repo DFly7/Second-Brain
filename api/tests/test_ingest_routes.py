@@ -5,6 +5,7 @@ execution is not tested here — only that the route accepts the request,
 creates a Source record, and schedules the background task.
 """
 
+import asyncio
 import io
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -14,6 +15,7 @@ from fastapi.testclient import TestClient
 from app.auth import get_current_user
 from app.database import get_db
 from app.main import app
+from app.routes.ingest import _generate_metadata
 
 TEST_USER = "test@example.com"
 WS_ID = "ws-ingest-1"
@@ -319,6 +321,101 @@ def test_ingest_file_triggers_health_agent_on_tenth_source(ingest_client):
             mock_health.assert_awaited_once()
     finally:
         app.dependency_overrides.pop(get_db, None)
+
+
+# ---------------------------------------------------------------------------
+# _generate_metadata unit tests
+# ---------------------------------------------------------------------------
+
+
+def _make_litellm_resp(content: str):
+    msg = MagicMock()
+    msg.content = content
+    choice = MagicMock()
+    choice.message = msg
+    resp = MagicMock()
+    resp.choices = [choice]
+    return resp
+
+
+def test_generate_metadata_normal_path_returns_title_and_description():
+    long_md = "A" * 200  # >= 100 chars triggers normal path
+    resp = _make_litellm_resp('{"title": "My Doc", "description": "A great document."}')
+
+    with patch("app.routes.ingest.litellm.acompletion", new_callable=AsyncMock, return_value=resp):
+        title, desc = asyncio.get_event_loop().run_until_complete(
+            _generate_metadata(kind="pdf", filename="report.pdf", combined_md=long_md, raw_data=b"")
+        )
+
+    assert title == "My Doc"
+    assert desc == "A great document."
+
+
+def test_generate_metadata_image_path_sends_image_content():
+    """Sparse markdown + image kind → sends image_url content block."""
+    short_md = "   "  # < 100 chars
+    resp = _make_litellm_resp('{"title": "Beach photo", "description": "A sunny day."}')
+    captured: list = []
+
+    async def fake_acompletion(**kwargs):
+        captured.append(kwargs["messages"])
+        return resp
+
+    with patch("app.routes.ingest.litellm.acompletion", side_effect=fake_acompletion):
+        title, desc = asyncio.get_event_loop().run_until_complete(
+            _generate_metadata(kind="png", filename="IMG_001.png", combined_md=short_md, raw_data=b"\x89PNG")
+        )
+
+    assert title == "Beach photo"
+    user_content = captured[0][1]["content"]
+    assert any(block.get("type") == "image_url" for block in user_content)
+
+
+def test_generate_metadata_sparse_non_image_sends_text_only():
+    """Sparse markdown + non-image kind → text-only content."""
+    short_md = "  "
+    resp = _make_litellm_resp('{"title": "PDF doc", "description": "No text extracted."}')
+    captured: list = []
+
+    async def fake_acompletion(**kwargs):
+        captured.append(kwargs["messages"])
+        return resp
+
+    with patch("app.routes.ingest.litellm.acompletion", side_effect=fake_acompletion):
+        title, _ = asyncio.get_event_loop().run_until_complete(
+            _generate_metadata(kind="pdf", filename="scan.pdf", combined_md=short_md, raw_data=b"%PDF")
+        )
+
+    assert title == "PDF doc"
+    user_content = captured[0][1]["content"]
+    assert isinstance(user_content, list)
+    assert all(block.get("type") == "text" for block in user_content)
+
+
+def test_generate_metadata_returns_none_on_llm_exception():
+    with patch(
+        "app.routes.ingest.litellm.acompletion",
+        new_callable=AsyncMock,
+        side_effect=Exception("LLM error"),
+    ):
+        title, desc = asyncio.get_event_loop().run_until_complete(
+            _generate_metadata(kind="pdf", filename="doc.pdf", combined_md="x" * 200, raw_data=b"")
+        )
+
+    assert title is None
+    assert desc is None
+
+
+def test_generate_metadata_returns_none_on_bad_json():
+    resp = _make_litellm_resp("not json at all")
+
+    with patch("app.routes.ingest.litellm.acompletion", new_callable=AsyncMock, return_value=resp):
+        title, desc = asyncio.get_event_loop().run_until_complete(
+            _generate_metadata(kind="pdf", filename="doc.pdf", combined_md="x" * 200, raw_data=b"")
+        )
+
+    assert title is None
+    assert desc is None
 
 
 # SSE endpoint (_run_pipeline publishes broadcaster events) — tested manually.

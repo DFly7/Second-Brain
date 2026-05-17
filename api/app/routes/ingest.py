@@ -1,6 +1,9 @@
 import base64
+import json
+import re
 import uuid
 
+import litellm
 import structlog
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
@@ -8,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_user
+from app.config import settings
 from app.database import AsyncSessionLocal, get_db
 from app.models import Source, SourcePage, Workspace
 from app.routes.wiki import _ensure_workspace
@@ -21,6 +25,78 @@ _log = structlog.get_logger()
 MARKER_TYPES = {"pdf", "docx", "doc", "pptx", "ppt", "xlsx", "xls", "png", "jpg", "jpeg", "webp"}
 TEXT_TYPES = {"md", "markdown", "txt", "text"}
 CHUNK_SIZE = 4000
+
+_IMAGE_KINDS = {"png", "jpg", "jpeg", "webp"}
+
+_METADATA_SYSTEM_PROMPT = (
+    "You are generating metadata for a file in a personal knowledge base.\n\n"
+    "Given the file content, return a JSON object with exactly two fields:\n"
+    '- "title": a short descriptive name (max 80 chars). If the original filename is already '
+    "a clear human-readable description of the actual content, derive a clean title from it "
+    "(strip extension, fix casing). Otherwise generate a better title from the content.\n"
+    '- "description": one sentence summarising what this file contains (max 200 chars).\n\n'
+    "Respond with only valid JSON, no markdown fences."
+)
+
+
+async def _generate_metadata(
+    kind: str,
+    filename: str | None,
+    combined_md: str,
+    raw_data: bytes,
+) -> tuple[str | None, str | None]:
+    """Call LLM to generate title and description. Returns (None, None) on any failure."""
+    try:
+        md_stripped = combined_md.strip()
+
+        if len(md_stripped) >= 100:
+            content: list = [
+                {
+                    "type": "text",
+                    "text": (
+                        f"Original filename: {filename or 'unknown'}\n\n"
+                        f"Content preview:\n{md_stripped[:2000]}"
+                    ),
+                }
+            ]
+        elif kind in _IMAGE_KINDS:
+            ext = "jpeg" if kind == "jpg" else kind
+            b64 = base64.b64encode(raw_data).decode()
+            content = [
+                {"type": "image_url", "image_url": {"url": f"data:image/{ext};base64,{b64}"}},
+                {"type": "text", "text": f"Original filename: {filename or 'unknown'}"},
+            ]
+        else:
+            content = [
+                {
+                    "type": "text",
+                    "text": (
+                        f"File type: {kind}\n"
+                        f"Original filename: {filename or 'unknown'}\n"
+                        "Note: no text content was extracted from this file."
+                    ),
+                }
+            ]
+
+        resp = await litellm.acompletion(
+            model=settings.litellm_model,
+            messages=[
+                {"role": "system", "content": _METADATA_SYSTEM_PROMPT},
+                {"role": "user", "content": content},
+            ],
+        )
+
+        raw = resp.choices[0].message.content or ""
+        # Strip markdown fences if the model wrapped the JSON
+        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
+        parsed = json.loads(raw)
+        title = str(parsed.get("title", "")).strip()[:80] or None
+        description = str(parsed.get("description", "")).strip()[:200] or None
+        return title, description
+
+    except Exception:
+        _log.exception("metadata_generation_failed", kind=kind, filename=filename)
+        return None, None
 
 
 async def _maybe_auto_health(
@@ -97,6 +173,7 @@ async def _run_pipeline(
             _log.warning("ingest_source_not_found", source_id=source_id)
             return
 
+        combined_md = ""
         try:
             if suffix in TEXT_TYPES:
                 await broadcaster.publish(
@@ -207,6 +284,14 @@ async def _run_pipeline(
         src_result = await session.execute(select(Source).where(Source.id == source_id))
         source = src_result.scalar_one_or_none()
         if source:
+            title, description = await _generate_metadata(
+                kind=source.kind,
+                filename=source.filename,
+                combined_md=combined_md,
+                raw_data=data,
+            )
+            source.title = title
+            source.description = description
             source.status = "done"
             await session.commit()
     _log.info("ingest_pipeline_complete", source_id=source_id)
