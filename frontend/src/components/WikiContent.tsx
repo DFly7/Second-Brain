@@ -27,7 +27,7 @@ function hrefToSlug(href: string): string | null {
 export default function WikiContent({ selectedSlug, onNavigate }: WikiContentProps) {
   const [editing, setEditing] = useState(false)
   const [editBody, setEditBody] = useState('')
-  const { data: page } = usePage(selectedSlug)
+  const { data: page, isError, error } = usePage(selectedSlug)
   const updatePage = useUpdatePage()
 
   useEffect(() => {
@@ -43,6 +43,18 @@ export default function WikiContent({ selectedSlug, onNavigate }: WikiContentPro
     if (!selectedSlug) return
     updatePage.mutate({ slug: selectedSlug, body_md: editBody })
     setEditing(false)
+  }
+
+  if (isError && (error as { status?: number })?.status === 404) {
+    return (
+      <div style={{ flex: 1, overflowY: 'auto', padding: 24, marginTop: 40, textAlign: 'center' }}>
+        <div style={{ fontSize: 40, marginBottom: 16 }}>🗒️</div>
+        <div style={{ color: '#e6edf3', fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Page not found</div>
+        <div style={{ color: '#8b949e', fontSize: 13 }}>
+          This wiki page no longer exists — it may have been deleted.
+        </div>
+      </div>
+    )
   }
 
   if (!page) {

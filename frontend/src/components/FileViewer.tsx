@@ -144,6 +144,7 @@ function OriginalPane({ source }: { source: SourceItem }) {
   const needsFetch = !NO_FILE_KINDS.includes(source.kind) && source.has_file
   const [blobUrl, setBlobUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(needsFetch)
+  const [progress, setProgress] = useState<{ received: number; total: number | null } | null>(null)
   const [error, setError] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
 
@@ -153,16 +154,19 @@ function OriginalPane({ source }: { source: SourceItem }) {
     setLoading(true)
     setError(false)
     setBlobUrl(null)
+    setProgress(null)
 
-    fetchSourceFile(source.id)
+    fetchSourceFile(source.id, (received, total) => setProgress({ received, total }))
       .then((blob) => {
         objectUrl = URL.createObjectURL(blob)
         setBlobUrl(objectUrl)
         setLoading(false)
+        setProgress(null)
       })
       .catch(() => {
         setError(true)
         setLoading(false)
+        setProgress(null)
       })
 
     return () => {
@@ -174,7 +178,7 @@ function OriginalPane({ source }: { source: SourceItem }) {
     return <Centered>Web or text source — no original file to display.</Centered>
   }
   if (!source.has_file) return <Centered>No original file.</Centered>
-  if (loading) return <Centered>Loading…</Centered>
+  if (loading) return <LoadingBar progress={progress} />
   if (error) {
     return (
       <Centered>
@@ -226,6 +230,43 @@ function OriginalPane({ source }: { source: SourceItem }) {
       )}
     </div>
   )
+}
+
+function LoadingBar({ progress }: { progress: { received: number; total: number | null } | null }) {
+  const pct = progress?.total ? Math.round((progress.received / progress.total) * 100) : null
+  const label = progress
+    ? pct !== null
+      ? `${pct}% — ${fmt(progress.received)} / ${fmt(progress.total!)}`
+      : `${fmt(progress.received)} received…`
+    : 'Connecting…'
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+      <div style={{ width: 260, background: '#21262d', borderRadius: 4, overflow: 'hidden', height: 6 }}>
+        {pct !== null ? (
+          <div
+            style={{
+              height: '100%',
+              width: `${pct}%`,
+              background: '#388bfd',
+              borderRadius: 4,
+              transition: 'width 0.1s ease',
+            }}
+          />
+        ) : (
+          <div style={{ height: '100%', background: 'linear-gradient(90deg, #21262d 25%, #388bfd 50%, #21262d 75%)', backgroundSize: '200% 100%', animation: 'indeterminate 1.4s ease infinite' }} />
+        )}
+      </div>
+      <span style={{ color: '#8b949e', fontSize: 12 }}>{label}</span>
+      <style>{`@keyframes indeterminate { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }`}</style>
+    </div>
+  )
+}
+
+function fmt(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function Centered({ children }: { children: React.ReactNode }) {

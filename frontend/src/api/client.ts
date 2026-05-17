@@ -72,7 +72,7 @@ export async function listPages() {
 
 export async function getPage(slug: string) {
   const r = await fetchWithAuth(`${BASE}/wiki/pages/${slug}`)
-  if (r.status === 404) return null
+  if (r.status === 404) throw Object.assign(new Error('Page not found'), { status: 404 })
   return r.json()
 }
 
@@ -182,10 +182,28 @@ export async function listSources(): Promise<SourceItem[]> {
   return r.json()
 }
 
-export async function fetchSourceFile(sourceId: string): Promise<Blob> {
+export async function fetchSourceFile(
+  sourceId: string,
+  onProgress?: (received: number, total: number | null) => void,
+): Promise<Blob> {
   const r = await fetchWithAuth(`${BASE}/sources/${sourceId}/file`)
   if (!r.ok) throw new Error(`fetchSourceFile failed: ${r.status}`)
-  return r.blob()
+  if (!onProgress || !r.body) return r.blob()
+
+  const total = r.headers.get('Content-Length') ? parseInt(r.headers.get('Content-Length')!, 10) : null
+  const reader = r.body.getReader()
+  const chunks: BlobPart[] = []
+  let received = 0
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    chunks.push(value)
+    received += value.length
+    onProgress(received, total)
+  }
+
+  return new Blob(chunks)
 }
 
 export async function fetchSourceMarkdown(sourceId: string): Promise<string> {

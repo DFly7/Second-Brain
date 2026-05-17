@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { usePages } from '../hooks/useWiki'
 import { runHealthCheck } from '../api/client'
 
@@ -100,8 +100,8 @@ function FolderNode({
                   cursor: 'pointer',
                   fontSize: 13,
                   color: selectedSlug === p.slug ? '#e6edf3' : isMeta ? '#484f58' : '#8b949e',
-                  background: selectedSlug === p.slug ? '#21262d' : 'transparent',
-                  borderLeft: highlightedSlug === p.slug ? '2px solid #58a6ff' : '2px solid transparent',
+                  background: selectedSlug === p.slug ? '#1c2128' : 'transparent',
+                  borderLeft: highlightedSlug === p.slug ? '2px solid #58a6ff' : selectedSlug === p.slug ? '2px solid #388bfd' : '2px solid transparent',
                   transition: 'all 0.15s',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
@@ -144,6 +144,19 @@ export default function WikiSidebar({ selectedSlug, highlightedSlug, onSelect }:
   const [collapsed, setCollapsedState] = useState<Record<string, boolean>>(getCollapsed)
   const [healthRunning, setHealthRunning] = useState(false)
 
+  // Auto-expand ancestor folders when the selected page changes (e.g. navigating via a link)
+  useEffect(() => {
+    if (!selectedSlug) return
+    const parts = selectedSlug.split('/')
+    if (parts.length <= 1) return
+    const ancestors = parts.slice(0, -1).map((_, i) => parts.slice(0, i + 1).join('/') + '/')
+    if (!ancestors.some(f => collapsed[f])) return
+    const next = { ...collapsed }
+    for (const f of ancestors) delete next[f]
+    setCollapsedState(next)
+    saveCollapsed(next)
+  }, [selectedSlug]) // eslint-disable-line react-hooks/exhaustive-deps
+
   function toggleFolder(path: string) {
     const next = { ...collapsed, [path]: !collapsed[path] }
     setCollapsedState(next)
@@ -181,8 +194,8 @@ export default function WikiSidebar({ selectedSlug, highlightedSlug, onSelect }:
               cursor: 'pointer',
               fontSize: 13,
               color: selectedSlug === p.slug ? '#e6edf3' : '#8b949e',
-              background: selectedSlug === p.slug ? '#21262d' : 'transparent',
-              borderLeft: highlightedSlug === p.slug ? '2px solid #58a6ff' : '2px solid transparent',
+              background: selectedSlug === p.slug ? '#1c2128' : 'transparent',
+              borderLeft: highlightedSlug === p.slug ? '2px solid #58a6ff' : selectedSlug === p.slug ? '2px solid #388bfd' : '2px solid transparent',
               transition: 'all 0.15s',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
