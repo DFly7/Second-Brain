@@ -130,15 +130,38 @@ export default function Layout() {
   const isMobile = useIsMobile()
   const [activeTab, setActiveTab] = useState<'pages' | 'content' | 'chat'>('content')
 
-  function handleMobileSelect(slug: string) {
+  function handleSelect(slug: string) {
     setSelectedSlug(slug)
     if (isMobile) setActiveTab('content')
   }
 
-  function handleMobileNavigate(slug: string) {
-    setSelectedSlug(slug)
-    if (isMobile) setActiveTab('content')
-  }
+  const activityRow = (
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'flex-end',
+        padding: '4px 16px',
+        background: '#161b22',
+        borderBottom: '1px solid #30363d',
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setShowActivity(!showActivity)}
+        style={{
+          padding: '2px 10px',
+          background: '#21262d',
+          border: '1px solid #30363d',
+          borderRadius: 6,
+          color: '#e6edf3',
+          cursor: 'pointer',
+          fontSize: 12,
+        }}
+      >
+        Activity
+      </button>
+    </div>
+  )
 
   if (isMobile) {
     return (
@@ -146,29 +169,7 @@ export default function Layout() {
         <TopBar agentStatus={agentStatus} onShowIngest={() => setShowIngest(true)} />
 
         {/* Activity row */}
-        <div style={{
-          display: 'flex',
-          justifyContent: 'flex-end',
-          padding: '4px 16px',
-          background: '#161b22',
-          borderBottom: '1px solid #30363d',
-        }}>
-          <button
-            type="button"
-            onClick={() => setShowActivity(!showActivity)}
-            style={{
-              padding: '2px 10px',
-              background: '#21262d',
-              border: '1px solid #30363d',
-              borderRadius: 6,
-              color: '#e6edf3',
-              cursor: 'pointer',
-              fontSize: 12,
-            }}
-          >
-            Activity
-          </button>
-        </div>
+        {activityRow}
 
         {/* Active panel */}
         <div style={{ flex: 1, overflow: 'hidden' }}>
@@ -176,14 +177,14 @@ export default function Layout() {
             <WikiSidebar
               selectedSlug={selectedSlug}
               highlightedSlug={highlightedSlug}
-              onSelect={handleMobileSelect}
+              onSelect={handleSelect}
             />
           )}
           {activeTab === 'content' && (
-            <WikiContent selectedSlug={selectedSlug} onNavigate={handleMobileNavigate} />
+            <WikiContent selectedSlug={selectedSlug} onNavigate={handleSelect} />
           )}
           {activeTab === 'chat' && (
-            <ChatPanel onNavigate={handleMobileNavigate} activeSseEvent={chatSseEvent} />
+            <ChatPanel onNavigate={handleSelect} activeSseEvent={chatSseEvent} />
           )}
         </div>
 
@@ -245,31 +246,7 @@ export default function Layout() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       <TopBar agentStatus={agentStatus} onShowIngest={() => setShowIngest(true)} />
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'flex-end',
-          padding: '4px 16px',
-          background: '#161b22',
-          borderBottom: '1px solid #30363d',
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => setShowActivity(!showActivity)}
-          style={{
-            padding: '2px 10px',
-            background: '#21262d',
-            border: '1px solid #30363d',
-            borderRadius: 6,
-            color: '#e6edf3',
-            cursor: 'pointer',
-            fontSize: 12,
-          }}
-        >
-          Activity
-        </button>
-      </div>
+      {activityRow}
 
       {/* Resizable panels */}
       <PanelGroup orientation="horizontal" style={{ flex: 1, overflow: 'hidden' }}>
