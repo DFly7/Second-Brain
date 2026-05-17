@@ -63,6 +63,8 @@ Do not call `search_chat_history` speculatively, as a default step, or before ch
 
 **`query.md` prompt:** Add a section:
 > You may write to the wiki mid-conversation when you encounter something genuinely durable — a concrete plan, a decision, a fact or preference worth keeping permanently. Use judgment: not every conversation warrants a save. When you do save something, briefly mention it in your reply: "I've saved this to [[trips/paris-road-trip]]."
+>
+> Only write to the wiki when a piece of information has reached a natural conclusion or the user explicitly agrees to save it. Avoid creating pages for highly fluid or half-formed ideas unless the user requests it — save the settled version, not the draft.
 
 **`chat_monitor.md`:** Remove section 3 ("Save wiki-worthy content") entirely. The monitor's sole remaining responsibilities are:
 1. Update `system/memory` with durable user facts
@@ -104,7 +106,7 @@ In `AgentTools`, after every `write_page`, `delete_page`, and `move_page` call, 
 - `system/memory`, `system/history`
 - `meta/index`, `meta/deleted-log`
 
-**Append logic:** Same pattern as `_append_deleted_log` — read existing page, append row, write back. If page doesn't exist, create it with the header.
+**Append logic:** Wiki pages are stored in Postgres (`Page.body_md`), so appending must be atomic at the DB level. Use a single `UPDATE pages SET body_md = body_md || $row WHERE slug = 'system/changelog' AND workspace_id = ?` rather than the read-modify-write pattern used by `_append_deleted_log`. If the page doesn't exist yet, fall back to an `INSERT` with the header + first row. This avoids the classic race condition where two concurrent agent writes (e.g. query agent and chat monitor both saving at the same moment) overwrite each other's entry.
 
 ### Agent access
 
