@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { redirectToAuthentik, devLogin, DEV_AUTH_BYPASS, saveAccessToken, getStoredAccessToken, clearStoredTokens } from './auth'
 import Layout from './components/Layout'
 import FilesView from './components/FilesView'
+import AutomationsPage from './components/AutomationsPage'
 
 type AuthState = 'loading' | 'authenticated' | 'unauthenticated'
 
@@ -147,6 +148,7 @@ export default function App() {
         <Routes>
           <Route path="/wiki" element={<Layout />} />
           <Route path="/files" element={<FilesView />} />
+          <Route path="/automations" element={<AutomationsPage />} />
           <Route path="*" element={<Navigate to="/wiki" replace />} />
         </Routes>
       </BrowserRouter>

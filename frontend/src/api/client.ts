@@ -233,3 +233,61 @@ export async function patchSource(
   if (!r.ok) throw new Error(`patchSource failed: ${r.status}`)
   return r.json()
 }
+
+// --- Automations ---
+
+export type AutomationStatus = 'pending' | 'running' | 'completed' | 'failed' | 'stopped'
+
+export interface AutomationRun {
+  id: string
+  goal: string
+  status: AutomationStatus
+  created_at: string
+  completed_at: string | null
+  recording_url: string | null
+}
+
+export interface AutomationAction {
+  id: string
+  type: string
+  detail: string
+  timestamp: string
+}
+
+export interface AutomationRunDetail extends AutomationRun {
+  actions: AutomationAction[]
+}
+
+export async function startAutomationRun(goal: string): Promise<{ run_id: string; status: string }> {
+  const r = await fetchWithAuth(`${BASE}/automations/run`, {
+    method: 'POST',
+    headers: jsonHeaders(),
+    body: JSON.stringify({ goal }),
+  })
+  if (!r.ok) throw new Error(`startAutomationRun failed: ${r.status}`)
+  return r.json()
+}
+
+export async function stopAutomationRun(runId: string): Promise<void> {
+  const r = await fetchWithAuth(`${BASE}/automations/runs/${runId}/stop`, { method: 'POST' })
+  if (!r.ok) throw new Error(`stopAutomationRun failed: ${r.status}`)
+}
+
+export async function getAutomationRuns(): Promise<AutomationRun[]> {
+  const r = await fetchWithAuth(`${BASE}/automations/runs`)
+  if (!r.ok) throw new Error(`getAutomationRuns failed: ${r.status}`)
+  return r.json()
+}
+
+export async function getAutomationRun(runId: string): Promise<AutomationRunDetail> {
+  const r = await fetchWithAuth(`${BASE}/automations/runs/${runId}`)
+  if (!r.ok) throw new Error(`getAutomationRun failed: ${r.status}`)
+  return r.json()
+}
+
+export async function getNovncUrl(): Promise<string> {
+  const r = await fetchWithAuth(`${BASE}/automations/novnc-url`)
+  if (!r.ok) throw new Error(`getNovncUrl failed: ${r.status}`)
+  const data: { url: string } = await r.json()
+  return data.url
+}

@@ -10,6 +10,7 @@ interface TopBarProps {
 export default function TopBar({ agentStatus, onShowIngest }: TopBarProps) {
   const onWiki = useMatch({ path: '/wiki', end: true })
   const onFiles = useMatch({ path: '/files', end: true })
+  const onAutomations = useMatch({ path: '/automations', end: true })
 
   return (
     <div
@@ -53,6 +54,20 @@ export default function TopBar({ agentStatus, onShowIngest }: TopBarProps) {
           }}
         >
           Files
+        </Link>
+        <Link
+          to="/automations"
+          style={{
+            padding: '4px 12px',
+            borderRadius: 6,
+            fontSize: 13,
+            textDecoration: 'none',
+            border: `1px solid ${onAutomations ? '#58a6ff' : '#30363d'}`,
+            color: onAutomations ? '#58a6ff' : '#8b949e',
+            background: onAutomations ? '#1f3a5f' : 'transparent',
+          }}
+        >
+          Automations
         </Link>
       </div>
 
