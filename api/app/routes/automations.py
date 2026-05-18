@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import structlog
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -15,9 +15,32 @@ from app.routes.wiki import _ensure_workspace
 router = APIRouter(prefix="/automations", tags=["automations"])
 _log = structlog.get_logger()
 
+# Runs left "running" after API crash / OOM are auto-reclaimed before a new start.
+_STALE_RUNNING_MINUTES = 45
+_ACTIVE_STATUSES = ("running", "stopping")
+
 
 class RunRequest(BaseModel):
     goal: str
+
+
+async def _reclaim_stale_runs(db: AsyncSession, workspace_id: str) -> int:
+    cutoff = datetime.utcnow() - timedelta(minutes=_STALE_RUNNING_MINUTES)
+    result = await db.execute(
+        select(AutomationRun).where(
+            AutomationRun.workspace_id == workspace_id,
+            AutomationRun.status.in_(_ACTIVE_STATUSES),
+            AutomationRun.created_at < cutoff,
+        )
+    )
+    stale = result.scalars().all()
+    for run_obj in stale:
+        run_obj.status = "failed"
+        run_obj.completed_at = datetime.utcnow()
+        _log.warning("automation_run_reclaimed_stale", run_id=run_obj.id)
+    if stale:
+        await db.commit()
+    return len(stale)
 
 
 async def _run_automation(run_id: str, workspace_id: str, user: str, goal: str) -> None:
@@ -35,13 +58,15 @@ async def start_run(
 ):
     ws = await _ensure_workspace(db, user)
 
+    await _reclaim_stale_runs(db, ws.id)
+
     # Enforce single-run-at-a-time. The browser-agent container uses a single
     # Xvfb display (:99) and a single VNC stream — concurrent runs would render
     # on top of each other and corrupt both sessions.
     existing = await db.execute(
         select(AutomationRun).where(
             AutomationRun.workspace_id == ws.id,
-            AutomationRun.status == "running",
+            AutomationRun.status.in_(_ACTIVE_STATUSES),
         )
     )
     if existing.scalar_one_or_none():
@@ -74,9 +99,8 @@ async def stop_run(
     run_obj = result.scalar_one_or_none()
     if not run_obj:
         raise HTTPException(status_code=404, detail="Run not found")
-    if run_obj.status == "running":
-        run_obj.status = "stopped"
-        run_obj.completed_at = datetime.utcnow()
+    if run_obj.status in _ACTIVE_STATUSES:
+        run_obj.status = "stopping"
         await db.commit()
     return {"run_id": run_id, "status": run_obj.status}
 
@@ -87,6 +111,7 @@ async def list_runs(
     user: str = Depends(get_current_user),
 ):
     ws = await _ensure_workspace(db, user)
+    await _reclaim_stale_runs(db, ws.id)
     result = await db.execute(
         select(AutomationRun)
         .where(AutomationRun.workspace_id == ws.id)

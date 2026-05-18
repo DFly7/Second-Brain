@@ -8,7 +8,8 @@ export default defineConfig({
     port: 5173,
     allowedHosts: ['smoothstudy.ai'],
     proxy: {
-      '/api': { target: 'http://api:8000', rewrite: (p) => p.replace(/^\/api/, '') }
+      '/api': { target: 'http://api:8000', rewrite: (p) => p.replace(/^\/api/, '') },
+      '/vnc': { target: 'http://localhost:6080', ws: true },
     }
   },
   test: {

@@ -78,7 +78,11 @@ def test_start_run_returns_202(client):
         ), patch(
             "app.routes.automations._run_automation",
             new_callable=AsyncMock,
-        ) as mock_run_task:
+        ), patch(
+            "app.routes.automations._reclaim_stale_runs",
+            new_callable=AsyncMock,
+            return_value=0,
+        ):
             # Simulate flush setting the run id
             def fake_add(obj):
                 obj.id = "run-abc"
@@ -118,6 +122,10 @@ def test_start_run_409_when_already_running(client):
             "app.routes.automations._ensure_workspace",
             new_callable=AsyncMock,
             return_value=mock_ws,
+        ), patch(
+            "app.routes.automations._reclaim_stale_runs",
+            new_callable=AsyncMock,
+            return_value=0,
         ):
             r = client.post("/automations/run", json={"goal": "do something"})
             assert r.status_code == 409
@@ -154,6 +162,10 @@ def test_list_runs_returns_newest_first(client):
             "app.routes.automations._ensure_workspace",
             new_callable=AsyncMock,
             return_value=mock_ws,
+        ), patch(
+            "app.routes.automations._reclaim_stale_runs",
+            new_callable=AsyncMock,
+            return_value=0,
         ):
             r = client.get("/automations/runs")
             assert r.status_code == 200
@@ -169,7 +181,7 @@ def test_list_runs_returns_newest_first(client):
 # ---------------------------------------------------------------------------
 
 
-def test_stop_run_sets_status_stopped(client):
+def test_stop_run_sets_status_stopping(client):
     mock_ws = _make_ws()
     run_obj = _make_run(id="run-1", status="running")
 
@@ -193,8 +205,39 @@ def test_stop_run_sets_status_stopped(client):
         ):
             r = client.post("/automations/runs/run-1/stop")
             assert r.status_code == 200
-            assert r.json()["status"] == "stopped"
-            assert run_obj.status == "stopped"
+            assert r.json()["status"] == "stopping"
+            assert run_obj.status == "stopping"
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+def test_start_run_409_when_stopping(client):
+    mock_ws = _make_ws()
+    existing_run = _make_run(id="run-existing", status="stopping")
+
+    existing_result = MagicMock()
+    existing_result.scalar_one_or_none.return_value = existing_run
+
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=existing_result)
+
+    async def override_db():
+        yield session
+
+    app.dependency_overrides[get_db] = override_db
+
+    try:
+        with patch(
+            "app.routes.automations._ensure_workspace",
+            new_callable=AsyncMock,
+            return_value=mock_ws,
+        ), patch(
+            "app.routes.automations._reclaim_stale_runs",
+            new_callable=AsyncMock,
+            return_value=0,
+        ):
+            r = client.post("/automations/run", json={"goal": "do something"})
+            assert r.status_code == 409
     finally:
         app.dependency_overrides.pop(get_db, None)
 
@@ -231,10 +274,11 @@ def test_stop_run_404_when_not_found(client):
 
 def test_novnc_url_returns_configured_url(client):
     with patch("app.routes.automations.settings") as mock_settings:
-        mock_settings.novnc_url = "http://localhost:6080/vnc.html"
+        mock_settings.novnc_url = "/vnc/vnc.html"
         r = client.get("/automations/novnc-url")
         assert r.status_code == 200
         url = r.json()["url"]
+        assert url.startswith("/vnc/vnc.html")
         assert "autoconnect=1" in url
         assert "view_only=1" in url
         assert "resize=scale" in url

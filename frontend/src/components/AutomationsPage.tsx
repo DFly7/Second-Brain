@@ -5,6 +5,7 @@ import {
   getAutomationRun,
   getAutomationRuns,
   getNovncUrl,
+  openAutomationRecording,
   startAutomationRun,
   stopAutomationRun,
 } from '../api/client'
@@ -27,7 +28,17 @@ export default function AutomationsPage() {
   const actionsEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    getAutomationRuns().then(setRuns).catch(() => {})
+    getAutomationRuns()
+      .then(fetched => {
+        setRuns(fetched)
+        const active = fetched.find(r => r.status === 'running' || r.status === 'stopping')
+        if (active) {
+          setActiveRunId(active.id)
+          setActiveGoal(active.goal)
+          setPageState('running')
+        }
+      })
+      .catch(() => {})
     getNovncUrl().then(setNovncUrl).catch(() => {})
   }, [])
 
@@ -49,7 +60,7 @@ export default function AutomationsPage() {
     }
     if (ev.event === 'automation:status') {
       const status = String(ev.status ?? '')
-      if (status !== 'running') {
+      if (status !== 'running' && status !== 'stopping') {
         setPageState('idle')
         setActiveRunId(null)
         setActiveGoal('')
@@ -79,10 +90,21 @@ export default function AutomationsPage() {
   async function handleStop() {
     if (!activeRunId) return
     await stopAutomationRun(activeRunId)
-    setPageState('idle')
-    setActiveRunId(null)
-    setActiveGoal('')
+    // Stay on running view until agent finishes teardown (SSE automation:status).
     getAutomationRuns().then(setRuns).catch(() => {})
+  }
+
+  async function handleForceStop(runId: string) {
+    await stopAutomationRun(runId)
+    getAutomationRuns().then(setRuns).catch(() => {})
+  }
+
+  async function handleWatch(runId: string) {
+    try {
+      await openAutomationRecording(runId)
+    } catch {
+      setStartError('Could not load recording.')
+    }
   }
 
   function formatDuration(run: AutomationRun): string {
@@ -96,9 +118,11 @@ export default function AutomationsPage() {
   function statusDot(status: string): string {
     if (status === 'completed') return '#3fb950'
     if (status === 'failed') return '#f85149'
-    if (status === 'running') return '#58a6ff'
+    if (status === 'running' || status === 'stopping') return '#58a6ff'
     return '#d29922'
   }
+
+  const isActiveStatus = (status: string) => status === 'running' || status === 'stopping'
 
   const ACTION_ICON: Record<string, string> = {
     navigate: '🧭',
@@ -282,10 +306,19 @@ export default function AutomationsPage() {
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                {run.recording_url && (
+                {isActiveStatus(run.status) && (
                   <button
                     type="button"
-                    onClick={() => window.open(`/api/automations/runs/${run.id}/recording`, '_blank')}
+                    onClick={() => handleForceStop(run.id)}
+                    style={{ ...smallBtn, color: '#f85149', borderColor: '#f8514940' }}
+                  >
+                    Force stop
+                  </button>
+                )}
+                {run.recording_url && !isActiveStatus(run.status) && (
+                  <button
+                    type="button"
+                    onClick={() => handleWatch(run.id)}
                     style={smallBtn}
                   >
                     ▶ Watch

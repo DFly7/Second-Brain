@@ -236,7 +236,7 @@ export async function patchSource(
 
 // --- Automations ---
 
-export type AutomationStatus = 'pending' | 'running' | 'completed' | 'failed' | 'stopped'
+export type AutomationStatus = 'pending' | 'running' | 'stopping' | 'completed' | 'failed' | 'stopped'
 
 export interface AutomationRun {
   id: string
@@ -290,4 +290,14 @@ export async function getNovncUrl(): Promise<string> {
   if (!r.ok) throw new Error(`getNovncUrl failed: ${r.status}`)
   const data: { url: string } = await r.json()
   return data.url
+}
+
+/** window.open cannot send Authorization headers; fetch authenticated blob instead. */
+export async function openAutomationRecording(runId: string): Promise<void> {
+  const r = await fetchWithAuth(`${BASE}/automations/runs/${runId}/recording`)
+  if (!r.ok) throw new Error(`recording failed: ${r.status}`)
+  const blob = await r.blob()
+  const url = URL.createObjectURL(blob)
+  window.open(url, '_blank', 'noopener,noreferrer')
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }

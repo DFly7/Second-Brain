@@ -41,9 +41,15 @@ services:
   browser-agent:
     build: browser-agent/
     shm_size: '2gb'
+    env_file: .env
     environment:
       - DISPLAY=:99
-    env_file: .env
+      # browser-agent reads MINIO_* (not S3_*); map from canonical .env keys.
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=${S3_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${S3_SECRET_KEY:-minioadmin}
+      - S3_BUCKET=${S3_BUCKET:-wiki}
+      - CHROMIUM_EXECUTABLE_PATH=${CHROMIUM_EXECUTABLE_PATH:-}
     ports:
       - "6080:6080"
     depends_on:
@@ -84,7 +90,7 @@ services:
       MARKER_BACKEND: datalab
       LOG_FORMAT: console
       BROWSER_AGENT_URL: http://browser-agent:8001
-      NOVNC_URL: http://smoothstudy.ai:6080/vnc.html
+      NOVNC_URL: /vnc/vnc.html
     restart: unless-stopped
 
   frontend:
@@ -93,6 +99,7 @@ services:
       dockerfile: Dockerfile.prod
     depends_on:
       - api
+      - browser-agent
     ports:
       - "80:80"
     restart: unless-stopped

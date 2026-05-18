@@ -94,7 +94,7 @@ services:
       MARKER_BACKEND: datalab
       LOG_FORMAT: console
       BROWSER_AGENT_URL: http://browser-agent:8001
-      NOVNC_URL: http://localhost:6080/vnc.html
+      NOVNC_URL: /vnc/vnc.html
     ports:
       - "8000:8000"
     volumes:

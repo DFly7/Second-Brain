@@ -152,7 +152,7 @@ async def run(
                         select(AutomationRun.status).where(AutomationRun.id == run_id)
                     )
                     current_status = status_result.scalar_one_or_none()
-                    if current_status == "stopped":
+                    if current_status in ("stopped", "stopping"):
                         _log.info("automation_stopped_by_user", run_id=run_id)
                         final_status = "stopped"
                         break
@@ -204,7 +204,7 @@ async def run(
                 )
                 run_obj = result.scalar_one_or_none()
                 if run_obj:
-                    if run_obj.status == "running":
+                    if run_obj.status in ("running", "stopping"):
                         run_obj.status = final_status
                     run_obj.completed_at = datetime.utcnow()
                     if recording_url:
