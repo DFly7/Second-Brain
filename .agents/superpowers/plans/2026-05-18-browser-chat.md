@@ -263,7 +263,7 @@ async def run_turn(
                     tool_results.append({
                         "role": "tool",
                         "tool_call_id": tc.id,
-                        "content": result_str if isinstance(result_str, str) else json.dumps(result_str),
+                        "content": result_str,
                     })
                 messages.extend(tool_results)
             else:
