@@ -307,3 +307,60 @@ export async function openAutomationRecording(runId: string): Promise<void> {
   document.body.removeChild(a)
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
+
+// --- Browser Chat ---
+
+export interface BrowserChatSession {
+  id: string
+  status: 'active' | 'completed'
+  created_at: string
+  completed_at: string | null
+}
+
+export interface BrowserChatMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  created_at: string
+}
+
+export interface BrowserChatSessionDetail extends BrowserChatSession {
+  messages: BrowserChatMessage[]
+}
+
+export async function connectBrowserChat(): Promise<{ session_id: string }> {
+  const r = await fetchWithAuth(`${BASE}/browser-chat/sessions`, { method: 'POST' })
+  if (!r.ok) throw new Error(`connectBrowserChat failed: ${r.status}`)
+  return r.json()
+}
+
+export async function sendBrowserChatMessage(sessionId: string, content: string): Promise<void> {
+  const r = await fetchWithAuth(`${BASE}/browser-chat/sessions/${sessionId}/message`, {
+    method: 'POST',
+    headers: jsonHeaders(),
+    body: JSON.stringify({ content }),
+  })
+  if (!r.ok) throw new Error(`sendBrowserChatMessage failed: ${r.status}`)
+}
+
+export async function interruptBrowserChat(sessionId: string): Promise<void> {
+  const r = await fetchWithAuth(`${BASE}/browser-chat/sessions/${sessionId}/interrupt`, { method: 'POST' })
+  if (!r.ok) throw new Error(`interruptBrowserChat failed: ${r.status}`)
+}
+
+export async function disconnectBrowserChat(sessionId: string): Promise<void> {
+  const r = await fetchWithAuth(`${BASE}/browser-chat/sessions/${sessionId}/disconnect`, { method: 'POST' })
+  if (!r.ok) throw new Error(`disconnectBrowserChat failed: ${r.status}`)
+}
+
+export async function listBrowserChatSessions(): Promise<BrowserChatSession[]> {
+  const r = await fetchWithAuth(`${BASE}/browser-chat/sessions`)
+  if (!r.ok) throw new Error(`listBrowserChatSessions failed: ${r.status}`)
+  return r.json()
+}
+
+export async function getBrowserChatSession(sessionId: string): Promise<BrowserChatSessionDetail> {
+  const r = await fetchWithAuth(`${BASE}/browser-chat/sessions/${sessionId}`)
+  if (!r.ok) throw new Error(`getBrowserChatSession failed: ${r.status}`)
+  return r.json()
+}
