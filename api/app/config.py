@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     marker_llm_model: str = ""
     marker_llm_api_key: str = ""
     openai_api_key: str = ""
+    browser_agent_url: str = "http://browser-agent:8001"
+    novnc_url: str = "http://localhost:6080/vnc.html"
     anthropic_api_key: str = ""
 
     class Config:

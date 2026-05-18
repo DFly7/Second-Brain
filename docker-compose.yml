@@ -93,6 +93,8 @@ services:
       S3_ENDPOINT: http://minio:9000
       MARKER_BACKEND: datalab
       LOG_FORMAT: console
+      BROWSER_AGENT_URL: http://browser-agent:8001
+      NOVNC_URL: http://localhost:6080/vnc.html
     ports:
       - "8000:8000"
     volumes:
