@@ -57,12 +57,15 @@ flowchart TB
     I["/ingest"]
     C["/chat"]
     AC["/activity"]
+    AU["/automations"]
   end
   subgraph agents["Agents (LiteLLM loops)"]
     ING["ingest_agent"]
     QRY["query_agent"]
     MON["chat_monitor"]
+    AUTO["automation_agent"]
   end
+  BA["browser-agent\nPlaywright + noVNC"]
   subgraph core["Shared"]
     T["AgentTools\nlist/search/read/write"]
     SSE["SSE broadcaster"]
@@ -74,12 +77,16 @@ flowchart TB
   I --> ING
   C --> QRY
   C --> MON
+  AU --> AUTO
   ING --> T
   QRY --> T
   MON --> T
+  AUTO --> T
+  AUTO -->|HTTP :8001| BA
   ING --> SSE
   QRY --> SSE
   MON --> SSE
+  AUTO --> SSE
   T --> DB
   T --> SRCH
   W --> DB
@@ -169,6 +176,14 @@ sequenceDiagram
 
 ---
 
-## 8. Production
+## 8. Automations (browser agent)
 
-Use `docker-compose.prod.yml` (API + DB + MinIO + nginx-built frontend). Ensure `.env` includes Postgres init variables if the DB volume is new. Build: `docker compose -f docker-compose.prod.yml build`.
+LLM-driven browser control with live noVNC and run recordings. **Full write-up:** [automation-agent.md](automation-agent.md).
+
+---
+
+## 9. Production
+
+Use `docker-compose.prod.yml` (API + DB + MinIO + **browser-agent** + nginx-built frontend). Ensure `.env` includes Postgres init variables if the DB volume is new. Build: `docker compose -f docker-compose.prod.yml build`.
+
+Pi: build `browser-agent` with `--build-arg ARCH=arm64` when using `CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser` — see [automation-agent.md](automation-agent.md).

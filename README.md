@@ -4,7 +4,8 @@ Single-user web app: ingest documents and notes, let an LLM merge them into a **
 
 **Design spec:** [.agents/superpowers/plans/2026-04-28-llm-wiki-v0-design.md](.agents/superpowers/plans/2026-04-28-llm-wiki-v0-design.md)  
 **Implementation checklist:** [.agents/superpowers/plans/2026-04-28-llm-wiki-v0-implementation.md](.agents/superpowers/plans/2026-04-28-llm-wiki-v0-implementation.md)  
-**Architecture diagrams:** [docs/architecture.md](docs/architecture.md)
+**Architecture diagrams:** [docs/architecture.md](docs/architecture.md)  
+**Automation agent (browser + noVNC):** [docs/automation-agent.md](docs/automation-agent.md)
 
 ---
 
@@ -19,6 +20,7 @@ Single-user web app: ingest documents and notes, let an LLM merge them into a **
 | **Chat** | Query agent (read-only tools), messages + sessions, **SSE** for live tool activity (`/chat/sse?token=…`) |
 | **Monitor** | Background **chat monitor** agent can write to wiki from notable chat content |
 | **Activity** | `/activity` feed |
+| **Automations** | LLM controls Chromium in `browser-agent`; live noVNC; recordings in MinIO — [docs/automation-agent.md](docs/automation-agent.md) |
 | **Prod** | `docker-compose.prod.yml`, Gunicorn API image, nginx frontend (see compose file) |
 
 ---
