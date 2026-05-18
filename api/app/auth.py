@@ -104,7 +104,7 @@ def _resolve_raw_access_token(request: Request) -> str | None:
     if token:
         return token
     authorization = request.headers.get("Authorization") or ""
-    log.warning(
+    log.debug(
         "auth_resolve",
         path=request.url.path,
         has_auth_header=bool(authorization),

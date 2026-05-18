@@ -55,13 +55,14 @@ async def send_message(
         db.add(session_obj)
         await db.flush()
 
-    user_msg = ChatMessage(session_id=session_obj.id, role="user", content=body.message)
+    session_id = session_obj.id
+    user_msg = ChatMessage(session_id=session_id, role="user", content=body.message)
     db.add(user_msg)
     await db.commit()
 
     history_result = await db.execute(
         select(ChatMessage)
-        .where(ChatMessage.session_id == session_obj.id)
+        .where(ChatMessage.session_id == session_id)
         .order_by(ChatMessage.created_at)
     )
     history = [{"role": m.role, "content": m.content} for m in history_result.scalars()]
@@ -81,21 +82,21 @@ async def send_message(
     )
 
     assistant_msg = ChatMessage(
-        session_id=session_obj.id, role="assistant", content=answer
+        session_id=session_id, role="assistant", content=answer
     )
     db.add(assistant_msg)
     db.add(
         ActivityLog(
             workspace_id=ws_id,
             event_type="chat_message",
-            payload={"session_id": session_obj.id, "cited_pages": cited},
+            payload={"session_id": session_id, "cited_pages": cited},
         )
     )
     await db.commit()
 
-    background_tasks.add_task(_run_chat_monitor, session_obj.id, ws_id, user)
+    background_tasks.add_task(_run_chat_monitor, session_id, ws_id, user)
 
-    return {"session_id": session_obj.id, "answer": answer, "cited_pages": cited}
+    return {"session_id": session_id, "answer": answer, "cited_pages": cited}
 
 
 @router.get("/sessions/{session_id}/messages")
