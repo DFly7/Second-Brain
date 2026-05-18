@@ -102,6 +102,33 @@ class AutomationAction(Base):
     run: Mapped["AutomationRun"] = relationship(back_populates="actions")
 
 
+class BrowserChatSession(Base):
+    __tablename__ = "browser_chat_sessions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"))
+    status: Mapped[str] = mapped_column(String, default="active")  # active / completed
+    browser_session_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    user_interrupted: Mapped[bool] = mapped_column(default=False)
+    last_activity_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    messages: Mapped[list["BrowserChatMessage"]] = relationship(back_populates="session")
+
+
+class BrowserChatMessage(Base):
+    __tablename__ = "browser_chat_messages"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    session_id: Mapped[str] = mapped_column(ForeignKey("browser_chat_sessions.id"))
+    role: Mapped[str] = mapped_column(String)  # user / assistant
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    session: Mapped["BrowserChatSession"] = relationship(back_populates="messages")
+
+
 class SourcePage(Base):
     __tablename__ = "source_pages"
 
