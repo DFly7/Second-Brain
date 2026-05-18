@@ -33,9 +33,10 @@ async def send_message(
     user: str = Depends(get_current_user),
 ):
     ws = await _ensure_workspace(db, user)
+    ws_id = ws.id
     _log.info(
         "chat_message_received",
-        workspace_id=ws.id,
+        workspace_id=ws_id,
         mode=body.mode,
         session_id=body.session_id,
     )
@@ -44,13 +45,13 @@ async def send_message(
     if body.session_id:
         result = await db.execute(
             select(ChatSession).where(
-                ChatSession.id == body.session_id, ChatSession.workspace_id == ws.id
+                ChatSession.id == body.session_id, ChatSession.workspace_id == ws_id
             )
         )
         session_obj = result.scalar_one_or_none()
 
     if not session_obj:
-        session_obj = ChatSession(workspace_id=ws.id)
+        session_obj = ChatSession(workspace_id=ws_id)
         db.add(session_obj)
         await db.flush()
 
@@ -68,13 +69,13 @@ async def send_message(
     if body.mode == "edit":
         from app.agents.edit_agent import run as run_edit
 
-        answer, cited = await run_edit(ws.id, body.message, history[:-1], db, user)
+        answer, cited = await run_edit(ws_id, body.message, history[:-1], db, user)
     else:
-        answer, cited = await run_query(ws.id, body.message, history[:-1], db, user)
+        answer, cited = await run_query(ws_id, body.message, history[:-1], db, user)
 
     _log.info(
         "chat_message_answered",
-        workspace_id=ws.id,
+        workspace_id=ws_id,
         mode=body.mode,
         cited_pages=len(cited),
     )
@@ -85,14 +86,14 @@ async def send_message(
     db.add(assistant_msg)
     db.add(
         ActivityLog(
-            workspace_id=ws.id,
+            workspace_id=ws_id,
             event_type="chat_message",
             payload={"session_id": session_obj.id, "cited_pages": cited},
         )
     )
     await db.commit()
 
-    background_tasks.add_task(_run_chat_monitor, session_obj.id, ws.id, user)
+    background_tasks.add_task(_run_chat_monitor, session_obj.id, ws_id, user)
 
     return {"session_id": session_obj.id, "answer": answer, "cited_pages": cited}
 
