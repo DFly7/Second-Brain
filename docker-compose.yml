@@ -43,6 +43,22 @@ services:
       timeout: 3s
       retries: 5
 
+  browser-agent:
+    build: browser-agent/
+    shm_size: '2gb'
+    environment:
+      - DISPLAY=:99
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - S3_BUCKET=wiki
+    ports:
+      - "6080:6080"
+      - "8001:8001"
+    depends_on:
+      - minio
+    restart: unless-stopped
+
   # Local marker service — uncomment and set MARKER_BACKEND=local in api env to use instead of Datalab
   # marker:
   #   build: ./marker_service
