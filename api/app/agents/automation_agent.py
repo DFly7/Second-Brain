@@ -243,7 +243,8 @@ async def run(
                 browser_session_id = resp.json()["session_id"]
                 _log.info("browser_session_created", session_id=browser_session_id)
 
-                for turn in range(30):
+                max_turns = 50
+                for turn in range(max_turns):
                     # Bypass SQLAlchemy identity map to catch stop signals from other requests.
                     session.expire_all()
                     status_result = await session.execute(
@@ -255,9 +256,17 @@ async def run(
                         final_status = "stopped"
                         break
 
+                    turns_left = max_turns - turn
+                    turn_messages = messages.copy()
+                    if turns_left <= 10:
+                        turn_messages[0] = {
+                            **turn_messages[0],
+                            "content": turn_messages[0]["content"] + f"\n\n⚠️ You have {turns_left} turns remaining. If you cannot complete the goal, summarise what you found and save any useful information to the wiki now.",
+                        }
+
                     resp = await litellm.acompletion(
                         model=settings.litellm_model,
-                        messages=messages,
+                        messages=turn_messages,
                         tools=tool_defs,
                         tool_choice="auto",
                     )
