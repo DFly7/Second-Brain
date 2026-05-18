@@ -69,11 +69,19 @@ FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV DISPLAY=:99
+# ARM64 (Raspberry Pi): Playwright has no ARM64 Chromium binaries.
+# Set this so playwright install doesn't try to download x86_64 binaries.
+# On ARM64, chromium-browser is installed via apt below and passed via executable_path in main.py.
+# On x86_64 (local dev / CI), leave this unset and let playwright install its own Chromium.
+# To deploy on Pi: build with --build-arg ARCH=arm64
+ARG ARCH=x86_64
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=${ARCH:+0}
 
 RUN apt-get update && apt-get install -y \
     python3 python3-pip \
     xvfb x11vnc \
     git curl wget \
+    && if [ "$ARCH" = "arm64" ]; then apt-get install -y chromium-browser; fi \
     && rm -rf /var/lib/apt/lists/*
 
 # Install websockify + noVNC
@@ -83,8 +91,7 @@ RUN pip3 install websockify && \
 WORKDIR /app
 COPY requirements.txt .
 RUN pip3 install -r requirements.txt && \
-    playwright install chromium && \
-    playwright install-deps chromium
+    if [ "$ARCH" != "arm64" ]; then playwright install chromium && playwright install-deps chromium; fi
 
 COPY . .
 RUN chmod +x start.sh
@@ -93,6 +100,8 @@ EXPOSE 6080 8001
 
 CMD ["./start.sh"]
 ```
+
+> **Pi note:** Build with `docker compose build --build-arg ARCH=arm64 browser-agent` on the Pi. This skips Playwright's x86_64 binary download and installs the system ARM64 `chromium-browser` package instead. Also add `CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser` to the Pi's `.env` so `main.py` passes the correct path to Playwright at runtime.
 
 - [ ] **Step 3: Create `browser-agent/start.sh`**
 
@@ -136,6 +145,7 @@ Add after the `redis` service block:
 ```yaml
   browser-agent:
     build: browser-agent/
+    shm_size: '2gb'
     environment:
       - DISPLAY=:99
       - MINIO_ENDPOINT=http://minio:9000
@@ -149,6 +159,8 @@ Add after the `redis` service block:
       - minio
     restart: unless-stopped
 ```
+
+> **Why `shm_size: '2gb'`:** Docker containers default to 64MB of `/dev/shm`. Chromium uses shared memory heavily for rendering — without this, it crashes with SIGBUS or renders blank white pages on modern asset-heavy sites.
 
 - [ ] **Step 6: Build and verify**
 
@@ -249,11 +261,17 @@ async def health():
     return {"status": "ok"}
 
 
+_CHROMIUM_PATH = os.getenv("CHROMIUM_EXECUTABLE_PATH")  # set on ARM64/Pi via env
+
+
 @app.post("/session/new")
 async def session_new():
     session_id = str(uuid.uuid4())
     video_dir = tempfile.mkdtemp()
-    browser = await _playwright.chromium.launch(headless=False)
+    launch_kwargs = {"headless": False}
+    if _CHROMIUM_PATH:
+        launch_kwargs["executable_path"] = _CHROMIUM_PATH
+    browser = await _playwright.chromium.launch(**launch_kwargs)
     context = await browser.new_context(
         record_video_dir=video_dir,
         viewport={"width": 1280, "height": 800},
@@ -683,12 +701,16 @@ async def run(
                 _log.info("browser_session_created", session_id=browser_session_id)
 
                 for turn in range(30):
-                    # Check stop flag between turns
-                    result = await session.execute(
-                        select(AutomationRun).where(AutomationRun.id == run_id)
+                    # Check stop flag between turns.
+                    # Use expire_all() + scalar query to bypass SQLAlchemy's identity map cache —
+                    # without this, the session returns the stale in-memory object loaded on turn 1
+                    # and never sees the status update written by the stop HTTP endpoint.
+                    await session.expire_all()
+                    status_result = await session.execute(
+                        select(AutomationRun.status).where(AutomationRun.id == run_id)
                     )
-                    run_obj = result.scalar_one_or_none()
-                    if run_obj and run_obj.status == "stopped":
+                    current_status = status_result.scalar_one_or_none()
+                    if current_status == "stopped":
                         _log.info("automation_stopped_by_user", run_id=run_id)
                         final_status = "stopped"
                         break
@@ -1336,6 +1358,7 @@ Read `docker-compose.prod.yml` to find the right insertion point, then add after
 ```yaml
   browser-agent:
     build: browser-agent/
+    shm_size: '2gb'
     environment:
       - DISPLAY=:99
     env_file: .env
@@ -1346,7 +1369,7 @@ Read `docker-compose.prod.yml` to find the right insertion point, then add after
     restart: unless-stopped
 ```
 
-Note: `env_file: .env` picks up `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `S3_BUCKET` from the production env file.
+Note: `env_file: .env` picks up `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `S3_BUCKET` from the production env file. `shm_size: '2gb'` is required — see Task 1 note.
 
 - [ ] **Step 2: Add `BROWSER_AGENT_URL` and `NOVNC_URL` to the `api` service in `docker-compose.prod.yml`**
 
@@ -1498,10 +1521,11 @@ git commit -m "feat(automation): add API client functions, /automations route, a
 - [ ] **Step 1: Create `frontend/src/components/AutomationsPage.tsx`**
 
 ```tsx
-import { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
   type AutomationAction,
   type AutomationRun,
+  getAutomationRun,
   getAutomationRuns,
   getNovncUrl,
   startAutomationRun,
@@ -1806,10 +1830,9 @@ export default function AutomationsPage() {
 
 function ExpandedActions({ runId }: { runId: string }) {
   const [actions, setActions] = useState<AutomationAction[]>([])
-  const { getAutomationRun } = require('../api/client')
 
   useEffect(() => {
-    import('../api/client').then(m => m.getAutomationRun(runId)).then((data: { actions: AutomationAction[] }) => setActions(data.actions)).catch(() => {})
+    getAutomationRun(runId).then(data => setActions(data.actions)).catch(() => {})
   }, [runId])
 
   const ACTION_ICON: Record<string, string> = {
@@ -1852,56 +1875,7 @@ const smallBtn: React.CSSProperties = {
 }
 ```
 
-- [ ] **Step 2: Fix the `require` call in `ExpandedActions`** (TypeScript doesn't allow `require` in a component body)
-
-Replace the `ExpandedActions` function with this corrected version:
-
-```tsx
-function ExpandedActions({ runId }: { runId: string }) {
-  const [actions, setActions] = useState<AutomationAction[]>([])
-
-  useEffect(() => {
-    import('../api/client').then(m => m.getAutomationRun(runId)).then((data: { actions: AutomationAction[] }) => setActions(data.actions)).catch(() => {})
-  }, [runId])
-
-  const ACTION_ICON: Record<string, string> = {
-    navigate: '🧭', click: '🖱', type: '⌨️', scroll: '↕️',
-    read: '📖', screenshot: '📸', wiki_write: '✍️',
-  }
-
-  return (
-    <div style={{ borderTop: '1px solid #30363d', background: '#0d1117', padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: 5 }}>
-      <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#8b949e', marginBottom: 4 }}>
-        Action Log
-      </div>
-      {actions.slice(0, 20).map(a => (
-        <div key={a.id} style={{ display: 'flex', gap: 10, fontSize: 12 }}>
-          <span style={{ color: '#8b949e', width: 42, flexShrink: 0 }}>
-            {new Date(a.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </span>
-          <span>{ACTION_ICON[a.type] ?? '•'}</span>
-          <span style={{ color: a.type === 'wiki_write' ? '#3fb950' : '#8b949e' }}>{a.detail}</span>
-        </div>
-      ))}
-      {actions.length > 20 && (
-        <div style={{ fontSize: 11, color: '#8b949e', fontStyle: 'italic' }}>+ {actions.length - 20} more actions</div>
-      )}
-      {actions.length === 0 && (
-        <div style={{ fontSize: 12, color: '#8b949e', fontStyle: 'italic' }}>Loading…</div>
-      )}
-    </div>
-  )
-}
-```
-
-- [ ] **Step 3: Add `React` import for `React.CSSProperties` reference**
-
-Ensure the file starts with:
-```tsx
-import React, { useEffect, useRef, useState } from 'react'
-```
-
-- [ ] **Step 4: Verify TypeScript compiles**
+- [ ] **Step 2: Verify TypeScript compiles**
 
 ```bash
 cd frontend && npm run build 2>&1 | tail -20
@@ -1909,7 +1883,7 @@ cd frontend && npm run build 2>&1 | tail -20
 
 Expected: no TypeScript errors. If there are type errors, fix them before proceeding.
 
-- [ ] **Step 5: Test the idle state visually**
+- [ ] **Step 3: Test the idle state visually**
 
 ```bash
 cd frontend && npm run dev
@@ -1917,7 +1891,7 @@ cd frontend && npm run dev
 
 Navigate to `http://localhost:5173/automations`. You should see the Automations page with the goal input and empty run history. The layout should match the approved mockup.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add frontend/src/components/AutomationsPage.tsx
