@@ -7,8 +7,10 @@ from contextlib import asynccontextmanager
 
 import boto3
 from botocore.exceptions import ClientError
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from playwright.async_api import async_playwright
+from playwright._impl._errors import TimeoutError as PlaywrightTimeoutError
 from pydantic import BaseModel
 
 MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://minio:9000")
@@ -34,6 +36,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Browser Agent", lifespan=lifespan)
+
+
+@app.exception_handler(PlaywrightTimeoutError)
+async def playwright_timeout_handler(request: Request, exc: PlaywrightTimeoutError):
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
 
 
 def _s3_client():
@@ -212,10 +219,8 @@ async def session_wait_for(session_id: str, body: WaitForRequest):
                 timeout=body.timeout,
             )
         return {"found": True}
-    except Exception as e:
-        if "Timeout" in type(e).__name__ or "TimeoutError" in str(type(e)):
-            return {"found": False, "error": f"Timeout after {body.timeout}ms — not found"}
-        raise
+    except PlaywrightTimeoutError:
+        return {"found": False, "error": f"Timeout after {body.timeout}ms — not found"}
 
 
 class ExecuteJsRequest(BaseModel):
