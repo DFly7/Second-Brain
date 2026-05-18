@@ -1,4 +1,5 @@
 import base64
+import json
 import os
 import tempfile
 import uuid
@@ -64,7 +65,7 @@ async def health():
     return {"status": "ok"}
 
 
-_CHROMIUM_PATH = os.getenv("CHROMIUM_EXECUTABLE_PATH")  # set on ARM64/Pi via env
+_CHROMIUM_PATH = os.getenv("CHROMIUM_EXECUTABLE_PATH")
 
 
 @app.post("/session/new")
@@ -103,6 +104,7 @@ async def session_navigate(session_id: str, body: NavigateRequest):
 
 class ClickRequest(BaseModel):
     selector: str | None = None
+    text: str | None = None
     x: float | None = None
     y: float | None = None
 
@@ -112,10 +114,12 @@ async def session_click(session_id: str, body: ClickRequest):
     s = _get_session(session_id)
     if body.selector:
         await s["page"].click(body.selector, timeout=10000)
+    elif body.text:
+        await s["page"].get_by_text(body.text, exact=False).first.click(timeout=10000)
     elif body.x is not None and body.y is not None:
         await s["page"].mouse.click(body.x, body.y)
     else:
-        raise HTTPException(status_code=400, detail="Provide selector or x,y coordinates")
+        raise HTTPException(status_code=400, detail="Provide selector, text, or x,y coordinates")
     return {"ok": True}
 
 
@@ -130,6 +134,17 @@ async def session_type(session_id: str, body: TypeRequest):
     return {"ok": True}
 
 
+class PressKeyRequest(BaseModel):
+    key: str
+
+
+@app.post("/session/{session_id}/press_key")
+async def session_press_key(session_id: str, body: PressKeyRequest):
+    s = _get_session(session_id)
+    await s["page"].keyboard.press(body.key)
+    return {"ok": True}
+
+
 class ScrollRequest(BaseModel):
     direction: str = "down"
     amount: int = 300
@@ -141,6 +156,123 @@ async def session_scroll(session_id: str, body: ScrollRequest):
     delta = body.amount if body.direction == "down" else -body.amount
     await s["page"].mouse.wheel(0, delta)
     return {"ok": True}
+
+
+class HoverRequest(BaseModel):
+    selector: str
+
+
+@app.post("/session/{session_id}/hover")
+async def session_hover(session_id: str, body: HoverRequest):
+    s = _get_session(session_id)
+    await s["page"].hover(body.selector, timeout=10000)
+    return {"ok": True}
+
+
+class SelectOptionRequest(BaseModel):
+    selector: str
+    value: str
+
+
+@app.post("/session/{session_id}/select_option")
+async def session_select_option(session_id: str, body: SelectOptionRequest):
+    s = _get_session(session_id)
+    selected = await s["page"].select_option(body.selector, body.value)
+    return {"selected": selected}
+
+
+class FocusRequest(BaseModel):
+    selector: str
+
+
+@app.post("/session/{session_id}/focus")
+async def session_focus(session_id: str, body: FocusRequest):
+    s = _get_session(session_id)
+    await s["page"].focus(body.selector, timeout=10000)
+    return {"ok": True}
+
+
+class WaitForRequest(BaseModel):
+    selector: str | None = None
+    text: str | None = None
+    timeout: int = 10000
+
+
+@app.post("/session/{session_id}/wait_for")
+async def session_wait_for(session_id: str, body: WaitForRequest):
+    s = _get_session(session_id)
+    if body.selector:
+        await s["page"].wait_for_selector(body.selector, timeout=body.timeout)
+        return {"found": True}
+    elif body.text:
+        await s["page"].wait_for_function(
+            f"() => document.body.innerText.includes({json.dumps(body.text)})",
+            timeout=body.timeout,
+        )
+        return {"found": True}
+    else:
+        raise HTTPException(status_code=400, detail="Provide selector or text")
+
+
+class ExecuteJsRequest(BaseModel):
+    script: str
+
+
+@app.post("/session/{session_id}/execute_js")
+async def session_execute_js(session_id: str, body: ExecuteJsRequest):
+    s = _get_session(session_id)
+    result = await s["page"].evaluate(body.script)
+    return {"result": result}
+
+
+_GET_ELEMENTS_JS = """() => {
+    function getSelector(el) {
+        if (el.id) return '#' + CSS.escape(el.id);
+        const name = el.getAttribute('name');
+        if (name) return el.tagName.toLowerCase() + '[name="' + name + '"]';
+        let path = [], node = el;
+        while (node && node.nodeType === 1 && path.length < 4) {
+            let sel = node.tagName.toLowerCase();
+            let sib = node, nth = 1;
+            while ((sib = sib.previousElementSibling)) {
+                if (sib.tagName === node.tagName) nth++;
+            }
+            if (nth > 1) sel += ':nth-of-type(' + nth + ')';
+            path.unshift(sel);
+            node = node.parentElement;
+        }
+        return path.join(' > ');
+    }
+    const seen = new Set();
+    const els = [];
+    const query = 'a[href], button, input, select, textarea, [role="button"], [role="link"], [role="checkbox"], [role="radio"], [role="menuitem"]';
+    document.querySelectorAll(query).forEach(el => {
+        const rect = el.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return;
+        const text = (el.innerText || el.value || el.placeholder || el.getAttribute('aria-label') || el.getAttribute('title') || '').trim().slice(0, 80);
+        const sel = getSelector(el);
+        if (seen.has(sel)) return;
+        seen.add(sel);
+        els.push({
+            tag: el.tagName.toLowerCase(),
+            type: el.getAttribute('type') || null,
+            text,
+            selector: sel,
+            href: el.tagName === 'A' ? el.getAttribute('href') : null,
+        });
+    });
+    return els.slice(0, 60);
+}"""
+
+
+@app.post("/session/{session_id}/get_page_state")
+async def session_get_page_state(session_id: str):
+    s = _get_session(session_id)
+    page = s["page"]
+    url = page.url
+    title = await page.title()
+    elements = await page.evaluate(_GET_ELEMENTS_JS)
+    return {"url": url, "title": title, "interactive_elements": elements}
 
 
 @app.post("/session/{session_id}/extract")

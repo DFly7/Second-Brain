@@ -44,14 +44,26 @@ BROWSER_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "browser_get_page_state",
+            "description": (
+                "Get the current page URL, title, and a structured list of all visible interactive elements "
+                "(buttons, links, inputs, selects) with their CSS selectors and text. "
+                "Call this after navigating or whenever you need to know what you can click."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "browser_click",
-            "description": "Click an element on the page by CSS selector.",
+            "description": "Click an element on the page. Provide either a CSS selector or the visible text of the element.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "selector": {"type": "string", "description": "CSS selector of element to click"}
+                    "selector": {"type": "string", "description": "CSS selector of element to click"},
+                    "text": {"type": "string", "description": "Visible text of the element to click (alternative to selector)"},
                 },
-                "required": ["selector"],
             },
         },
     },
@@ -64,6 +76,66 @@ BROWSER_TOOLS = [
                 "type": "object",
                 "properties": {"text": {"type": "string", "description": "Text to type"}},
                 "required": ["text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_press_key",
+            "description": "Press a keyboard key. Use for Enter (submit forms), Tab (move focus), Escape (close modals), arrow keys, etc.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {
+                        "type": "string",
+                        "description": "Playwright key name: Enter, Tab, Escape, ArrowDown, ArrowUp, ArrowLeft, ArrowRight, Backspace, Delete, Space, etc.",
+                    }
+                },
+                "required": ["key"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_focus",
+            "description": "Focus a specific input element by CSS selector before typing into it.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "selector": {"type": "string", "description": "CSS selector of element to focus"}
+                },
+                "required": ["selector"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_hover",
+            "description": "Hover over an element to reveal dropdown menus or tooltips.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "selector": {"type": "string", "description": "CSS selector of element to hover over"}
+                },
+                "required": ["selector"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_select_option",
+            "description": "Select an option from a <select> dropdown element.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "selector": {"type": "string", "description": "CSS selector of the <select> element"},
+                    "value": {"type": "string", "description": "The option value or label text to select"},
+                },
+                "required": ["selector", "value"],
             },
         },
     },
@@ -85,16 +157,45 @@ BROWSER_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "browser_wait_for",
+            "description": "Wait for an element or text to appear on the page. Use after clicks or navigation on dynamic/SPA pages.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "selector": {"type": "string", "description": "CSS selector to wait for"},
+                    "text": {"type": "string", "description": "Text string to wait for in the page body (alternative to selector)"},
+                    "timeout": {"type": "integer", "description": "Max wait in milliseconds (default 10000)"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "browser_read",
-            "description": "Extract all visible text from the current page for reading its content.",
+            "description": "Extract all visible text from the current page.",
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
     {
         "type": "function",
         "function": {
+            "name": "browser_execute_js",
+            "description": "Execute a JavaScript expression in the page and return the result. Use as an escape hatch for interactions not possible with other tools.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "script": {"type": "string", "description": "JavaScript expression to evaluate (must return a serialisable value)"}
+                },
+                "required": ["script"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "browser_screenshot",
-            "description": "Take a screenshot of the current browser state to confirm what is visible.",
+            "description": "Take a screenshot and see the current browser view as an image. Use when you need to confirm visual state or are stuck.",
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
@@ -143,10 +244,7 @@ async def run(
                 _log.info("browser_session_created", session_id=browser_session_id)
 
                 for turn in range(30):
-                    # Check stop flag between turns.
-                    # Use expire_all() + scalar query to bypass SQLAlchemy's identity map cache —
-                    # without this, the session returns the stale in-memory object loaded on turn 1
-                    # and never sees the status update written by the stop HTTP endpoint.
+                    # Bypass SQLAlchemy identity map to catch stop signals from other requests.
                     session.expire_all()
                     status_result = await session.execute(
                         select(AutomationRun.status).where(AutomationRun.id == run_id)
@@ -176,16 +274,16 @@ async def run(
                         name = tc.function.name
                         args = json.loads(tc.function.arguments or "{}")
                         try:
-                            result_str = await _dispatch(
+                            result = await _dispatch(
                                 name, args, browser_session_id, http,
                                 wiki_tools, run_id, session, audience_user_id,
                             )
                         except Exception as tool_exc:
-                            result_str = f"Error: {tool_exc}"
+                            result = f"Error: {tool_exc}"
                         tool_results.append({
                             "role": "tool",
                             "tool_call_id": tc.id,
-                            "content": result_str,
+                            "content": result,
                         })
                     messages.extend(tool_results)
 
@@ -202,10 +300,10 @@ async def run(
                     except Exception:
                         pass
 
-                result = await session.execute(
+                db_result = await session.execute(
                     select(AutomationRun).where(AutomationRun.id == run_id)
                 )
-                run_obj = result.scalar_one_or_none()
+                run_obj = db_result.scalar_one_or_none()
                 if run_obj:
                     if run_obj.status in ("running", "stopping"):
                         run_obj.status = final_status
@@ -233,7 +331,7 @@ async def _dispatch(
     run_id: str,
     db: AsyncSession,
     audience_user_id: str,
-) -> str:
+) -> str | list:
     if name == "browser_navigate":
         resp = await http.post(f"/session/{session_id}/navigate", json={"url": args["url"]})
         resp.raise_for_status()
@@ -245,10 +343,30 @@ async def _dispatch(
         )
         return resp.json().get("title", "ok")
 
-    if name == "browser_click":
-        resp = await http.post(f"/session/{session_id}/click", json={"selector": args["selector"]})
+    if name == "browser_get_page_state":
+        resp = await http.post(f"/session/{session_id}/get_page_state")
         resp.raise_for_status()
-        detail = f"Clicked '{args['selector']}'"
+        data = resp.json()
+        detail = f"Page state: {data.get('title', '')} ({data.get('url', '')})"
+        await _record(db, run_id, "get_page_state", detail)
+        await broadcaster.publish(
+            {"event": "automation:action", "run_id": run_id, "type": "get_page_state", "detail": detail},
+            audience_user_id=audience_user_id,
+        )
+        return json.dumps(data)
+
+    if name == "browser_click":
+        payload: dict = {}
+        if args.get("selector"):
+            payload["selector"] = args["selector"]
+            detail = f"Clicked '{args['selector']}'"
+        elif args.get("text"):
+            payload["text"] = args["text"]
+            detail = f"Clicked text '{args['text']}'"
+        else:
+            return "Error: provide selector or text"
+        resp = await http.post(f"/session/{session_id}/click", json=payload)
+        resp.raise_for_status()
         await _record(db, run_id, "click", detail)
         await broadcaster.publish(
             {"event": "automation:action", "run_id": run_id, "type": "click", "detail": detail},
@@ -268,6 +386,55 @@ async def _dispatch(
         )
         return "typed"
 
+    if name == "browser_press_key":
+        key = args["key"]
+        resp = await http.post(f"/session/{session_id}/press_key", json={"key": key})
+        resp.raise_for_status()
+        detail = f"Pressed key: {key}"
+        await _record(db, run_id, "press_key", detail)
+        await broadcaster.publish(
+            {"event": "automation:action", "run_id": run_id, "type": "press_key", "detail": detail},
+            audience_user_id=audience_user_id,
+        )
+        return "key pressed"
+
+    if name == "browser_focus":
+        selector = args["selector"]
+        resp = await http.post(f"/session/{session_id}/focus", json={"selector": selector})
+        resp.raise_for_status()
+        detail = f"Focused '{selector}'"
+        await _record(db, run_id, "focus", detail)
+        await broadcaster.publish(
+            {"event": "automation:action", "run_id": run_id, "type": "focus", "detail": detail},
+            audience_user_id=audience_user_id,
+        )
+        return "focused"
+
+    if name == "browser_hover":
+        selector = args["selector"]
+        resp = await http.post(f"/session/{session_id}/hover", json={"selector": selector})
+        resp.raise_for_status()
+        detail = f"Hovered over '{selector}'"
+        await _record(db, run_id, "hover", detail)
+        await broadcaster.publish(
+            {"event": "automation:action", "run_id": run_id, "type": "hover", "detail": detail},
+            audience_user_id=audience_user_id,
+        )
+        return "hovered"
+
+    if name == "browser_select_option":
+        selector = args["selector"]
+        value = args["value"]
+        resp = await http.post(f"/session/{session_id}/select_option", json={"selector": selector, "value": value})
+        resp.raise_for_status()
+        detail = f"Selected '{value}' in '{selector}'"
+        await _record(db, run_id, "select_option", detail)
+        await broadcaster.publish(
+            {"event": "automation:action", "run_id": run_id, "type": "select_option", "detail": detail},
+            audience_user_id=audience_user_id,
+        )
+        return f"selected: {resp.json().get('selected')}"
+
     if name == "browser_scroll":
         direction = args.get("direction", "down")
         amount = int(args.get("amount", 300))
@@ -281,6 +448,27 @@ async def _dispatch(
         )
         return "scrolled"
 
+    if name == "browser_wait_for":
+        payload: dict = {}
+        if args.get("selector"):
+            payload["selector"] = args["selector"]
+            detail = f"Waited for '{args['selector']}'"
+        elif args.get("text"):
+            payload["text"] = args["text"]
+            detail = f"Waited for text '{args['text']}'"
+        else:
+            return "Error: provide selector or text"
+        if args.get("timeout"):
+            payload["timeout"] = int(args["timeout"])
+        resp = await http.post(f"/session/{session_id}/wait_for", json=payload)
+        resp.raise_for_status()
+        await _record(db, run_id, "wait_for", detail)
+        await broadcaster.publish(
+            {"event": "automation:action", "run_id": run_id, "type": "wait_for", "detail": detail},
+            audience_user_id=audience_user_id,
+        )
+        return "found"
+
     if name == "browser_read":
         resp = await http.post(f"/session/{session_id}/extract")
         resp.raise_for_status()
@@ -293,6 +481,19 @@ async def _dispatch(
         )
         return text
 
+    if name == "browser_execute_js":
+        script = args["script"]
+        resp = await http.post(f"/session/{session_id}/execute_js", json={"script": script})
+        resp.raise_for_status()
+        js_result = resp.json().get("result")
+        detail = f"Executed JS: {script[:60]}{'…' if len(script) > 60 else ''}"
+        await _record(db, run_id, "execute_js", detail)
+        await broadcaster.publish(
+            {"event": "automation:action", "run_id": run_id, "type": "execute_js", "detail": detail},
+            audience_user_id=audience_user_id,
+        )
+        return json.dumps(js_result)
+
     if name == "browser_screenshot":
         resp = await http.post(f"/session/{session_id}/screenshot")
         resp.raise_for_status()
@@ -303,10 +504,14 @@ async def _dispatch(
             {"event": "automation:screenshot", "run_id": run_id, "image_b64": image_b64},
             audience_user_id=audience_user_id,
         )
-        return "screenshot taken"
+        # Return image content block so the LLM can actually see the screenshot.
+        return [
+            {"type": "text", "text": "Here is the current browser screenshot:"},
+            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}},
+        ]
 
     # Wiki tools
-    result_str = await wiki_tools.dispatch(name, args)
+    wiki_result = await wiki_tools.dispatch(name, args)
     if name in ("write_page", "create_page", "append_to_page"):
         slug = args.get("slug", "")
         detail = f"Wrote wiki page: {slug}"
@@ -315,7 +520,7 @@ async def _dispatch(
             {"event": "automation:action", "run_id": run_id, "type": "wiki_write", "detail": detail},
             audience_user_id=audience_user_id,
         )
-    return result_str
+    return wiki_result
 
 
 async def _record(db: AsyncSession, run_id: str, type_: str, detail: str) -> None:
