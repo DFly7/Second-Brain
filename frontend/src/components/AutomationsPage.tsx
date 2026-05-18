@@ -375,21 +375,20 @@ function ExpandedActions({ runId }: { runId: string }) {
       <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#8b949e', marginBottom: 4 }}>
         Action Log
       </div>
-      {actions.slice(0, 20).map(a => (
-        <div key={a.id} style={{ display: 'flex', gap: 10, fontSize: 12 }}>
-          <span style={{ color: '#8b949e', width: 42, flexShrink: 0 }}>
-            {new Date(a.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </span>
-          <span>{ACTION_ICON[a.type] ?? '•'}</span>
-          <span style={{ color: a.type === 'wiki_write' ? '#3fb950' : '#8b949e' }}>{a.detail}</span>
-        </div>
-      ))}
-      {actions.length > 20 && (
-        <div style={{ fontSize: 11, color: '#8b949e', fontStyle: 'italic' }}>+ {actions.length - 20} more actions</div>
-      )}
-      {actions.length === 0 && (
-        <div style={{ fontSize: 12, color: '#8b949e', fontStyle: 'italic' }}>Loading…</div>
-      )}
+      <div style={{ overflowY: 'auto', maxHeight: 300, display: 'flex', flexDirection: 'column', gap: 5 }}>
+        {actions.map(a => (
+          <div key={a.id} style={{ display: 'flex', gap: 10, fontSize: 12 }}>
+            <span style={{ color: '#8b949e', width: 42, flexShrink: 0 }}>
+              {new Date(a.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
+            <span>{ACTION_ICON[a.type] ?? '•'}</span>
+            <span style={{ color: a.type === 'wiki_write' ? '#3fb950' : '#8b949e' }}>{a.detail}</span>
+          </div>
+        ))}
+        {actions.length === 0 && (
+          <div style={{ fontSize: 12, color: '#8b949e', fontStyle: 'italic' }}>Loading…</div>
+        )}
+      </div>
     </div>
   )
 }
