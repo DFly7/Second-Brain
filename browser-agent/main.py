@@ -111,7 +111,7 @@ class ClickRequest(BaseModel):
 async def session_click(session_id: str, body: ClickRequest):
     s = _get_session(session_id)
     if body.selector:
-        await s["page"].click(body.selector)
+        await s["page"].click(body.selector, timeout=10000)
     elif body.x is not None and body.y is not None:
         await s["page"].mouse.click(body.x, body.y)
     else:

@@ -175,10 +175,13 @@ async def run(
                     for tc in tool_calls:
                         name = tc.function.name
                         args = json.loads(tc.function.arguments or "{}")
-                        result_str = await _dispatch(
-                            name, args, browser_session_id, http,
-                            wiki_tools, run_id, session, audience_user_id,
-                        )
+                        try:
+                            result_str = await _dispatch(
+                                name, args, browser_session_id, http,
+                                wiki_tools, run_id, session, audience_user_id,
+                            )
+                        except Exception as tool_exc:
+                            result_str = f"Error: {tool_exc}"
                         tool_results.append({
                             "role": "tool",
                             "tool_call_id": tc.id,
