@@ -462,11 +462,14 @@ async def _dispatch(
             payload["timeout"] = int(args["timeout"])
         resp = await http.post(f"/session/{session_id}/wait_for", json=payload)
         resp.raise_for_status()
+        data = resp.json()
         await _record(db, run_id, "wait_for", detail)
         await broadcaster.publish(
             {"event": "automation:action", "run_id": run_id, "type": "wait_for", "detail": detail},
             audience_user_id=audience_user_id,
         )
+        if not data.get("found"):
+            return data.get("error", "element not found")
         return "found"
 
     if name == "browser_read":

@@ -201,17 +201,21 @@ class WaitForRequest(BaseModel):
 @app.post("/session/{session_id}/wait_for")
 async def session_wait_for(session_id: str, body: WaitForRequest):
     s = _get_session(session_id)
-    if body.selector:
-        await s["page"].wait_for_selector(body.selector, timeout=body.timeout)
-        return {"found": True}
-    elif body.text:
-        await s["page"].wait_for_function(
-            f"() => document.body.innerText.includes({json.dumps(body.text)})",
-            timeout=body.timeout,
-        )
-        return {"found": True}
-    else:
+    if not body.selector and not body.text:
         raise HTTPException(status_code=400, detail="Provide selector or text")
+    try:
+        if body.selector:
+            await s["page"].wait_for_selector(body.selector, timeout=body.timeout)
+        else:
+            await s["page"].wait_for_function(
+                f"() => document.body.innerText.includes({json.dumps(body.text)})",
+                timeout=body.timeout,
+            )
+        return {"found": True}
+    except Exception as e:
+        if "Timeout" in type(e).__name__ or "TimeoutError" in str(type(e)):
+            return {"found": False, "error": f"Timeout after {body.timeout}ms — not found"}
+        raise
 
 
 class ExecuteJsRequest(BaseModel):
