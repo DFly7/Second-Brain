@@ -11,6 +11,7 @@ import {
   sendBrowserChatMessage,
 } from '../api/client'
 import { useSse } from '../hooks/useSse'
+import TopBar from './TopBar'
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected'
 
@@ -143,9 +144,8 @@ export default function BrowserChatPage() {
     } catch { setExpandedMessages([]) }
   }
 
-  if (connectionState === 'connected') {
-    return (
-      <div style={{ display: 'flex', height: '100%', overflow: 'hidden', background: '#0d1117' }}>
+  const pageContent = connectionState === 'connected' ? (
+      <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', background: '#0d1117' }}>
         {/* Left: chat */}
         <div style={{
           width: 320,
@@ -276,11 +276,7 @@ export default function BrowserChatPage() {
 
         <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }`}</style>
       </div>
-    )
-  }
-
-  // Disconnected / idle state
-  return (
+  ) : (
     <div style={{ flex: 1, overflowY: 'auto', background: '#0d1117', padding: 24 }}>
       <div style={{ maxWidth: 680, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
         <h2 style={{ fontSize: 18, fontWeight: 700, color: '#e6edf3', margin: 0 }}>Browser Chat</h2>
@@ -363,6 +359,15 @@ export default function BrowserChatPage() {
             ))}
           </div>
         )}
+      </div>
+    </div>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+      <TopBar />
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
+        {pageContent}
       </div>
     </div>
   )
