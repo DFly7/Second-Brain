@@ -7,7 +7,7 @@ ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=${ARCH:+0}
 
 RUN apt-get update && apt-get install -y \
     python3 python3-pip \
-    xvfb x11vnc \
+    xvfb x11vnc x11-utils netcat-openbsd \
     git curl wget \
     && if [ "$ARCH" = "arm64" ]; then apt-get install -y chromium-browser; fi \
     && rm -rf /var/lib/apt/lists/*

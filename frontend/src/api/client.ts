@@ -298,6 +298,12 @@ export async function openAutomationRecording(runId: string): Promise<void> {
   if (!r.ok) throw new Error(`recording failed: ${r.status}`)
   const blob = await r.blob()
   const url = URL.createObjectURL(blob)
-  window.open(url, '_blank', 'noopener,noreferrer')
+  const a = document.createElement('a')
+  a.href = url
+  a.target = '_blank'
+  a.rel = 'noopener noreferrer'
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
