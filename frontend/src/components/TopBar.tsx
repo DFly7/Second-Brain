@@ -11,6 +11,7 @@ export default function TopBar({ agentStatus, onShowIngest }: TopBarProps) {
   const onWiki = useMatch({ path: '/wiki', end: true })
   const onFiles = useMatch({ path: '/files', end: true })
   const onAutomations = useMatch({ path: '/automations', end: true })
+  const onBrowserChat = useMatch({ path: '/browser-chat', end: true })
 
   return (
     <div
@@ -68,6 +69,20 @@ export default function TopBar({ agentStatus, onShowIngest }: TopBarProps) {
           }}
         >
           Automations
+        </Link>
+        <Link
+          to="/browser-chat"
+          style={{
+            padding: '4px 12px',
+            borderRadius: 6,
+            fontSize: 13,
+            textDecoration: 'none',
+            border: `1px solid ${onBrowserChat ? '#58a6ff' : '#30363d'}`,
+            color: onBrowserChat ? '#58a6ff' : '#8b949e',
+            background: onBrowserChat ? '#1f3a5f' : 'transparent',
+          }}
+        >
+          Browser
         </Link>
       </div>
 

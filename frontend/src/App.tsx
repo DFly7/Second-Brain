@@ -4,6 +4,7 @@ import { redirectToAuthentik, devLogin, DEV_AUTH_BYPASS, saveAccessToken, getSto
 import Layout from './components/Layout'
 import FilesView from './components/FilesView'
 import AutomationsPage from './components/AutomationsPage'
+import BrowserChatPage from './components/BrowserChatPage'
 
 type AuthState = 'loading' | 'authenticated' | 'unauthenticated'
 
@@ -149,6 +150,7 @@ export default function App() {
           <Route path="/wiki" element={<Layout />} />
           <Route path="/files" element={<FilesView />} />
           <Route path="/automations" element={<AutomationsPage />} />
+          <Route path="/browser-chat" element={<BrowserChatPage />} />
           <Route path="*" element={<Navigate to="/wiki" replace />} />
         </Routes>
       </BrowserRouter>
