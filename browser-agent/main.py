@@ -164,9 +164,8 @@ async def session_close(session_id: str):
     context = s["context"]
     browser = s["browser"]
 
-    await page.close()
-    video_path = await page.video.path()
     await context.close()
+    video_path = await page.video.path()
     await browser.close()
 
     recording_url = None

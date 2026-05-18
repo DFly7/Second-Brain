@@ -147,7 +147,7 @@ async def run(
                     # Use expire_all() + scalar query to bypass SQLAlchemy's identity map cache —
                     # without this, the session returns the stale in-memory object loaded on turn 1
                     # and never sees the status update written by the stop HTTP endpoint.
-                    await session.expire_all()
+                    session.expire_all()
                     status_result = await session.execute(
                         select(AutomationRun.status).where(AutomationRun.id == run_id)
                     )
