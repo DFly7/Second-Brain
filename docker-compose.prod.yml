@@ -38,6 +38,18 @@ services:
       timeout: 3s
       retries: 5
 
+  browser-agent:
+    build: browser-agent/
+    shm_size: '2gb'
+    environment:
+      - DISPLAY=:99
+    env_file: .env
+    ports:
+      - "6080:6080"
+    depends_on:
+      - minio
+    restart: unless-stopped
+
   # Local marker — uncomment and set MARKER_BACKEND=local on api when using self-hosted conversion
   # marker:
   #   build:
@@ -71,6 +83,8 @@ services:
       S3_ENDPOINT: http://minio:9000
       MARKER_BACKEND: datalab
       LOG_FORMAT: console
+      BROWSER_AGENT_URL: http://browser-agent:8001
+      NOVNC_URL: http://smoothstudy.ai:6080/vnc.html
     restart: unless-stopped
 
   frontend:
