@@ -1,5 +1,4 @@
 import json
-from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -99,10 +98,13 @@ async def run_turn(
                 for tc in tool_calls:
                     name = tc.function.name
                     args = json.loads(tc.function.arguments or "{}")
-                    result_str = await _dispatch(
-                        name, args, browser_session_id, http,
-                        wiki_tools, chat_session_id, audience_user_id,
-                    )
+                    try:
+                        result_str = await _dispatch(
+                            name, args, browser_session_id, http,
+                            wiki_tools, chat_session_id, audience_user_id,
+                        )
+                    except Exception as tool_exc:
+                        result_str = f"Error: {tool_exc}"
                     tool_results.append({
                         "role": "tool",
                         "tool_call_id": tc.id,
@@ -110,7 +112,14 @@ async def run_turn(
                     })
                 messages.extend(tool_results)
             else:
-                reply_text = "I've reached my turn limit for this message. Here's where I got to: " + (getattr(messages[-1], "content", None) or "see browser.")
+                last_assistant = next(
+                    (m.get("content") for m in reversed(messages) if isinstance(m, dict) and m.get("role") == "assistant"),
+                    None,
+                )
+                if not last_assistant and messages:
+                    last_msg = messages[-1]
+                    last_assistant = last_msg.get("content") if isinstance(last_msg, dict) else getattr(last_msg, "content", None)
+                reply_text = "I've reached my turn limit for this message. Here's where I got to: " + (last_assistant or "see browser.")
 
         return reply_text
 
@@ -152,11 +161,14 @@ async def _dispatch(
         payload: dict = {}
         if args.get("selector"):
             payload["selector"] = args["selector"]
-        if args.get("text"):
+            label = args["selector"]
+        elif args.get("text"):
             payload["text"] = args["text"]
+            label = args["text"]
+        else:
+            return "Error: provide selector or text"
         resp = await http.post(f"/session/{browser_session_id}/click", json=payload)
         resp.raise_for_status()
-        label = args.get("text") or args.get("selector", "element")
         await _action("click", f"Clicked '{label}'")
         return "clicked"
 
@@ -200,17 +212,20 @@ async def _dispatch(
         return "scrolled"
 
     if name == "browser_wait_for":
-        payload = {}
+        payload: dict = {}
         if args.get("selector"):
             payload["selector"] = args["selector"]
-        if args.get("text"):
+            label = args["selector"]
+        elif args.get("text"):
             payload["text"] = args["text"]
+            label = args["text"]
+        else:
+            return "Error: provide selector or text"
         if args.get("timeout"):
             payload["timeout"] = int(args["timeout"])
         resp = await http.post(f"/session/{browser_session_id}/wait_for", json=payload)
         resp.raise_for_status()
         data = resp.json()
-        label = args.get("selector") or args.get("text", "element")
         await _action("wait_for", f"Waited for '{label}'")
         if not data.get("found"):
             return data.get("error", "element not found")
