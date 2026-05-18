@@ -332,6 +332,7 @@ async def _dispatch(
     db: AsyncSession,
     audience_user_id: str,
 ) -> str | list:
+    _log.info("automation_tool_call", tool=name, run_id=run_id, args=args)
     if name == "browser_navigate":
         resp = await http.post(f"/session/{session_id}/navigate", json={"url": args["url"]})
         resp.raise_for_status()
