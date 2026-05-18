@@ -9,6 +9,7 @@ import {
   stopAutomationRun,
 } from '../api/client'
 import { useSse } from '../hooks/useSse'
+import TopBar from './TopBar'
 
 type PageState = 'idle' | 'running'
 
@@ -109,9 +110,8 @@ export default function AutomationsPage() {
     wiki_write: '✍️',
   }
 
-  if (pageState === 'running') {
-    return (
-      <div style={{ display: 'flex', height: '100%', overflow: 'hidden', background: '#0d1117' }}>
+  const pageContent = pageState === 'running' ? (
+      <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', background: '#0d1117' }}>
         {/* Left panel */}
         <div style={{
           width: 300,
@@ -215,12 +215,8 @@ export default function AutomationsPage() {
 
         <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }`}</style>
       </div>
-    )
-  }
-
-  // Idle: history view
-  return (
-    <div style={{ flex: 1, overflowY: 'auto', background: '#0d1117', padding: 24 }}>
+  ) : (
+    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: '#0d1117', padding: 24 }}>
       <div style={{ maxWidth: 720, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
         <h2 style={{ fontSize: 18, fontWeight: 700, color: '#e6edf3', margin: '0 0 8px' }}>Automations</h2>
 
@@ -315,6 +311,15 @@ export default function AutomationsPage() {
             No automation runs yet. Write a goal above to get started.
           </div>
         )}
+      </div>
+    </div>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+      <TopBar />
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
+        {pageContent}
       </div>
     </div>
   )
