@@ -78,6 +78,30 @@ class Source(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class AutomationRun(Base):
+    __tablename__ = "automation_runs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"))
+    goal: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String, default="pending")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    recording_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    actions: Mapped[list["AutomationAction"]] = relationship(back_populates="run")
+
+
+class AutomationAction(Base):
+    __tablename__ = "automation_actions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    run_id: Mapped[str] = mapped_column(ForeignKey("automation_runs.id"))
+    type: Mapped[str] = mapped_column(String)
+    detail: Mapped[str] = mapped_column(Text)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    run: Mapped["AutomationRun"] = relationship(back_populates="actions")
+
+
 class SourcePage(Base):
     __tablename__ = "source_pages"
 
