@@ -940,6 +940,19 @@ async def start_run(
     user: str = Depends(get_current_user),
 ):
     ws = await _ensure_workspace(db, user)
+
+    # Enforce single-run-at-a-time. The browser-agent container uses a single
+    # Xvfb display (:99) and a single VNC stream — concurrent runs would render
+    # on top of each other and corrupt both sessions.
+    existing = await db.execute(
+        select(AutomationRun).where(
+            AutomationRun.workspace_id == ws.id,
+            AutomationRun.status == "running",
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="An automation is already in progress.")
+
     run_obj = AutomationRun(workspace_id=ws.id, goal=body.goal, status="running")
     db.add(run_obj)
     await db.flush()
@@ -1213,6 +1226,34 @@ def test_start_run_returns_202(client):
 def test_start_run_requires_goal(client):
     r = client.post("/automations/run", json={})
     assert r.status_code == 422
+
+
+def test_start_run_409_when_already_running(client):
+    mock_ws = _make_ws()
+    existing_run = _make_run(id="run-existing", status="running")
+
+    existing_result = MagicMock()
+    existing_result.scalar_one_or_none.return_value = existing_run
+
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=existing_result)
+
+    async def override_db():
+        yield session
+
+    app.dependency_overrides[get_db] = override_db
+
+    try:
+        with patch(
+            "app.routes.automations._ensure_workspace",
+            new_callable=AsyncMock,
+            return_value=mock_ws,
+        ):
+            r = client.post("/automations/run", json={"goal": "do something"})
+            assert r.status_code == 409
+            assert "already in progress" in r.json()["detail"]
+    finally:
+        app.dependency_overrides.pop(get_db, None)
 
 
 # ---------------------------------------------------------------------------
@@ -1543,6 +1584,7 @@ export default function AutomationsPage() {
   const [currentUrl, setCurrentUrl] = useState('')
   const [novncUrl, setNovncUrl] = useState<string | null>(null)
   const [goal, setGoal] = useState('')
+  const [startError, setStartError] = useState<string | null>(null)
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null)
   const actionsEndRef = useRef<HTMLDivElement>(null)
 
@@ -1579,12 +1621,18 @@ export default function AutomationsPage() {
 
   async function handleStart() {
     if (!goal.trim()) return
-    const { run_id } = await startAutomationRun(goal.trim())
-    setActiveRunId(run_id)
-    setActions([])
-    setCurrentUrl('')
-    setPageState('running')
-    setGoal('')
+    setStartError(null)
+    try {
+      const { run_id } = await startAutomationRun(goal.trim())
+      setActiveRunId(run_id)
+      setActions([])
+      setCurrentUrl('')
+      setPageState('running')
+      setGoal('')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setStartError(msg.includes('409') ? 'An automation is already in progress.' : 'Failed to start.')
+    }
   }
 
   async function handleStop() {
@@ -1758,7 +1806,10 @@ export default function AutomationsPage() {
               boxSizing: 'border-box',
             }}
           />
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12 }}>
+            {startError && (
+              <span style={{ fontSize: 12, color: '#f85149' }}>{startError}</span>
+            )}
             <button
               type="button"
               onClick={handleStart}
