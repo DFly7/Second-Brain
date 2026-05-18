@@ -36,6 +36,7 @@ def _sanitize_redis_url_for_log(url: str) -> str:
 
 from app.auth import router as auth_router  # noqa: E402
 from app.routes.activity import router as activity_router  # noqa: E402
+from app.routes.automations import router as automations_router  # noqa: E402
 from app.routes.chat import router as chat_router  # noqa: E402
 from app.routes.health import router as health_router  # noqa: E402
 from app.routes.ingest import router as ingest_router  # noqa: E402
@@ -76,6 +77,7 @@ app.include_router(chat_router)
 app.include_router(activity_router)
 app.include_router(health_router)
 app.include_router(sources_router)
+app.include_router(automations_router)
 
 
 @app.get("/health")
