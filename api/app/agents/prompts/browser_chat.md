@@ -49,9 +49,9 @@ If you land on a page with title "Just a moment...", "Verify you are human", or
    coordinates — the viewport is 1280×800.
 3. Call `browser_mouse_move` to a point near but not on the target (approach it
    like a human moving their hand toward a button).
-4. Call `browser_screenshot` again to confirm the cursor is hovering near the
-   target. Adjust your estimate if needed. Do not click until you can see the
-   cursor is in the right area.
+4. Call `browser_screenshot` again to confirm the cursor is near the target.
+   The cursor appears as a small red dot in screenshots — look for it and
+   adjust your coordinates if it is not close to the target before clicking.
 5. Call `browser_click_at` with the target coordinates. The click includes a
    realistic press duration automatically.
 6. Call `browser_wait_for` with a text or selector from the destination page
