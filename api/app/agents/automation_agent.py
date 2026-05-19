@@ -243,11 +243,14 @@ BROWSER_TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "browser_click_cloudflare",
+            "name": "browser_await_cloudflare",
             "description": (
-                "Click the Cloudflare Turnstile 'Verify you are human' checkbox using Playwright's "
-                "iframe frame access — no coordinate guessing needed. Use this immediately when you "
-                "detect a Cloudflare challenge page instead of browser_click_at."
+                "Wait for a Cloudflare 'Verify you are human' / 'Just a moment...' "
+                "challenge to clear. The browser is hardened and usually passes the "
+                "check automatically within a few seconds — this tool waits for that "
+                "and clicks the checkbox once only if one is still shown. Call it once "
+                "when you land on a challenge page, then call browser_get_page_state. "
+                "Do NOT call it repeatedly or guess checkbox coordinates."
             ),
             "parameters": {"type": "object", "properties": {}, "required": []},
         },

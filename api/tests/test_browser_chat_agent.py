@@ -230,3 +230,19 @@ async def test_run_turn_publishes_error_action_on_dispatch_exception(patch_broad
     error_actions = [c for c in calls if c.get("event") == "browser_chat:action" and c.get("error") is True]
     assert len(error_actions) == 1
     assert "network error" in error_actions[0]["detail"]
+
+
+@pytest.mark.asyncio
+async def test_await_cloudflare_cleared(wiki):
+    http = _make_http({"cleared": True, "method": "passive"})
+    result = await _dispatch("browser_await_cloudflare", {}, "sid", http, wiki, "chat-1", "u1")
+    http.post.assert_awaited_once()
+    assert http.post.await_args[0][0].endswith("/session/sid/await_cloudflare")
+    assert "cleared" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_await_cloudflare_not_cleared(wiki):
+    http = _make_http({"cleared": False, "error": "Cloudflare challenge did not clear"})
+    result = await _dispatch("browser_await_cloudflare", {}, "sid", http, wiki, "chat-1", "u1")
+    assert "did not clear" in result.lower()

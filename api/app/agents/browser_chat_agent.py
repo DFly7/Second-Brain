@@ -299,14 +299,17 @@ async def _dispatch(
         await _action("mouse_move", f"Moved to ({int(args['x'])}, {int(args['y'])})")
         return "moved"
 
-    if name == "browser_click_cloudflare":
-        resp = await _safe_browser_post(http, f"/session/{browser_session_id}/click_cloudflare")
+    if name == "browser_await_cloudflare":
+        resp = await _safe_browser_post(http, f"/session/{browser_session_id}/await_cloudflare")
         result = resp.json()
-        if result.get("ok"):
-            await _action("click_at", f"Clicked Cloudflare checkbox ({result.get('method', '')})")
-            return "Cloudflare checkbox clicked — wait for challenge to clear then check page state."
-        await _action("click_at", "Cloudflare click failed — iframe not found")
-        return result.get("error", "Cloudflare iframe not found")
+        if result.get("cleared"):
+            method = result.get("method", "")
+            await _action("wait_for", f"Cloudflare challenge cleared ({method})")
+            return f"Cloudflare challenge cleared ({method}). Call browser_get_page_state to continue."
+        await _action("wait_for", "Cloudflare challenge did not clear")
+        return result.get("error", "Cloudflare challenge did not clear") + (
+            " — try browser_screenshot to inspect, or report to the user that this site is blocking automation."
+        )
 
     # Wiki tools
     wiki_result = await wiki_tools.dispatch(name, args)
