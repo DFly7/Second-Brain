@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import os
+import random
 import shutil
 import tempfile
 import uuid
@@ -202,7 +203,10 @@ async def session_click(session_id: str, body: ClickRequest):
     elif body.text:
         await s["page"].get_by_text(body.text, exact=False).first.click(timeout=10000)
     elif body.x is not None and body.y is not None:
-        await s["page"].mouse.click(body.x, body.y, delay=150)
+        page = s["page"]
+        await page.mouse.move(body.x, body.y, steps=8)
+        await asyncio.sleep(random.uniform(0.08, 0.25))
+        await page.mouse.click(body.x, body.y, delay=random.randint(70, 160))
     else:
         raise HTTPException(status_code=400, detail="Provide selector, text, or x,y coordinates")
     return {"ok": True}
