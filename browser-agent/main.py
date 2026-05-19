@@ -11,7 +11,13 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from playwright.async_api import async_playwright
 from playwright._impl._errors import TimeoutError as PlaywrightTimeoutError
+from playwright_stealth import stealth_async
 from pydantic import BaseModel
+
+_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
 
 MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://minio:9000")
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
@@ -79,15 +85,20 @@ _CHROMIUM_PATH = os.getenv("CHROMIUM_EXECUTABLE_PATH")
 async def session_new():
     session_id = str(uuid.uuid4())
     video_dir = tempfile.mkdtemp()
-    launch_kwargs = {"headless": False}
+    launch_kwargs = {
+        "headless": False,
+        "args": ["--disable-blink-features=AutomationControlled"],
+    }
     if _CHROMIUM_PATH:
         launch_kwargs["executable_path"] = _CHROMIUM_PATH
     browser = await _playwright.chromium.launch(**launch_kwargs)
     context = await browser.new_context(
         record_video_dir=video_dir,
         viewport={"width": 1280, "height": 800},
+        user_agent=_UA,
     )
     page = await context.new_page()
+    await stealth_async(page)
     _sessions[session_id] = {
         "browser": browser,
         "context": context,
@@ -124,9 +135,21 @@ async def session_click(session_id: str, body: ClickRequest):
     elif body.text:
         await s["page"].get_by_text(body.text, exact=False).first.click(timeout=10000)
     elif body.x is not None and body.y is not None:
-        await s["page"].mouse.click(body.x, body.y)
+        await s["page"].mouse.click(body.x, body.y, delay=150)
     else:
         raise HTTPException(status_code=400, detail="Provide selector, text, or x,y coordinates")
+    return {"ok": True}
+
+
+class MouseMoveRequest(BaseModel):
+    x: float
+    y: float
+
+
+@app.post("/session/{session_id}/mouse_move")
+async def session_mouse_move(session_id: str, body: MouseMoveRequest):
+    s = _get_session(session_id)
+    await s["page"].mouse.move(body.x, body.y)
     return {"ok": True}
 
 
