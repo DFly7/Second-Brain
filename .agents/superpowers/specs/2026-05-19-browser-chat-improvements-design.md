@@ -24,8 +24,9 @@ Maintain an `actions: ActionItem[]` state list in `BrowserChatPage.tsx`. Each `b
 - Small icon prefix per type: `→` navigate, `↖` click, `✎` type, `📷` screenshot, `⌛` wait, `⟳` scroll, `{}` JS, etc.
 - Display the `detail` string (already human-readable, e.g. "Navigated to uk.indeed.com", "Clicked 'Find Jobs'", "Typed 'graduate tech'")
 - Clear the actions list when a new user message is sent (fresh slate per turn)
+- Render failed actions distinctly: if a tool call raises an exception, `_dispatch` already catches it and returns `"Error: ..."`. The backend should emit an action event with `"error": true` in that case, and the frontend renders it with a `⚠` prefix and red text instead of grey.
 
-No backend changes required — events are already being emitted.
+No backend changes required for the happy path — events are already being emitted. The error flag requires a small addition to `_dispatch`: detect when `result_str` starts with `"Error:"` and include `"error": True` in the published action event.
 
 ---
 
@@ -104,7 +105,7 @@ browser_click_at(x, y)   — move cursor to (x,y) and click (left button)
 browser_mouse_move(x, y) — move cursor to (x,y) without clicking
 ```
 
-**Wire in `browser-agent/main.py`**: `browser_click_at` uses the existing `page.mouse.click(x, y)` path in the click handler. `browser_mouse_move` calls `page.mouse.move(x, y)` — add a new `/session/{id}/mouse_move` endpoint.
+**Wire in `browser-agent/main.py`**: `browser_click_at` uses `page.mouse.click(x, y, delay=150)`. The `delay=150` parameter inserts a 150ms gap between `mousedown` and `mouseup` — Cloudflare Turnstile monitors click speed and flags instantaneous (`mousedown`+`mouseup` simultaneously) events as bot activity. `browser_mouse_move` calls `page.mouse.move(x, y)` — add a new `/session/{id}/mouse_move` endpoint.
 
 **Wire in `browser_chat_agent.py` `_dispatch`**: Add handlers for both tools, emitting `browser_chat:action` events with type `"click_at"` and `"mouse_move"`.
 
@@ -121,16 +122,23 @@ If you land on a page with title "Just a moment...", "Verify you are human", or
 "Additional Verification Required":
 
 1. Call `browser_screenshot` to see the current state.
-2. If there is a visible checkbox or button, use `browser_mouse_move` to approach
-   it (move near it first), then `browser_click_at` with the pixel coordinates
-   where the checkbox appears. Moving before clicking looks more human.
-3. Call `browser_wait_for` with a text or selector from the destination page
-   (e.g. a heading or nav element you expect after the challenge clears) to
+2. Identify the checkbox or button in the screenshot. Estimate its centre
+   coordinates — the viewport is 1280×800.
+3. Call `browser_mouse_move` to a point near but not on the target (approach it
+   like a human moving their hand toward a button).
+4. Call `browser_screenshot` again to confirm the cursor is hovering near the
+   target. Adjust your estimate if needed. Do not click until you can see the
+   cursor is in the right area.
+5. Call `browser_click_at` with the target coordinates. The click includes a
+   realistic press duration automatically.
+6. Call `browser_wait_for` with a text or selector from the destination page
+   (e.g. a heading or nav element expected after the challenge clears) to
    detect when the challenge resolves.
-4. Take another `browser_screenshot` to confirm you are past the challenge before
-   continuing.
+7. Take a final `browser_screenshot` to confirm you are past the challenge
+   before continuing.
 
-The viewport is 1280×800. Estimate coordinates from the screenshot.
+If the challenge does not clear after one attempt, try once more from step 3
+with adjusted coordinates before reporting failure.
 ```
 
 ---
