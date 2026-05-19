@@ -2,7 +2,10 @@ FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV DISPLAY=:99
-ARG ARCH=x86_64
+# Docker BuildKit sets TARGETARCH (arm64 on Pi, amd64 on x86). Override only if needed:
+#   docker compose build browser-agent --build-arg BROWSER_ARCH=arm64
+ARG TARGETARCH
+ARG BROWSER_ARCH=
 
 RUN apt-get update && apt-get install -y \
     python3 python3-pip \
@@ -18,12 +21,14 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip3 install -r requirements.txt
 
-# x86_64: install real Google Chrome (best fingerprint). arm64: Chrome has no
-# Linux arm64 build, so use patchright's patched Chromium instead.
-RUN if [ "$ARCH" = "arm64" ]; then \
-        patchright install --with-deps chromium ; \
+# amd64: real Google Chrome (best fingerprint). arm64: no Linux Chrome build —
+# use patchright's patched Chromium instead.
+RUN set -e; \
+    arch="${BROWSER_ARCH:-$TARGETARCH}"; \
+    if [ "$arch" = "arm64" ] || [ "$arch" = "aarch64" ]; then \
+        patchright install --with-deps chromium; \
     else \
-        patchright install --with-deps chrome ; \
+        patchright install --with-deps chrome; \
     fi
 
 COPY . .

@@ -39,7 +39,10 @@ services:
       retries: 5
 
   browser-agent:
-    build: browser-agent/
+    build:
+      context: browser-agent/
+      # TARGETARCH is auto-detected (arm64 on Pi → chromium). Override:
+      #   docker compose -f docker-compose.prod.yml build --build-arg BROWSER_ARCH=arm64 browser-agent
     shm_size: '2gb'
     env_file: .env
     environment:
