@@ -48,6 +48,7 @@ services:
     shm_size: '2gb'
     environment:
       - DISPLAY=:99
+      - BROWSER_CHANNEL=${BROWSER_CHANNEL:-chrome}
       - MINIO_ENDPOINT=http://minio:9000
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
