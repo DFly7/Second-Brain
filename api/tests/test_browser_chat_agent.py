@@ -1,9 +1,10 @@
 """Tests for browser_chat_agent._dispatch."""
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
-from app.agents.browser_chat_agent import _dispatch, _extract_text
+from app.agents.browser_chat_agent import BrowserClosedError, _dispatch, _extract_text, _safe_browser_post
 
 
 def _make_http_response(json_data: dict):
@@ -125,6 +126,46 @@ async def test_mouse_move_posts_to_mouse_move_endpoint(wiki, patch_broadcaster):
     assert published["type"] == "mouse_move"
     assert "200" in published["detail"]
     assert "150" in published["detail"]
+
+
+@pytest.mark.asyncio
+async def test_safe_browser_post_raises_browser_closed_error_on_target_closed():
+    mock_response = MagicMock(spec=httpx.Response)
+    mock_response.status_code = 500
+    mock_response.text = "playwright._impl._errors.TargetClosedError: Page.goto: Target page, context or browser has been closed"
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.post = AsyncMock(return_value=mock_response)
+
+    with pytest.raises(BrowserClosedError):
+        await _safe_browser_post(mock_client, "/session/abc/navigate", json={"url": "https://example.com"})
+
+
+@pytest.mark.asyncio
+async def test_safe_browser_post_raises_http_error_on_other_500():
+    mock_response = MagicMock(spec=httpx.Response)
+    mock_response.status_code = 500
+    mock_response.text = "Internal Server Error - something unrelated"
+    mock_response.raise_for_status = MagicMock(side_effect=httpx.HTTPStatusError("500", request=MagicMock(), response=mock_response))
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.post = AsyncMock(return_value=mock_response)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await _safe_browser_post(mock_client, "/session/abc/navigate", json={"url": "https://example.com"})
+
+
+@pytest.mark.asyncio
+async def test_safe_browser_post_returns_response_on_success():
+    mock_response = MagicMock(spec=httpx.Response)
+    mock_response.status_code = 200
+    mock_response.raise_for_status = MagicMock()
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.post = AsyncMock(return_value=mock_response)
+
+    result = await _safe_browser_post(mock_client, "/session/abc/screenshot")
+    assert result is mock_response
 
 
 @pytest.mark.asyncio

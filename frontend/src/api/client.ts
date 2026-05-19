@@ -353,6 +353,11 @@ export async function disconnectBrowserChat(sessionId: string): Promise<void> {
   if (!r.ok) throw new Error(`disconnectBrowserChat failed: ${r.status}`)
 }
 
+export async function recoverBrowserChat(sessionId: string): Promise<void> {
+  const r = await fetchWithAuth(`${BASE}/browser-chat/sessions/${sessionId}/recover`, { method: 'POST' })
+  if (!r.ok) throw new Error(`recoverBrowserChat failed: ${r.status}`)
+}
+
 export async function listBrowserChatSessions(): Promise<BrowserChatSession[]> {
   const r = await fetchWithAuth(`${BASE}/browser-chat/sessions`)
   if (!r.ok) throw new Error(`listBrowserChatSessions failed: ${r.status}`)

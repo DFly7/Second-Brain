@@ -226,6 +226,40 @@ async def disconnect(
 
 
 # ---------------------------------------------------------------------------
+# POST /browser-chat/sessions/{id}/recover
+# ---------------------------------------------------------------------------
+
+@router.post("/sessions/{session_id}/recover", status_code=200)
+async def recover(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(get_current_user),
+):
+    ws = await _ensure_workspace(db, user)
+    result = await db.execute(
+        select(BrowserChatSession).where(
+            BrowserChatSession.id == session_id,
+            BrowserChatSession.workspace_id == ws.id,
+        )
+    )
+    sess = result.scalar_one_or_none()
+    if not sess:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    async with httpx.AsyncClient(base_url=settings.browser_agent_url, timeout=30.0) as http:
+        try:
+            resp = await http.post(f"/session/{sess.browser_session_id}/recover")
+            resp.raise_for_status()
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Failed to recover browser session: {exc}")
+
+    sess.last_activity_at = datetime.utcnow()
+    await db.commit()
+    _log.info("browser_chat_recovered", session_id=session_id)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
 # GET /browser-chat/sessions — List sessions
 # ---------------------------------------------------------------------------
 

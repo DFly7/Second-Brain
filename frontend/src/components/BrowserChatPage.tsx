@@ -8,6 +8,7 @@ import {
   getNovncUrl,
   interruptBrowserChat,
   listBrowserChatSessions,
+  recoverBrowserChat,
   sendBrowserChatMessage,
 } from '../api/client'
 import { useSse } from '../hooks/useSse'
@@ -33,6 +34,7 @@ export default function BrowserChatPage() {
   const [expandedMessages, setExpandedMessages] = useState<BrowserChatMessage[]>([])
   const [input, setInput] = useState('')
   const [connectError, setConnectError] = useState<string | null>(null)
+  const [recovering, setRecovering] = useState(false)
   const [currentUrl, setCurrentUrl] = useState('')
   const [actions, setActions] = useState<ActionItem[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -118,6 +120,29 @@ export default function BrowserChatPage() {
     setMessages([])
     setAgentRunning(false)
     listBrowserChatSessions().then(setPastSessions).catch(() => {})
+  }
+
+  async function handleRecover() {
+    if (!activeSessionId || recovering) return
+    setRecovering(true)
+    try {
+      await recoverBrowserChat(activeSessionId)
+      setMessages(prev => [...prev, {
+        id: String(Date.now()),
+        role: 'assistant',
+        content: 'Browser recovered — you have a fresh tab. Tell me where to continue.',
+        created_at: new Date().toISOString(),
+      }])
+    } catch {
+      setMessages(prev => [...prev, {
+        id: String(Date.now()),
+        role: 'assistant',
+        content: 'Failed to recover the browser. Try disconnecting and reconnecting.',
+        created_at: new Date().toISOString(),
+      }])
+    } finally {
+      setRecovering(false)
+    }
   }
 
   async function handleSend() {
@@ -253,6 +278,22 @@ export default function BrowserChatPage() {
                 style={{ padding: '5px 10px', background: 'transparent', border: '1px solid #f8514940', borderRadius: 6, color: '#f85149', fontSize: 11, cursor: 'pointer' }}
               >
                 Disconnect
+              </button>
+              <button
+                type="button"
+                onClick={handleRecover}
+                disabled={recovering || agentRunning}
+                style={{
+                  padding: '5px 10px',
+                  background: 'transparent',
+                  border: `1px solid ${recovering || agentRunning ? '#30363d' : '#d2992240'}`,
+                  borderRadius: 6,
+                  color: recovering || agentRunning ? '#8b949e' : '#d29922',
+                  fontSize: 11,
+                  cursor: recovering || agentRunning ? 'default' : 'pointer',
+                }}
+              >
+                {recovering ? 'Recovering…' : 'Recover Browser'}
               </button>
               <button
                 type="button"
