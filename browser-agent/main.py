@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 import os
@@ -219,58 +220,75 @@ async def session_mouse_move(session_id: str, body: MouseMoveRequest):
     return {"ok": True}
 
 
-@app.post("/session/{session_id}/click_cloudflare")
-async def session_click_cloudflare(session_id: str):
-    """Click the Cloudflare Turnstile checkbox — waits for iframe to load, tries multiple methods."""
+# Heuristics for "still on a Cloudflare challenge page".
+_CF_TITLES = ("just a moment", "verify you are human", "additional verification")
+
+
+async def _is_cloudflare_challenge(page) -> bool:
+    """True if the page still looks like a Cloudflare interstitial."""
+    try:
+        title = (await page.title() or "").lower()
+        if any(t in title for t in _CF_TITLES):
+            return True
+        for frame in page.frames:
+            url = frame.url or ""
+            if "challenges.cloudflare.com" in url or "turnstile" in url:
+                return True
+    except Exception:
+        pass
+    return False
+
+
+@app.post("/session/{session_id}/await_cloudflare")
+async def session_await_cloudflare(session_id: str):
+    """Wait for a Cloudflare challenge to clear on its own. patchright passes
+    the passive check automatically; this just polls until it succeeds. If an
+    interactive Turnstile checkbox is still present after the initial wait, we
+    click it ONCE, then poll again. No frantic re-clicking."""
     s = _get_session(session_id)
     page = s["page"]
 
-    # Wait for the iframe to appear in the DOM before trying anything
-    iframe_selector = "iframe[src*='challenges.cloudflare.com'], iframe[src*='turnstile']"
-    try:
-        await page.wait_for_selector(iframe_selector, timeout=8000)
-    except Exception:
-        pass  # Continue — frame might already be in page.frames even if selector times out
+    async def _poll_cleared(seconds: float) -> bool:
+        deadline = seconds * 2  # poll every 0.5s
+        for _ in range(int(deadline)):
+            if not await _is_cloudflare_challenge(page):
+                return True
+            await asyncio.sleep(0.5)
+        return False
 
-    # Try clicking inside each matching frame
-    # Turnstile uses a div/label, not a real input, so we try broad selectors
-    _cf_selectors = [
-        "input[type=checkbox]",
-        "[role=checkbox]",
-        ".ctp-checkbox-label",
-        "#cf-stage",
-        "label",
-        "body",  # last resort: click centre of the frame body
-    ]
+    # Phase 1: give the passive check time to clear with no interaction.
+    if await _poll_cleared(20):
+        await _inject_cursor(page)
+        return {"cleared": True, "method": "passive"}
+
+    # Phase 2: an interactive checkbox is still showing — click it once.
+    clicked = False
     for frame in page.frames:
-        url = frame.url or ""
-        if "challenges.cloudflare.com" in url or "turnstile" in url:
-            for sel in _cf_selectors:
-                try:
-                    await frame.click(sel, timeout=3000)
-                    return {"ok": True, "method": f"frame:{sel}"}
-                except Exception:
-                    continue
+        try:
+            url = frame.url or ""
+            if "challenges.cloudflare.com" in url or "turnstile" in url:
+                for sel in ("input[type=checkbox]", "[role=checkbox]", "label", "body"):
+                    try:
+                        await frame.click(sel, timeout=2500)
+                        clicked = True
+                        break
+                    except Exception:
+                        continue
+        except Exception:
+            continue
+        if clicked:
+            break
 
-    # Fallback: get the iframe's bounding box from the main page and click its centre
-    try:
-        iframe_el = await page.query_selector(iframe_selector)
-        if iframe_el:
-            box = await iframe_el.bounding_box()
-            if box:
-                cx = round(box["x"] + box["width"] / 2)
-                cy = round(box["y"] + box["height"] / 2)
-                await page.mouse.move(cx, cy)
-                await page.mouse.click(cx, cy, delay=150)
-                return {"ok": True, "method": "iframe_bbox_center", "x": cx, "y": cy}
-    except Exception:
-        pass
+    # Phase 3: poll again after the click.
+    if await _poll_cleared(15):
+        await _inject_cursor(page)
+        return {"cleared": True, "method": "clicked" if clicked else "passive_late"}
 
-    # Return frame debug info so the agent can report usefully
     frame_urls = [f.url for f in page.frames if f.url]
     return {
-        "ok": False,
-        "error": "Cloudflare iframe not found",
+        "cleared": False,
+        "clicked": clicked,
+        "error": "Cloudflare challenge did not clear",
         "frames_seen": frame_urls[:10],
     }
 
