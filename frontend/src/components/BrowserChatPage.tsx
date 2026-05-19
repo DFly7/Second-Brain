@@ -13,6 +13,13 @@ import {
 import { useSse } from '../hooks/useSse'
 import TopBar from './TopBar'
 
+type ActionItem = {
+  id: string
+  type: string
+  detail: string
+  error?: boolean
+}
+
 type ConnectionState = 'disconnected' | 'connecting' | 'connected'
 
 export default function BrowserChatPage() {
@@ -27,6 +34,7 @@ export default function BrowserChatPage() {
   const [input, setInput] = useState('')
   const [connectError, setConnectError] = useState<string | null>(null)
   const [currentUrl, setCurrentUrl] = useState('')
+  const [actions, setActions] = useState<ActionItem[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -61,6 +69,12 @@ export default function BrowserChatPage() {
       if (ev.type === 'navigate') {
         setCurrentUrl(String(ev.detail ?? '').replace('Navigated to ', ''))
       }
+      setActions(prev => [...prev, {
+        id: String(Date.now()) + Math.random(),
+        type: String(ev.type ?? ''),
+        detail: String(ev.detail ?? ''),
+        error: ev.error === true,
+      }])
     }
     if (ev.event === 'browser_chat:reply') {
       const msg: BrowserChatMessage = {
@@ -118,6 +132,7 @@ export default function BrowserChatPage() {
     }
     setMessages(prev => [...prev, userMsg])
     setAgentRunning(true)
+    setActions([])
     try {
       await sendBrowserChatMessage(activeSessionId, content)
     } catch {
@@ -165,20 +180,39 @@ export default function BrowserChatPage() {
               </div>
             )}
             {messages.map(msg => (
-              <div key={msg.id} style={{
-                alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                maxWidth: '90%',
-                background: msg.role === 'user' ? '#1f3a5f' : '#21262d',
-                border: `1px solid ${msg.role === 'user' ? '#388bfd40' : '#30363d'}`,
-                borderRadius: msg.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
-                padding: '8px 12px',
-                fontSize: 13,
-                color: '#e6edf3',
-                lineHeight: 1.5,
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
+              <React.Fragment key={msg.id}>
+                <div style={{
+                  alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                  maxWidth: '90%',
+                  background: msg.role === 'user' ? '#1f3a5f' : '#21262d',
+                  border: `1px solid ${msg.role === 'user' ? '#388bfd40' : '#30363d'}`,
+                  borderRadius: msg.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+                  padding: '8px 12px',
+                  fontSize: 13,
+                  color: '#e6edf3',
+                  lineHeight: 1.5,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}>
+                  {msg.content}
+                </div>
+              </React.Fragment>
+            ))}
+            {actions.map(action => (
+              <div key={action.id} style={{
+                alignSelf: 'flex-start',
+                display: 'flex',
+                alignItems: 'baseline',
+                gap: 6,
+                padding: '3px 8px',
+                fontSize: 11,
+                color: action.error ? '#f85149' : '#8b949e',
+                fontFamily: 'monospace',
               }}>
-                {msg.content}
+                <span>{action.error ? '⚠' : actionIcon(action.type)}</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 260 }}>
+                  {action.detail}
+                </span>
               </div>
             ))}
             {agentRunning && (
@@ -382,4 +416,26 @@ const smallBtn: React.CSSProperties = {
   fontSize: 11,
   cursor: 'pointer',
   flexShrink: 0,
+}
+
+function actionIcon(type: string): string {
+  const icons: Record<string, string> = {
+    navigate: '→',
+    page_state: '⊞',
+    click: '↖',
+    click_at: '↖',
+    mouse_move: '⤷',
+    type: '✎',
+    key: '⌨',
+    focus: '◎',
+    hover: '⤳',
+    select: '▾',
+    scroll: '⟳',
+    wait_for: '⌛',
+    read: '≡',
+    execute_js: '{}',
+    screenshot: '📷',
+    wiki_write: '✦',
+  }
+  return icons[type] ?? '·'
 }
