@@ -16,6 +16,22 @@ from app.config import settings
 from app.models import BrowserChatSession
 from app.sse import broadcaster
 
+
+class BrowserClosedError(Exception):
+    """Raised when the Playwright browser/page has been closed unexpectedly."""
+
+
+_BROWSER_CLOSED_MARKERS = ("TargetClosedError", "Target page", "browser has been closed")
+
+
+async def _safe_browser_post(http: httpx.AsyncClient, url: str, **kwargs) -> httpx.Response:
+    resp = await http.post(url, **kwargs)
+    if resp.status_code == 500 and any(m in resp.text for m in _BROWSER_CLOSED_MARKERS):
+        raise BrowserClosedError("Browser window was closed")
+    resp.raise_for_status()
+    return resp
+
+
 _PROMPTS = Path(__file__).parent / "prompts"
 SYSTEM_PROMPT = (_PROMPTS / "browser_chat.md").read_text()
 
@@ -63,63 +79,73 @@ async def run_turn(
 
         reply_text = "Done."
 
-        async with httpx.AsyncClient(base_url=settings.browser_agent_url, timeout=60.0) as http:
-            for turn in range(MAX_TURNS):
-                # Check interrupt flag between turns.
-                db_session.expire_all()
-                result = await db_session.execute(
-                    select(BrowserChatSession).where(BrowserChatSession.id == chat_session_id)
-                )
-                sess = result.scalar_one_or_none()
-                if sess and sess.user_interrupted:
-                    messages.append({
-                        "role": "user",
-                        "content": "[System: the user interacted with the browser while you were working — browser state may have changed. Call browser_screenshot to see the updated state if needed.]",
-                    })
-                    sess.user_interrupted = False
-                    await db_session.commit()
+        try:
+            async with httpx.AsyncClient(base_url=settings.browser_agent_url, timeout=60.0) as http:
+                for turn in range(MAX_TURNS):
+                    # Check interrupt flag between turns.
+                    db_session.expire_all()
+                    result = await db_session.execute(
+                        select(BrowserChatSession).where(BrowserChatSession.id == chat_session_id)
+                    )
+                    sess = result.scalar_one_or_none()
+                    if sess and sess.user_interrupted:
+                        messages.append({
+                            "role": "user",
+                            "content": "[System: the user interacted with the browser while you were working — browser state may have changed. Call browser_screenshot to see the updated state if needed.]",
+                        })
+                        sess.user_interrupted = False
+                        await db_session.commit()
 
-                resp = await litellm.acompletion(
-                    model=settings.litellm_model,
-                    messages=messages,
-                    tools=tool_defs,
-                    tool_choice="auto",
-                )
-                msg = resp.choices[0].message
-                tool_calls = getattr(msg, "tool_calls", None) or []
-                messages.append(assistant_message_for_litellm(msg))
+                    resp = await litellm.acompletion(
+                        model=settings.litellm_model,
+                        messages=messages,
+                        tools=tool_defs,
+                        tool_choice="auto",
+                    )
+                    msg = resp.choices[0].message
+                    tool_calls = getattr(msg, "tool_calls", None) or []
+                    messages.append(assistant_message_for_litellm(msg))
 
-                if not tool_calls:
-                    reply_text = getattr(msg, "content", None) or "Done."
-                    _log.info("browser_chat_turn_done", session_id=chat_session_id, turn=turn)
-                    break
+                    if not tool_calls:
+                        reply_text = getattr(msg, "content", None) or "Done."
+                        _log.info("browser_chat_turn_done", session_id=chat_session_id, turn=turn)
+                        break
 
-                tool_results = []
-                for tc in tool_calls:
-                    name = tc.function.name
-                    args = json.loads(tc.function.arguments or "{}")
-                    try:
-                        result_str = await _dispatch(
-                            name, args, browser_session_id, http,
-                            wiki_tools, chat_session_id, audience_user_id,
-                        )
-                    except Exception as tool_exc:
-                        result_str = f"Error: {tool_exc}"
-                    tool_results.append({
-                        "role": "tool",
-                        "tool_call_id": tc.id,
-                        "content": result_str,
-                    })
-                messages.extend(tool_results)
-            else:
-                last_assistant = next(
-                    (m.get("content") for m in reversed(messages) if isinstance(m, dict) and m.get("role") == "assistant"),
-                    None,
-                )
-                if not last_assistant and messages:
-                    last_msg = messages[-1]
-                    last_assistant = last_msg.get("content") if isinstance(last_msg, dict) else getattr(last_msg, "content", None)
-                reply_text = "I've reached my turn limit for this message. Here's where I got to: " + (last_assistant or "see browser.")
+                    tool_results = []
+                    for tc in tool_calls:
+                        name = tc.function.name
+                        args = json.loads(tc.function.arguments or "{}")
+                        try:
+                            result_str = await _dispatch(
+                                name, args, browser_session_id, http,
+                                wiki_tools, chat_session_id, audience_user_id,
+                            )
+                        except BrowserClosedError:
+                            raise
+                        except Exception as tool_exc:
+                            result_str = f"Error: {tool_exc}"
+                        tool_results.append({
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "content": result_str,
+                        })
+                    messages.extend(tool_results)
+                else:
+                    last_assistant = next(
+                        (m.get("content") for m in reversed(messages) if isinstance(m, dict) and m.get("role") == "assistant"),
+                        None,
+                    )
+                    if not last_assistant and messages:
+                        last_msg = messages[-1]
+                        last_assistant = last_msg.get("content") if isinstance(last_msg, dict) else getattr(last_msg, "content", None)
+                    reply_text = "I've reached my turn limit for this message. Here's where I got to: " + (last_assistant or "see browser.")
+        except BrowserClosedError:
+            reply_text = (
+                "The browser window was closed unexpectedly. "
+                "Click **Recover Browser** in the toolbar to get a fresh browser tab, "
+                "then tell me where to continue."
+            )
+            _log.warning("browser_chat_browser_closed", session_id=chat_session_id)
 
         return reply_text
 
@@ -145,14 +171,12 @@ async def _dispatch(
         )
 
     if name == "browser_navigate":
-        resp = await http.post(f"/session/{browser_session_id}/navigate", json={"url": args["url"]})
-        resp.raise_for_status()
+        resp = await _safe_browser_post(http, f"/session/{browser_session_id}/navigate", json={"url": args["url"]})
         await _action("navigate", f"Navigated to {args['url']}")
         return resp.json().get("title", "ok")
 
     if name == "browser_get_page_state":
-        resp = await http.post(f"/session/{browser_session_id}/get_page_state")
-        resp.raise_for_status()
+        resp = await _safe_browser_post(http, f"/session/{browser_session_id}/get_page_state")
         data = resp.json()
         await _action("page_state", f"Got page state: {data.get('title', '')}")
         return json.dumps(data)
@@ -167,47 +191,40 @@ async def _dispatch(
             label = args["text"]
         else:
             return "Error: provide selector or text"
-        resp = await http.post(f"/session/{browser_session_id}/click", json=payload)
-        resp.raise_for_status()
+        resp = await _safe_browser_post(http, f"/session/{browser_session_id}/click", json=payload)
         await _action("click", f"Clicked '{label}'")
         return "clicked"
 
     if name == "browser_type":
-        resp = await http.post(f"/session/{browser_session_id}/type", json={"text": args["text"]})
-        resp.raise_for_status()
+        resp = await _safe_browser_post(http, f"/session/{browser_session_id}/type", json={"text": args["text"]})
         preview = args["text"][:40] + ("…" if len(args["text"]) > 40 else "")
         await _action("type", f'Typed "{preview}"')
         return "typed"
 
     if name == "browser_press_key":
-        resp = await http.post(f"/session/{browser_session_id}/press_key", json={"key": args["key"]})
-        resp.raise_for_status()
+        resp = await _safe_browser_post(http, f"/session/{browser_session_id}/press_key", json={"key": args["key"]})
         await _action("key", f"Pressed {args['key']}")
         return "key pressed"
 
     if name == "browser_focus":
-        resp = await http.post(f"/session/{browser_session_id}/focus", json={"selector": args["selector"]})
-        resp.raise_for_status()
+        resp = await _safe_browser_post(http, f"/session/{browser_session_id}/focus", json={"selector": args["selector"]})
         await _action("focus", f"Focused '{args['selector']}'")
         return "focused"
 
     if name == "browser_hover":
-        resp = await http.post(f"/session/{browser_session_id}/hover", json={"selector": args["selector"]})
-        resp.raise_for_status()
+        resp = await _safe_browser_post(http, f"/session/{browser_session_id}/hover", json={"selector": args["selector"]})
         await _action("hover", f"Hovered over '{args['selector']}'")
         return "hovered"
 
     if name == "browser_select_option":
-        resp = await http.post(f"/session/{browser_session_id}/select_option", json={"selector": args["selector"], "value": args["value"]})
-        resp.raise_for_status()
+        resp = await _safe_browser_post(http, f"/session/{browser_session_id}/select_option", json={"selector": args["selector"], "value": args["value"]})
         await _action("select", f"Selected '{args['value']}' in '{args['selector']}'")
         return f"selected: {resp.json().get('selected')}"
 
     if name == "browser_scroll":
         direction = args.get("direction", "down")
         amount = int(args.get("amount", 300))
-        resp = await http.post(f"/session/{browser_session_id}/scroll", json={"direction": direction, "amount": amount})
-        resp.raise_for_status()
+        resp = await _safe_browser_post(http, f"/session/{browser_session_id}/scroll", json={"direction": direction, "amount": amount})
         await _action("scroll", f"Scrolled {direction}")
         return "scrolled"
 
@@ -223,8 +240,7 @@ async def _dispatch(
             return "Error: provide selector or text"
         if args.get("timeout"):
             payload["timeout"] = int(args["timeout"])
-        resp = await http.post(f"/session/{browser_session_id}/wait_for", json=payload)
-        resp.raise_for_status()
+        resp = await _safe_browser_post(http, f"/session/{browser_session_id}/wait_for", json=payload)
         data = resp.json()
         await _action("wait_for", f"Waited for '{label}'")
         if not data.get("found"):
@@ -232,23 +248,20 @@ async def _dispatch(
         return "found"
 
     if name == "browser_read":
-        resp = await http.post(f"/session/{browser_session_id}/extract")
-        resp.raise_for_status()
+        resp = await _safe_browser_post(http, f"/session/{browser_session_id}/extract")
         text = resp.json().get("text", "")
         await _action("read", f"Read page content ({len(text)} chars)")
         return text
 
     if name == "browser_execute_js":
-        resp = await http.post(f"/session/{browser_session_id}/execute_js", json={"script": args["script"]})
-        resp.raise_for_status()
+        resp = await _safe_browser_post(http, f"/session/{browser_session_id}/execute_js", json={"script": args["script"]})
         js_result = resp.json().get("result")
         preview = args["script"][:60] + ("…" if len(args["script"]) > 60 else "")
         await _action("execute_js", f"Executed JS: {preview}")
         return json.dumps(js_result)
 
     if name == "browser_screenshot":
-        resp = await http.post(f"/session/{browser_session_id}/screenshot")
-        resp.raise_for_status()
+        resp = await _safe_browser_post(http, f"/session/{browser_session_id}/screenshot")
         image_b64 = resp.json().get("image_b64", "")
         await _action("screenshot", "Took screenshot")
         return [
