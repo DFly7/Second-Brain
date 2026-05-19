@@ -278,6 +278,18 @@ async def _dispatch(
             {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}},
         ]
 
+    if name == "browser_click_at":
+        resp = await http.post(f"/session/{browser_session_id}/click", json={"x": args["x"], "y": args["y"]})
+        resp.raise_for_status()
+        await _action("click_at", f"Clicked at ({int(args['x'])}, {int(args['y'])})")
+        return "clicked"
+
+    if name == "browser_mouse_move":
+        resp = await http.post(f"/session/{browser_session_id}/mouse_move", json={"x": args["x"], "y": args["y"]})
+        resp.raise_for_status()
+        await _action("mouse_move", f"Moved to ({int(args['x'])}, {int(args['y'])})")
+        return "moved"
+
     # Wiki tools
     wiki_result = await wiki_tools.dispatch(name, args)
     if name in ("write_page", "create_page", "append_to_page"):

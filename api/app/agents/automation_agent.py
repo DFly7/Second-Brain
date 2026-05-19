@@ -199,6 +199,47 @@ BROWSER_TOOLS = [
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_click_at",
+            "description": (
+                "Click at exact pixel coordinates on the screen. "
+                "Use when selector/text clicking fails — e.g. Cloudflare checkboxes inside iframes. "
+                "The viewport is 1280×800. Call browser_mouse_move first to position the cursor near "
+                "the target, take a screenshot to verify, then call this to click. "
+                "The click uses a realistic press duration automatically."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "x": {"type": "number", "description": "Horizontal pixel coordinate (0–1280)"},
+                    "y": {"type": "number", "description": "Vertical pixel coordinate (0–800)"},
+                },
+                "required": ["x", "y"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_mouse_move",
+            "description": (
+                "Move the mouse cursor to pixel coordinates without clicking. "
+                "Use before browser_click_at to approach the target naturally — "
+                "move near the element first, take a screenshot to verify the cursor is in the right area, "
+                "then use browser_click_at. The viewport is 1280×800."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "x": {"type": "number", "description": "Horizontal pixel coordinate (0–1280)"},
+                    "y": {"type": "number", "description": "Vertical pixel coordinate (0–800)"},
+                },
+                "required": ["x", "y"],
+            },
+        },
+    },
 ]
 
 _log = structlog.get_logger()

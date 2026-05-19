@@ -104,6 +104,30 @@ async def test_wiki_read_delegates_to_agent_tools(wiki):
 
 
 @pytest.mark.asyncio
+async def test_click_at_posts_to_click_endpoint_with_coordinates(wiki, patch_broadcaster):
+    http = _make_http({"ok": True})
+    result = await _dispatch("browser_click_at", {"x": 400.0, "y": 300.0}, "sid", http, wiki, "chat-1", "u1")
+    assert result == "clicked"
+    http.post.assert_awaited_once_with("/session/sid/click", json={"x": 400.0, "y": 300.0})
+    published = patch_broadcaster.publish.call_args[0][0]
+    assert published["type"] == "click_at"
+    assert "400" in published["detail"]
+    assert "300" in published["detail"]
+
+
+@pytest.mark.asyncio
+async def test_mouse_move_posts_to_mouse_move_endpoint(wiki, patch_broadcaster):
+    http = _make_http({"ok": True})
+    result = await _dispatch("browser_mouse_move", {"x": 200.0, "y": 150.0}, "sid", http, wiki, "chat-1", "u1")
+    assert result == "moved"
+    http.post.assert_awaited_once_with("/session/sid/mouse_move", json={"x": 200.0, "y": 150.0})
+    published = patch_broadcaster.publish.call_args[0][0]
+    assert published["type"] == "mouse_move"
+    assert "200" in published["detail"]
+    assert "150" in published["detail"]
+
+
+@pytest.mark.asyncio
 async def test_navigate_publishes_sse_action(wiki, patch_broadcaster):
     http = _make_http({"title": "Example"})
     await _dispatch("browser_navigate", {"url": "https://example.com"}, "sid", http, wiki, "chat-1", "u1")
