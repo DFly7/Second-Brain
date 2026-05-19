@@ -20,6 +20,7 @@ _log = structlog.get_logger()
 
 class MessageRequest(BaseModel):
     content: str
+    max_turns: int = 20
 
 
 # ---------------------------------------------------------------------------
@@ -74,6 +75,7 @@ async def _run_turn_task(
     browser_session_id: str,
     user_content: str,
     audience_user_id: str,
+    max_turns: int = 20,
 ) -> None:
     async with AsyncSessionLocal() as db:
         # Load full history (already includes the new user message).
@@ -99,6 +101,7 @@ async def _run_turn_task(
                 conversation_history=history,
                 audience_user_id=audience_user_id,
                 db_session=db,
+                max_turns=max_turns,
             )
         except Exception as exc:
             _log.error("browser_chat_turn_error", session_id=chat_session_id, error=str(exc))
@@ -161,6 +164,7 @@ async def send_message(
         sess.browser_session_id,
         body.content.strip(),
         user,
+        body.max_turns,
     )
     return {"status": "accepted"}
 

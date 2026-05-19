@@ -334,11 +334,11 @@ export async function connectBrowserChat(): Promise<{ session_id: string }> {
   return r.json()
 }
 
-export async function sendBrowserChatMessage(sessionId: string, content: string): Promise<void> {
+export async function sendBrowserChatMessage(sessionId: string, content: string, maxTurns = 20): Promise<void> {
   const r = await fetchWithAuth(`${BASE}/browser-chat/sessions/${sessionId}/message`, {
     method: 'POST',
     headers: jsonHeaders(),
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, max_turns: maxTurns }),
   })
   if (!r.ok) throw new Error(`sendBrowserChatMessage failed: ${r.status}`)
 }

@@ -49,9 +49,6 @@ def _extract_text(content: object) -> str:
     return "Done."
 
 
-MAX_TURNS = 20
-
-
 async def run_turn(
     chat_session_id: str,
     workspace_id: str,
@@ -59,6 +56,7 @@ async def run_turn(
     conversation_history: list[dict],
     audience_user_id: str,
     db_session: AsyncSession,
+    max_turns: int = 20,
 ) -> str:
     """
     Run one agent turn for the latest user message.
@@ -93,7 +91,7 @@ async def run_turn(
 
         try:
             async with httpx.AsyncClient(base_url=settings.browser_agent_url, timeout=60.0) as http:
-                for turn in range(MAX_TURNS):
+                for turn in range(max_turns):
                     # Check interrupt flag between turns.
                     db_session.expire_all()
                     result = await db_session.execute(

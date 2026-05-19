@@ -37,6 +37,7 @@ export default function BrowserChatPage() {
   const [recovering, setRecovering] = useState(false)
   const [currentUrl, setCurrentUrl] = useState('')
   const [actions, setActions] = useState<ActionItem[]>([])
+  const [maxTurns, setMaxTurns] = useState(20)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -122,6 +123,13 @@ export default function BrowserChatPage() {
     listBrowserChatSessions().then(setPastSessions).catch(() => {})
   }
 
+  async function handlePastDisconnect(sessionId: string) {
+    try {
+      await disconnectBrowserChat(sessionId)
+    } catch { /* best-effort */ }
+    listBrowserChatSessions().then(setPastSessions).catch(() => {})
+  }
+
   async function handleRecover() {
     if (!activeSessionId || recovering) return
     setRecovering(true)
@@ -159,7 +167,7 @@ export default function BrowserChatPage() {
     setAgentRunning(true)
     setActions([])
     try {
-      await sendBrowserChatMessage(activeSessionId, content)
+      await sendBrowserChatMessage(activeSessionId, content, maxTurns)
     } catch {
       setAgentRunning(false)
       setMessages(prev => [...prev, {
@@ -279,6 +287,17 @@ export default function BrowserChatPage() {
               >
                 Disconnect
               </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <label style={{ fontSize: 11, color: '#8b949e' }}>Turns</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={maxTurns}
+                  onChange={e => setMaxTurns(Math.max(1, Math.min(100, Number(e.target.value))))}
+                  style={{ width: 46, padding: '3px 6px', background: '#0d1117', border: '1px solid #30363d', borderRadius: 5, color: '#e6edf3', fontSize: 11, textAlign: 'center' }}
+                />
+              </div>
               <button
                 type="button"
                 onClick={handleRecover}
@@ -398,6 +417,15 @@ export default function BrowserChatPage() {
                       {s.completed_at && ` · ${Math.round((new Date(s.completed_at).getTime() - new Date(s.created_at).getTime()) / 60000)}m`}
                     </div>
                   </div>
+                  {s.status === 'active' && (
+                    <button
+                      type="button"
+                      onClick={() => handlePastDisconnect(s.id)}
+                      style={{ padding: '4px 8px', background: 'transparent', border: '1px solid #f8514940', borderRadius: 5, color: '#f85149', fontSize: 11, cursor: 'pointer' }}
+                    >
+                      Disconnect
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => toggleExpandSession(s.id)}
