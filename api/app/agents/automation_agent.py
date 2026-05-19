@@ -240,6 +240,18 @@ BROWSER_TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_click_cloudflare",
+            "description": (
+                "Click the Cloudflare Turnstile 'Verify you are human' checkbox using Playwright's "
+                "iframe frame access — no coordinate guessing needed. Use this immediately when you "
+                "detect a Cloudflare challenge page instead of browser_click_at."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
 ]
 
 _log = structlog.get_logger()

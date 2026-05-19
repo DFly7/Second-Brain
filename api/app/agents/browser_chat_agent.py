@@ -299,6 +299,15 @@ async def _dispatch(
         await _action("mouse_move", f"Moved to ({int(args['x'])}, {int(args['y'])})")
         return "moved"
 
+    if name == "browser_click_cloudflare":
+        resp = await _safe_browser_post(http, f"/session/{browser_session_id}/click_cloudflare")
+        result = resp.json()
+        if result.get("ok"):
+            await _action("click_at", f"Clicked Cloudflare checkbox ({result.get('method', '')})")
+            return "Cloudflare checkbox clicked — wait for challenge to clear then check page state."
+        await _action("click_at", "Cloudflare click failed — iframe not found")
+        return result.get("error", "Cloudflare iframe not found")
+
     # Wiki tools
     wiki_result = await wiki_tools.dispatch(name, args)
     if name in ("write_page", "create_page", "append_to_page"):

@@ -244,6 +244,40 @@ async def session_mouse_move(session_id: str, body: MouseMoveRequest):
     return {"ok": True}
 
 
+@app.post("/session/{session_id}/click_cloudflare")
+async def session_click_cloudflare(session_id: str):
+    """Click the Cloudflare Turnstile checkbox via iframe frame access — no coordinate guessing."""
+    s = _get_session(session_id)
+    page = s["page"]
+    for frame in page.frames:
+        url = frame.url or ""
+        if "challenges.cloudflare.com" in url or "turnstile" in url:
+            try:
+                await frame.click("input[type=checkbox]", timeout=5000)
+                return {"ok": True, "method": "checkbox"}
+            except Exception:
+                pass
+            try:
+                await frame.click("label", timeout=5000)
+                return {"ok": True, "method": "label"}
+            except Exception:
+                pass
+    # Fallback: try clicking the iframe element itself from the main frame
+    try:
+        iframe_el = await page.query_selector("iframe[src*='cloudflare'], iframe[src*='turnstile']")
+        if iframe_el:
+            box = await iframe_el.bounding_box()
+            if box:
+                cx = box["x"] + box["width"] / 2
+                cy = box["y"] + box["height"] / 2
+                await page.mouse.move(cx, cy)
+                await page.mouse.click(cx, cy, delay=150)
+                return {"ok": True, "method": "iframe_center", "x": cx, "y": cy}
+    except Exception:
+        pass
+    return {"ok": False, "error": "Cloudflare iframe not found — try browser_click_at with coordinates from screenshot"}
+
+
 class TypeRequest(BaseModel):
     text: str
 
@@ -382,6 +416,8 @@ _GET_ELEMENTS_JS = """() => {
             text,
             selector: sel,
             href: el.tagName === 'A' ? el.getAttribute('href') : null,
+            x: Math.round(rect.left + rect.width / 2),
+            y: Math.round(rect.top + rect.height / 2),
         });
     });
     return els.slice(0, 60);
