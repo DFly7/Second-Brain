@@ -80,6 +80,73 @@ async def health():
 
 _CHROMIUM_PATH = os.getenv("CHROMIUM_EXECUTABLE_PATH")
 
+_LAUNCH_ARGS = [
+    "--disable-blink-features=AutomationControlled",
+    "--exclude-switches=enable-automation",
+    "--disable-infobars",
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--password-store=basic",
+    "--disable-component-update",
+    "--disable-dev-shm-usage",
+    "--disable-background-timer-throttling",
+    "--disable-backgrounding-occluded-windows",
+    "--disable-renderer-backgrounding",
+    "--lang=en-GB",
+]
+
+# Injected on every page — renders a red dot that follows Playwright mouse events
+# so the cursor is visible in the VNC/noVNC live view.
+_CURSOR_SCRIPT = """(() => {
+    const inject = () => {
+        if (document.getElementById('__pw_cursor__')) return;
+        const c = document.createElement('div');
+        c.id = '__pw_cursor__';
+        c.style.cssText = [
+            'position:fixed',
+            'width:14px',
+            'height:14px',
+            'border-radius:50%',
+            'background:rgba(220,40,40,0.8)',
+            'border:2px solid rgba(255,255,255,0.9)',
+            'box-shadow:0 1px 4px rgba(0,0,0,0.45)',
+            'pointer-events:none',
+            'z-index:2147483647',
+            'transform:translate(-50%,-50%)',
+            'transition:none',
+            'left:-100px',
+            'top:-100px',
+        ].join(';');
+        document.documentElement.appendChild(c);
+        document.addEventListener('mousemove', e => {
+            c.style.left = e.clientX + 'px';
+            c.style.top = e.clientY + 'px';
+        }, {passive: true});
+    };
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', inject);
+    } else {
+        inject();
+    }
+})();"""
+
+
+async def _new_page(browser, video_dir: str):
+    """Create a stealth context + page with cursor injection."""
+    context = await browser.new_context(
+        record_video_dir=video_dir,
+        viewport={"width": 1280, "height": 800},
+        user_agent=_UA,
+        locale="en-GB",
+        timezone_id="Europe/London",
+        color_scheme="light",
+        extra_http_headers={"Accept-Language": "en-GB,en;q=0.9"},
+    )
+    page = await context.new_page()
+    await stealth_async(page)
+    await page.add_init_script(_CURSOR_SCRIPT)
+    return context, page
+
 
 @app.post("/session/new")
 async def session_new():
@@ -87,18 +154,12 @@ async def session_new():
     video_dir = tempfile.mkdtemp()
     launch_kwargs = {
         "headless": False,
-        "args": ["--disable-blink-features=AutomationControlled"],
+        "args": _LAUNCH_ARGS,
     }
     if _CHROMIUM_PATH:
         launch_kwargs["executable_path"] = _CHROMIUM_PATH
     browser = await _playwright.chromium.launch(**launch_kwargs)
-    context = await browser.new_context(
-        record_video_dir=video_dir,
-        viewport={"width": 1280, "height": 800},
-        user_agent=_UA,
-    )
-    page = await context.new_page()
-    await stealth_async(page)
+    context, page = await _new_page(browser, video_dir)
     _sessions[session_id] = {
         "browser": browser,
         "context": context,
@@ -123,15 +184,11 @@ async def session_recover(session_id: str):
                 pass
 
     video_dir = s.get("video_dir") or tempfile.mkdtemp()
-    launch_kwargs = {"headless": False}
+    launch_kwargs = {"headless": False, "args": _LAUNCH_ARGS}
     if _CHROMIUM_PATH:
         launch_kwargs["executable_path"] = _CHROMIUM_PATH
     browser = await _playwright.chromium.launch(**launch_kwargs)
-    context = await browser.new_context(
-        record_video_dir=video_dir,
-        viewport={"width": 1280, "height": 800},
-    )
-    page = await context.new_page()
+    context, page = await _new_page(browser, video_dir)
 
     _sessions[session_id] = {
         "browser": browser,
