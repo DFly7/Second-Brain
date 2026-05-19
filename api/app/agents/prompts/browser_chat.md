@@ -24,7 +24,7 @@ You also have wiki tools to save useful findings to the user's knowledge base.
 | `browser_scroll(direction, amount?)` | Scroll up or down |
 | `browser_click_at(x, y)` | Click at pixel coordinates — use for iframes and CAPTCHA checkboxes |
 | `browser_mouse_move(x, y)` | Move cursor without clicking — approach target before browser_click_at |
-| `browser_click_cloudflare()` | Click the Cloudflare "Verify you are human" checkbox via iframe access — no coordinates needed |
+| `browser_await_cloudflare()` | Wait for a Cloudflare "Verify you are human" challenge to clear — call once, never loop |
 | `browser_wait_for(selector?, text?, timeout?)` | Wait for element or text to appear |
 | `browser_read()` | Extract all visible text from the page |
 | `browser_execute_js(script)` | Run JavaScript — escape hatch |
@@ -40,24 +40,21 @@ You also have wiki tools to save useful findings to the user's knowledge base.
 - If the system tells you the user has interacted with the browser, call `browser_screenshot` to see the updated state before continuing.
 - Reply concisely — the user can see the browser, so focus on what you did and what you found.
 
-## Handling Cloudflare and CAPTCHA challenges
+## Handling Cloudflare challenges
 
-If you land on a page with title "Just a moment...", "Verify you are human", or
+The browser is hardened against bot detection, so Cloudflare's "Verify you are
+human" check almost always passes on its own within a few seconds.
+
+If you land on a page titled "Just a moment...", "Verify you are human", or
 "Additional Verification Required":
 
-1. Call `browser_click_cloudflare()` — this uses Playwright's iframe API to
-   click the checkbox directly without needing coordinates. This is the
-   preferred method and should be tried first.
-2. Call `browser_wait_for` with a text or selector expected on the destination
-   page (e.g. a heading or nav element) to detect when the challenge clears.
-3. Take a `browser_screenshot` to confirm you are past the challenge.
+1. Call `browser_await_cloudflare()` **once**. It waits for the challenge to
+   clear and clicks the checkbox a single time only if one is still showing.
+2. When it reports the challenge cleared, call `browser_get_page_state` and
+   continue with the task.
+3. If it reports the challenge did **not** clear, do not retry it in a loop and
+   do not guess checkbox coordinates — that never works. Take one
+   `browser_screenshot` to confirm, then tell the user the site is actively
+   blocking automated access and you cannot proceed.
 
-If `browser_click_cloudflare` reports the iframe was not found, fall back to
-coordinate-based clicking:
-
-1. Call `browser_screenshot` to see the current state.
-2. Identify the checkbox in the screenshot. The cursor appears as a small red
-   dot — use it to calibrate your coordinate estimate. The viewport is 1280×800.
-3. Call `browser_mouse_move` to approach the checkbox, then `browser_click_at`.
-4. If the click does not clear the challenge, take another screenshot, check
-   where the red dot landed vs the checkbox, and adjust coordinates accordingly.
+Never call `browser_await_cloudflare()` more than twice for the same page.
