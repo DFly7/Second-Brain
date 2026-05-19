@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+import shutil
 import tempfile
 import uuid
 from contextlib import asynccontextmanager
@@ -9,15 +10,9 @@ import boto3
 from botocore.exceptions import ClientError
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
-from playwright.async_api import async_playwright
-from playwright._impl._errors import TimeoutError as PlaywrightTimeoutError
-from playwright_stealth import stealth_async
+from patchright.async_api import async_playwright
+from patchright._impl._errors import TimeoutError as PlaywrightTimeoutError
 from pydantic import BaseModel
-
-_UA = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-)
 
 MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://minio:9000")
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
@@ -35,9 +30,11 @@ async def lifespan(app: FastAPI):
     yield
     for s in list(_sessions.values()):
         try:
-            await s["browser"].close()
+            await s["context"].close()
         except Exception:
             pass
+        shutil.rmtree(s.get("video_dir") or "", ignore_errors=True)
+        shutil.rmtree(s.get("user_data_dir") or "", ignore_errors=True)
     await _playwright.stop()
 
 
@@ -78,73 +75,57 @@ async def health():
     return {"status": "ok"}
 
 
-_CHROMIUM_PATH = os.getenv("CHROMIUM_EXECUTABLE_PATH")
+# "chrome" = real Google Chrome (x86_64). "chromium" = patchright's patched
+# Chromium (arm64, where Chrome has no Linux build). See Dockerfile.
+_BROWSER_CHANNEL = os.getenv("BROWSER_CHANNEL", "chromium")
 
-_LAUNCH_ARGS = [
-    "--disable-blink-features=AutomationControlled",
-    "--exclude-switches=enable-automation",
-    "--disable-infobars",
-    "--no-first-run",
-    "--no-default-browser-check",
-    "--password-store=basic",
-    "--disable-component-update",
-    "--disable-dev-shm-usage",
-    "--disable-background-timer-throttling",
-    "--disable-backgrounding-occluded-windows",
-    "--disable-renderer-backgrounding",
-    "--lang=en-GB",
-]
-
-# Injected on every page — renders a red dot that follows Playwright mouse events
-# so the cursor is visible in the VNC/noVNC live view.
-_CURSOR_SCRIPT = """(() => {
-    const inject = () => {
-        if (document.getElementById('__pw_cursor__')) return;
-        const c = document.createElement('div');
-        c.id = '__pw_cursor__';
-        c.style.cssText = [
-            'position:fixed',
-            'width:14px',
-            'height:14px',
-            'border-radius:50%',
-            'background:rgba(220,40,40,0.8)',
-            'border:2px solid rgba(255,255,255,0.9)',
-            'box-shadow:0 1px 4px rgba(0,0,0,0.45)',
-            'pointer-events:none',
-            'z-index:2147483647',
-            'transform:translate(-50%,-50%)',
-            'transition:none',
-            'left:-100px',
-            'top:-100px',
-        ].join(';');
-        document.documentElement.appendChild(c);
-        document.addEventListener('mousemove', e => {
-            c.style.left = e.clientX + 'px';
-            c.style.top = e.clientY + 'px';
-        }, {passive: true});
-    };
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', inject);
-    } else {
-        inject();
-    }
-})();"""
+# Injected via page.evaluate AFTER navigation (NOT add_init_script — patchright
+# forbids init scripts as they re-open the Runtime.enable CDP leak). Renders a
+# red dot that follows the mouse so the cursor is visible in the noVNC view.
+_CURSOR_SCRIPT = """() => {
+    if (document.getElementById('__pw_cursor__')) return;
+    const c = document.createElement('div');
+    c.id = '__pw_cursor__';
+    c.style.cssText = [
+        'position:fixed','width:14px','height:14px','border-radius:50%',
+        'background:rgba(220,40,40,0.8)','border:2px solid rgba(255,255,255,0.9)',
+        'box-shadow:0 1px 4px rgba(0,0,0,0.45)','pointer-events:none',
+        'z-index:2147483647','transform:translate(-50%,-50%)','transition:none',
+        'left:-100px','top:-100px',
+    ].join(';');
+    document.documentElement.appendChild(c);
+    document.addEventListener('mousemove', e => {
+        c.style.left = e.clientX + 'px';
+        c.style.top = e.clientY + 'px';
+    }, {passive: true});
+}"""
 
 
-async def _new_page(browser, video_dir: str):
-    """Create a stealth context + page with cursor injection."""
-    context = await browser.new_context(
+async def _inject_cursor(page):
+    """Re-add the visible cursor dot. Safe to call repeatedly; no-op if present."""
+    try:
+        await page.evaluate(_CURSOR_SCRIPT)
+    except Exception:
+        pass  # Cursor is cosmetic — never fail a real action over it.
+
+
+async def _new_session_objects(video_dir: str, user_data_dir: str):
+    """Launch a patchright persistent context + page.
+
+    Returns (context, page). There is no separate `browser` object with
+    launch_persistent_context — the context owns the browser process.
+    """
+    context = await _playwright.chromium.launch_persistent_context(
+        user_data_dir=user_data_dir,
+        channel=_BROWSER_CHANNEL,
+        headless=False,
+        no_viewport=True,
         record_video_dir=video_dir,
-        viewport={"width": 1280, "height": 800},
-        user_agent=_UA,
         locale="en-GB",
         timezone_id="Europe/London",
         color_scheme="light",
-        extra_http_headers={"Accept-Language": "en-GB,en;q=0.9"},
     )
-    page = await context.new_page()
-    await stealth_async(page)
-    await page.add_init_script(_CURSOR_SCRIPT)
+    page = context.pages[0] if context.pages else await context.new_page()
     return context, page
 
 
@@ -152,19 +133,14 @@ async def _new_page(browser, video_dir: str):
 async def session_new():
     session_id = str(uuid.uuid4())
     video_dir = tempfile.mkdtemp()
-    launch_kwargs = {
-        "headless": False,
-        "args": _LAUNCH_ARGS,
-    }
-    if _CHROMIUM_PATH:
-        launch_kwargs["executable_path"] = _CHROMIUM_PATH
-    browser = await _playwright.chromium.launch(**launch_kwargs)
-    context, page = await _new_page(browser, video_dir)
+    user_data_dir = tempfile.mkdtemp(prefix="pw-profile-")
+    context, page = await _new_session_objects(video_dir, user_data_dir)
+    await _inject_cursor(page)
     _sessions[session_id] = {
-        "browser": browser,
         "context": context,
         "page": page,
         "video_dir": video_dir,
+        "user_data_dir": user_data_dir,
     }
     return {"session_id": session_id}
 
@@ -175,26 +151,24 @@ async def session_recover(session_id: str):
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
     s = _sessions[session_id]
 
-    # Best-effort teardown of dead objects.
-    for obj in (s.get("browser"), s.get("context")):
-        if obj is not None:
-            try:
-                await obj.close()
-            except Exception:
-                pass
+    # Best-effort teardown of the dead context.
+    ctx = s.get("context")
+    if ctx is not None:
+        try:
+            await ctx.close()
+        except Exception:
+            pass
 
     video_dir = s.get("video_dir") or tempfile.mkdtemp()
-    launch_kwargs = {"headless": False, "args": _LAUNCH_ARGS}
-    if _CHROMIUM_PATH:
-        launch_kwargs["executable_path"] = _CHROMIUM_PATH
-    browser = await _playwright.chromium.launch(**launch_kwargs)
-    context, page = await _new_page(browser, video_dir)
+    user_data_dir = s.get("user_data_dir") or tempfile.mkdtemp(prefix="pw-profile-")
+    context, page = await _new_session_objects(video_dir, user_data_dir)
+    await _inject_cursor(page)
 
     _sessions[session_id] = {
-        "browser": browser,
         "context": context,
         "page": page,
         "video_dir": video_dir,
+        "user_data_dir": user_data_dir,
     }
     return {"ok": True}
 
@@ -207,6 +181,7 @@ class NavigateRequest(BaseModel):
 async def session_navigate(session_id: str, body: NavigateRequest):
     s = _get_session(session_id)
     await s["page"].goto(body.url, wait_until="domcontentloaded")
+    await _inject_cursor(s["page"])
     title = await s["page"].title()
     return {"title": title, "url": s["page"].url}
 
@@ -475,26 +450,27 @@ async def session_close(session_id: str):
     s = _get_session(session_id)
     page = s["page"]
     context = s["context"]
-    browser = s["browser"]
 
+    video_path = await page.video.path() if page.video else None
     await context.close()
-    video_path = await page.video.path()
-    await browser.close()
 
     recording_url = None
-    try:
-        _ensure_bucket()
-        key = f"automation-recordings/{session_id}.webm"
-        with open(video_path, "rb") as f:
-            _s3_client().put_object(
-                Bucket=S3_BUCKET,
-                Key=key,
-                Body=f.read(),
-                ContentType="video/webm",
-            )
-        recording_url = key
-    except Exception:
-        pass
+    if video_path:
+        try:
+            _ensure_bucket()
+            key = f"automation-recordings/{session_id}.webm"
+            with open(video_path, "rb") as f:
+                _s3_client().put_object(
+                    Bucket=S3_BUCKET,
+                    Key=key,
+                    Body=f.read(),
+                    ContentType="video/webm",
+                )
+            recording_url = key
+        except Exception:
+            pass
 
     del _sessions[session_id]
+    shutil.rmtree(s.get("video_dir") or "", ignore_errors=True)
+    shutil.rmtree(s.get("user_data_dir") or "", ignore_errors=True)
     return {"recording_url": recording_url}
