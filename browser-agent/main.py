@@ -97,6 +97,40 @@ async def session_new():
     return {"session_id": session_id}
 
 
+@app.post("/session/{session_id}/recover")
+async def session_recover(session_id: str):
+    if session_id not in _sessions:
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    s = _sessions[session_id]
+
+    # Best-effort teardown of dead objects.
+    for obj in (s.get("browser"), s.get("context")):
+        if obj is not None:
+            try:
+                await obj.close()
+            except Exception:
+                pass
+
+    video_dir = s.get("video_dir") or tempfile.mkdtemp()
+    launch_kwargs = {"headless": False}
+    if _CHROMIUM_PATH:
+        launch_kwargs["executable_path"] = _CHROMIUM_PATH
+    browser = await _playwright.chromium.launch(**launch_kwargs)
+    context = await browser.new_context(
+        record_video_dir=video_dir,
+        viewport={"width": 1280, "height": 800},
+    )
+    page = await context.new_page()
+
+    _sessions[session_id] = {
+        "browser": browser,
+        "context": context,
+        "page": page,
+        "video_dir": video_dir,
+    }
+    return {"ok": True}
+
+
 class NavigateRequest(BaseModel):
     url: str
 
