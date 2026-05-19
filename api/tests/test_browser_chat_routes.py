@@ -256,6 +256,66 @@ def test_disconnect_marks_completed(client):
 
 
 # ---------------------------------------------------------------------------
+# POST /browser-chat/sessions/{id}/recover
+# ---------------------------------------------------------------------------
+
+
+def test_recover_calls_browser_agent(client):
+    mock_ws = _make_ws()
+    mock_sess = _make_session()
+    sess_result = MagicMock()
+    sess_result.scalar_one_or_none.return_value = mock_sess
+
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=sess_result)
+    session.commit = AsyncMock()
+
+    async def override_db():
+        yield session
+
+    app.dependency_overrides[get_db] = override_db
+
+    try:
+        with patch("app.routes.browser_chat._ensure_workspace", new_callable=AsyncMock, return_value=mock_ws), \
+             patch("httpx.AsyncClient") as mock_http_cls:
+            mock_http = AsyncMock()
+            mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+            mock_http.__aexit__ = AsyncMock(return_value=False)
+            mock_resp = MagicMock()
+            mock_resp.raise_for_status = MagicMock()
+            mock_http.post = AsyncMock(return_value=mock_resp)
+            mock_http_cls.return_value = mock_http
+
+            r = client.post("/browser-chat/sessions/sess-1/recover")
+            assert r.status_code == 200
+            assert r.json() == {"ok": True}
+            mock_http.post.assert_called_once_with("/session/bsess-1/recover")
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+def test_recover_404_for_unknown_session(client):
+    mock_ws = _make_ws()
+    sess_result = MagicMock()
+    sess_result.scalar_one_or_none.return_value = None
+
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=sess_result)
+
+    async def override_db():
+        yield session
+
+    app.dependency_overrides[get_db] = override_db
+
+    try:
+        with patch("app.routes.browser_chat._ensure_workspace", new_callable=AsyncMock, return_value=mock_ws):
+            r = client.post("/browser-chat/sessions/no-such/recover")
+            assert r.status_code == 404
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+# ---------------------------------------------------------------------------
 # GET /browser-chat/sessions
 # ---------------------------------------------------------------------------
 
