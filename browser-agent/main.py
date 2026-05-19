@@ -246,36 +246,58 @@ async def session_mouse_move(session_id: str, body: MouseMoveRequest):
 
 @app.post("/session/{session_id}/click_cloudflare")
 async def session_click_cloudflare(session_id: str):
-    """Click the Cloudflare Turnstile checkbox via iframe frame access — no coordinate guessing."""
+    """Click the Cloudflare Turnstile checkbox — waits for iframe to load, tries multiple methods."""
     s = _get_session(session_id)
     page = s["page"]
+
+    # Wait for the iframe to appear in the DOM before trying anything
+    iframe_selector = "iframe[src*='challenges.cloudflare.com'], iframe[src*='turnstile']"
+    try:
+        await page.wait_for_selector(iframe_selector, timeout=8000)
+    except Exception:
+        pass  # Continue — frame might already be in page.frames even if selector times out
+
+    # Try clicking inside each matching frame
+    # Turnstile uses a div/label, not a real input, so we try broad selectors
+    _cf_selectors = [
+        "input[type=checkbox]",
+        "[role=checkbox]",
+        ".ctp-checkbox-label",
+        "#cf-stage",
+        "label",
+        "body",  # last resort: click centre of the frame body
+    ]
     for frame in page.frames:
         url = frame.url or ""
         if "challenges.cloudflare.com" in url or "turnstile" in url:
-            try:
-                await frame.click("input[type=checkbox]", timeout=5000)
-                return {"ok": True, "method": "checkbox"}
-            except Exception:
-                pass
-            try:
-                await frame.click("label", timeout=5000)
-                return {"ok": True, "method": "label"}
-            except Exception:
-                pass
-    # Fallback: try clicking the iframe element itself from the main frame
+            for sel in _cf_selectors:
+                try:
+                    await frame.click(sel, timeout=3000)
+                    return {"ok": True, "method": f"frame:{sel}"}
+                except Exception:
+                    continue
+
+    # Fallback: get the iframe's bounding box from the main page and click its centre
     try:
-        iframe_el = await page.query_selector("iframe[src*='cloudflare'], iframe[src*='turnstile']")
+        iframe_el = await page.query_selector(iframe_selector)
         if iframe_el:
             box = await iframe_el.bounding_box()
             if box:
-                cx = box["x"] + box["width"] / 2
-                cy = box["y"] + box["height"] / 2
+                cx = round(box["x"] + box["width"] / 2)
+                cy = round(box["y"] + box["height"] / 2)
                 await page.mouse.move(cx, cy)
                 await page.mouse.click(cx, cy, delay=150)
-                return {"ok": True, "method": "iframe_center", "x": cx, "y": cy}
+                return {"ok": True, "method": "iframe_bbox_center", "x": cx, "y": cy}
     except Exception:
         pass
-    return {"ok": False, "error": "Cloudflare iframe not found — try browser_click_at with coordinates from screenshot"}
+
+    # Return frame debug info so the agent can report usefully
+    frame_urls = [f.url for f in page.frames if f.url]
+    return {
+        "ok": False,
+        "error": "Cloudflare iframe not found",
+        "frames_seen": frame_urls[:10],
+    }
 
 
 class TypeRequest(BaseModel):
