@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.agents.browser_chat_agent import _dispatch
+from app.agents.browser_chat_agent import _dispatch, _extract_text
 
 
 def _make_http_response(json_data: dict):
@@ -18,6 +18,39 @@ def _make_http(json_data: dict | None = None):
     http = MagicMock()
     http.post = AsyncMock(return_value=resp)
     return http
+
+
+def test_extract_text_plain_string():
+    assert _extract_text("hello world") == "hello world"
+
+
+def test_extract_text_list_extracts_text_blocks():
+    content = [
+        {"type": "thinking", "thinking": "let me think"},
+        {"type": "text", "text": "Here are the results."},
+    ]
+    assert _extract_text(content) == "Here are the results."
+
+
+def test_extract_text_multiple_text_blocks():
+    content = [
+        {"type": "text", "text": "Part one."},
+        {"type": "text", "text": "Part two."},
+    ]
+    assert _extract_text(content) == "Part one. Part two."
+
+
+def test_extract_text_list_with_no_text_blocks_returns_done():
+    content = [{"type": "image_url", "image_url": {"url": "data:image/png;base64,abc"}}]
+    assert _extract_text(content) == "Done."
+
+
+def test_extract_text_empty_list_returns_done():
+    assert _extract_text([]) == "Done."
+
+
+def test_extract_text_none_returns_done():
+    assert _extract_text(None) == "Done."
 
 
 @pytest.fixture

@@ -22,6 +22,11 @@ def assistant_message_for_litellm(msg: Any) -> dict:
     """
     out: dict[str, Any] = {"role": "assistant"}
     content = getattr(msg, "content", None)
+    if isinstance(content, list):
+        content = " ".join(
+            block.get("text", "") for block in content
+            if isinstance(block, dict) and block.get("type") == "text"
+        ).strip() or None
     if content:
         out["content"] = content
     tool_calls = getattr(msg, "tool_calls", None) or []

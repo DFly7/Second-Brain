@@ -21,6 +21,18 @@ SYSTEM_PROMPT = (_PROMPTS / "browser_chat.md").read_text()
 
 _log = structlog.get_logger()
 
+
+def _extract_text(content: object) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return " ".join(
+            block.get("text", "") for block in content
+            if isinstance(block, dict) and block.get("type") == "text"
+        ).strip() or "Done."
+    return "Done."
+
+
 MAX_TURNS = 20
 
 
@@ -90,7 +102,7 @@ async def run_turn(
                 messages.append(assistant_message_for_litellm(msg))
 
                 if not tool_calls:
-                    reply_text = getattr(msg, "content", None) or "Done."
+                    reply_text = _extract_text(getattr(msg, "content", None))
                     _log.info("browser_chat_turn_done", session_id=chat_session_id, turn=turn)
                     break
 
