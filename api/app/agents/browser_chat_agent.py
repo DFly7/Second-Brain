@@ -117,6 +117,16 @@ async def run_turn(
                         )
                     except Exception as tool_exc:
                         result_str = f"Error: {tool_exc}"
+                        await broadcaster.publish(
+                            {
+                                "event": "browser_chat:action",
+                                "session_id": chat_session_id,
+                                "type": name,
+                                "detail": str(tool_exc),
+                                "error": True,
+                            },
+                            audience_user_id=audience_user_id,
+                        )
                     tool_results.append({
                         "role": "tool",
                         "tool_call_id": tc.id,

@@ -114,3 +114,54 @@ async def test_navigate_publishes_sse_action(wiki, patch_broadcaster):
     assert published["type"] == "navigate"
     _, kwargs = patch_broadcaster.publish.call_args
     assert kwargs["audience_user_id"] == "u1"
+
+
+@pytest.mark.asyncio
+async def test_run_turn_publishes_error_action_on_dispatch_exception(patch_broadcaster):
+    """run_turn publishes an error action SSE event when _dispatch raises."""
+    from unittest.mock import patch as upatch
+
+    from app.agents.browser_chat_agent import run_turn
+
+    tool_call = MagicMock()
+    tool_call.id = "tc1"
+    tool_call.function.name = "browser_navigate"
+    tool_call.function.arguments = '{"url": "https://example.com"}'
+
+    first_msg = MagicMock()
+    first_msg.tool_calls = [tool_call]
+    first_msg.content = None
+
+    second_msg = MagicMock()
+    second_msg.tool_calls = []
+    second_msg.content = "Done navigating."
+
+    first_resp = MagicMock()
+    first_resp.choices = [MagicMock(message=first_msg)]
+    second_resp = MagicMock()
+    second_resp.choices = [MagicMock(message=second_msg)]
+
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None)))
+
+    with upatch("litellm.acompletion", new=AsyncMock(side_effect=[first_resp, second_resp])):
+        with upatch("httpx.AsyncClient") as mock_client_cls:
+            mock_http = AsyncMock()
+            mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+            mock_http.__aexit__ = AsyncMock(return_value=False)
+            mock_http.post = AsyncMock(side_effect=Exception("network error"))
+            mock_client_cls.return_value = mock_http
+
+            await run_turn(
+                chat_session_id="chat-1",
+                workspace_id="ws-1",
+                browser_session_id="b-1",
+                conversation_history=[{"role": "user", "content": "go to example.com"}],
+                audience_user_id="u1",
+                db_session=db,
+            )
+
+    calls = [c[0][0] for c in patch_broadcaster.publish.call_args_list]
+    error_actions = [c for c in calls if c.get("event") == "browser_chat:action" and c.get("error") is True]
+    assert len(error_actions) == 1
+    assert "network error" in error_actions[0]["detail"]
