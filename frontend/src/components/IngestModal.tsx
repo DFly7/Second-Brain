@@ -3,6 +3,19 @@ import type React from 'react'
 import { ingestText, ingestUrl, ingestFile } from '../api/client'
 import { useQueryClient } from '@tanstack/react-query'
 import type { QueueItem, QueueState, QueueStatus } from '../state/ingestQueue'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { cn } from '@/lib/utils'
+import { toast } from '@/lib/toast'
 
 const STATUS_LABEL: Record<QueueStatus, string> = {
   pending: 'Pending',
@@ -14,14 +27,14 @@ const STATUS_LABEL: Record<QueueStatus, string> = {
   error: 'Error ✗',
 }
 
-const STATUS_COLOR: Record<QueueStatus, string> = {
-  pending: '#8b949e',
-  uploading: '#58a6ff',
-  queued: '#a371f7',
-  converting: '#d29922',
-  processing: '#d29922',
-  done: '#3fb950',
-  error: '#f85149',
+const STATUS_CLASS: Record<QueueStatus, string> = {
+  pending: 'text-muted-foreground',
+  uploading: 'text-blue-500',
+  queued: 'text-purple-500',
+  converting: 'text-amber-500',
+  processing: 'text-amber-500',
+  done: 'text-green-500',
+  error: 'text-destructive',
 }
 
 type IngestModalProps = {
@@ -36,7 +49,6 @@ export default function IngestModal(props: IngestModalProps) {
   const [tab, setTab] = useState<'text' | 'url' | 'file'>('text')
   const [text, setText] = useState('')
   const [url, setUrl] = useState('')
-  const [status, setStatus] = useState('')
   const [orderedFileIds, setOrderedFileIds] = useState<string[]>([])
   const filesByIdRef = useRef<Map<string, File>>(new Map())
   const [uploading, setUploading] = useState(false)
@@ -61,15 +73,14 @@ export default function IngestModal(props: IngestModalProps) {
   async function submitTextOrUrl() {
     if (textUrlSubmitting) return
     setTextUrlSubmitting(true)
-    setStatus('Ingesting…')
     try {
       if (tab === 'text') await ingestText(text)
       else if (tab === 'url') await ingestUrl(url)
-      setStatus('Ingested! Agent is updating your wiki.')
+      toast.success('Ingested! Agent is updating your wiki.')
       qc.invalidateQueries({ queryKey: ['activity'] })
       setTimeout(() => onCloseRef.current(), 1500)
     } catch {
-      setStatus('Failed — check the console.')
+      toast.error('Failed — check the console.')
     } finally {
       setTextUrlSubmitting(false)
     }
@@ -111,76 +122,52 @@ export default function IngestModal(props: IngestModalProps) {
   }
 
   return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
-      }}
-      onClick={e => e.target === e.currentTarget && onClose()}
-    >
-      <div style={{
-        background: '#161b22', border: '1px solid #30363d', borderRadius: 12,
-        padding: 0, width: 520, maxWidth: '92vw',
-        maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden',
-      }}>
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 24 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <h3 style={{ color: '#e6edf3', margin: 0 }}>Ingest</h3>
-            <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', fontSize: 18 }}>✕</button>
-          </div>
+    <Dialog open onOpenChange={open => !open && onClose()}>
+      <DialogContent className="flex max-h-[90vh] max-w-lg flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="px-6 pt-6">
+          <DialogTitle>Ingest</DialogTitle>
+        </DialogHeader>
 
-          {/* Tabs */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-            {(['text', 'url', 'file'] as const).map(t => (
-              <button key={t} type="button" onClick={() => setTab(t)} style={{
-                padding: '4px 14px',
-                background: tab === t ? '#238636' : '#21262d',
-                border: '1px solid #30363d', borderRadius: 6,
-                color: '#e6edf3', cursor: 'pointer', fontSize: 13,
-              }}>{t}</button>
-            ))}
-          </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-4">
+          <Tabs
+            value={tab}
+            onValueChange={v => setTab(v as 'text' | 'url' | 'file')}
+          >
+            <TabsList className="mb-4 w-full">
+              {(['text', 'url', 'file'] as const).map(t => (
+                <TabsTrigger key={t} value={t} className="flex-1 capitalize">
+                  {t}
+                </TabsTrigger>
+              ))}
+            </TabsList>
 
-          {/* Text tab */}
-          {tab === 'text' && (
-            <textarea
-              value={text}
-              onChange={e => setText(e.target.value)}
-              placeholder="Paste any text, note, or idea…"
-              rows={6}
-              style={{
-                width: '100%', padding: 12, background: '#0d1117',
-                border: '1px solid #30363d', borderRadius: 6,
-                color: '#e6edf3', fontSize: 13, resize: 'vertical',
-              }}
-            />
-          )}
+            <TabsContent value="text">
+              <Textarea
+                value={text}
+                onChange={e => setText(e.target.value)}
+                placeholder="Paste any text, note, or idea…"
+                rows={6}
+              />
+            </TabsContent>
 
-          {/* URL tab */}
-          {tab === 'url' && (
-            <input
-              value={url}
-              onChange={e => setUrl(e.target.value)}
-              placeholder="https://…"
-              style={{
-                width: '100%', padding: '8px 12px', background: '#0d1117',
-                border: '1px solid #30363d', borderRadius: 6, color: '#e6edf3', fontSize: 13,
-              }}
-            />
-          )}
+            <TabsContent value="url">
+              <Input
+                value={url}
+                onChange={e => setUrl(e.target.value)}
+                placeholder="https://…"
+              />
+            </TabsContent>
 
-          {/* File tab */}
-          {tab === 'file' && (
-            <div>
-              <input
+            <TabsContent value="file">
+              <Input
                 type="file"
                 multiple
                 accept=".pdf,.docx,.md,.markdown,.txt,.png,.jpg,.jpeg,.webp"
                 onChange={handleFileChange}
-                style={{ color: '#e6edf3', fontSize: 13, marginBottom: 12 }}
+                className="mb-3"
               />
               {orderedFileIds.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+                <div className="flex flex-col gap-1.5">
                   {orderedFileIds.map(fid => {
                     const entry = queue.items.find(i => i.id === fid)
                     const qs: QueueStatus = entry?.status ?? 'pending'
@@ -189,15 +176,19 @@ export default function IngestModal(props: IngestModalProps) {
                       filesByIdRef.current.get(fid)?.name ??
                       fid
                     return (
-                      <div key={fid} style={{
-                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                        padding: '6px 10px', background: '#0d1117',
-                        border: '1px solid #30363d', borderRadius: 6,
-                      }}>
-                        <span style={{ fontSize: 12, color: '#e6edf3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 320 }}>
+                      <div
+                        key={fid}
+                        className="flex items-center justify-between rounded-md border bg-muted/30 px-2.5 py-1.5"
+                      >
+                        <span className="max-w-[320px] truncate text-xs">
                           {name}
                         </span>
-                        <span style={{ fontSize: 11, color: STATUS_COLOR[qs], flexShrink: 0, marginLeft: 8 }}>
+                        <span
+                          className={cn(
+                            'ml-2 shrink-0 text-[11px]',
+                            STATUS_CLASS[qs],
+                          )}
+                        >
                           {STATUS_LABEL[qs]}
                         </span>
                       </div>
@@ -205,49 +196,36 @@ export default function IngestModal(props: IngestModalProps) {
                   })}
                 </div>
               )}
-            </div>
-          )}
+            </TabsContent>
+          </Tabs>
         </div>
 
-        <div style={{ flexShrink: 0, padding: '16px 24px', borderTop: '1px solid #30363d', background: '#161b22' }}>
+        <DialogFooter className="shrink-0 border-t px-6 py-4 sm:justify-stretch">
           {tab === 'file' ? (
             orderedFileIds.length > 0 ? (
-              <button
+              <Button
                 type="button"
+                className="w-full"
                 onClick={() => void uploadAll()}
                 disabled={uploading}
-                style={{
-                  width: '100%', padding: '10px 0',
-                  background: uploading ? '#21262d' : '#238636',
-                  border: 'none', borderRadius: 6,
-                  color: uploading ? '#8b949e' : '#fff',
-                  cursor: uploading ? 'not-allowed' : 'pointer', fontSize: 14,
-                }}
               >
-                {uploading ? 'Uploading…' : `Upload ${orderedFileIds.length} file${orderedFileIds.length !== 1 ? 's' : ''}`}
-              </button>
+                {uploading
+                  ? 'Uploading…'
+                  : `Upload ${orderedFileIds.length} file${orderedFileIds.length !== 1 ? 's' : ''}`}
+              </Button>
             ) : null
           ) : (
-            <>
-              {status ? (
-                <div style={{ marginBottom: 12, fontSize: 13, color: '#58a6ff' }}>{status}</div>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => void submitTextOrUrl()}
-                disabled={textUrlSubmitting}
-                style={{
-                  width: '100%', padding: '10px 0',
-                  background: textUrlSubmitting ? '#21262d' : '#238636', border: 'none', borderRadius: 6,
-                  color: textUrlSubmitting ? '#8b949e' : '#fff', cursor: textUrlSubmitting ? 'not-allowed' : 'pointer', fontSize: 14,
-                }}
-              >
-                Ingest
-              </button>
-            </>
+            <Button
+              type="button"
+              className="w-full"
+              onClick={() => void submitTextOrUrl()}
+              disabled={textUrlSubmitting}
+            >
+              Ingest
+            </Button>
           )}
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
