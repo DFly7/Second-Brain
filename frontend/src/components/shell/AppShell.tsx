@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useLocation, Outlet } from 'react-router-dom'
 import { usePanelRef } from 'react-resizable-panels'
 import {
@@ -17,6 +17,7 @@ import { SessionsList } from '@/components/secondary-sidebar/SessionsList'
 import ChatPanel from '@/components/ChatPanel'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useShortcuts } from '@/lib/keyboard'
+import { toast } from '@/lib/toast'
 import { shortcuts as shortcutsRegistry } from '@/components/help/shortcuts'
 import { CommandPalette } from '@/components/command-palette/CommandPalette'
 import { HelpOverlay } from '@/components/help/HelpOverlay'
@@ -62,6 +63,15 @@ function AppShellLayout() {
   }, [])
 
   useShortcuts(shortcutsRegistry, handleShortcut)
+
+  useEffect(() => {
+    if (localStorage.getItem('sb.helpHintShown') === '1') return
+    const t = setTimeout(() => {
+      toast.info('Press ? for keyboard shortcuts')
+      localStorage.setItem('sb.helpHintShown', '1')
+    }, 2000)
+    return () => clearTimeout(t)
+  }, [])
 
   const shellUi = useMemo(
     () => ({
