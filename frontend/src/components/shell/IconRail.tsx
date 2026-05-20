@@ -1,0 +1,56 @@
+import { NavLink } from 'react-router-dom'
+import { BookOpen, FolderOpen, Bot, Globe, HelpCircle } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
+
+const sections = [
+  { to: '/wiki', icon: BookOpen, label: 'Wiki' },
+  { to: '/files', icon: FolderOpen, label: 'Files' },
+  { to: '/automations', icon: Bot, label: 'Automations' },
+  { to: '/browser-chat', icon: Globe, label: 'Browser' },
+]
+
+export function IconRail() {
+  return (
+    <TooltipProvider delayDuration={300}>
+      <nav className="flex h-full w-14 flex-col items-center border-r border-border bg-background py-3">
+        <div className="flex flex-1 flex-col gap-1">
+          {sections.map(({ to, icon: Icon, label }) => (
+            <Tooltip key={to}>
+              <TooltipTrigger asChild>
+                <NavLink
+                  to={to}
+                  aria-label={label}
+                  className={({ isActive }) =>
+                    cn(
+                      'relative flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
+                      isActive &&
+                        'bg-muted text-foreground before:absolute before:left-[-10px] before:top-1/2 before:h-5 before:w-0.5 before:-translate-y-1/2 before:rounded-r before:bg-primary'
+                    )
+                  }
+                >
+                  <Icon className="h-4 w-4" />
+                </NavLink>
+              </TooltipTrigger>
+              <TooltipContent side="right">{label}</TooltipContent>
+            </Tooltip>
+          ))}
+        </div>
+        <div className="flex flex-col gap-1">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label="Help"
+              >
+                <HelpCircle className="h-4 w-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">Help (?)</TooltipContent>
+          </Tooltip>
+        </div>
+      </nav>
+    </TooltipProvider>
+  )
+}
