@@ -13,7 +13,6 @@ import { WikiTree } from '@/components/secondary-sidebar/WikiTree'
 import { FilesTree } from '@/components/secondary-sidebar/FilesTree'
 import { AutomationsList } from '@/components/secondary-sidebar/AutomationsList'
 import { BrowserSessionsList } from '@/components/secondary-sidebar/BrowserSessionsList'
-import { SessionsList } from '@/components/secondary-sidebar/SessionsList'
 import ChatPanel from '@/components/ChatPanel'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useShortcuts } from '@/lib/keyboard'
@@ -38,12 +37,12 @@ function SecondaryForRoute() {
   if (pathname.startsWith('/files')) return <FilesTree />
   if (pathname.startsWith('/automations')) return <AutomationsList />
   if (pathname.startsWith('/browser-chat')) return <BrowserSessionsList />
-  if (pathname.startsWith('/sessions')) return <SessionsList />
   return null
 }
 
 function AppShellLayout() {
   const isMobile = useIsMobile()
+  const { pathname } = useLocation()
   const { onSelectSlug, chatSseEvent } = useShellState()
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
@@ -59,8 +58,14 @@ function AppShellLayout() {
     } else if (id === 'chat') {
       const p = chatRef.current
       if (p) (p.isCollapsed() ? p.expand() : p.collapse())
+    } else if (id === 'newSession') {
+      window.dispatchEvent(new CustomEvent('chat:new-session'))
+    } else if (pathname.startsWith('/wiki')) {
+      if (id === 'wikiSend') window.dispatchEvent(new CustomEvent('chat:send'))
+      else if (id === 'wikiEdit') window.dispatchEvent(new CustomEvent('wiki:edit'))
+      else if (id === 'wikiSave') window.dispatchEvent(new CustomEvent('wiki:save'))
     }
-  }, [])
+  }, [pathname])
 
   useShortcuts(shortcutsRegistry, handleShortcut)
 

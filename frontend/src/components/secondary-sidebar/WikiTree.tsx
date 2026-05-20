@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { ChevronRight, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -240,7 +240,6 @@ export function WikiTree({
   onSelect?: (slug: string) => void
 } = {}) {
   const [searchParams] = useSearchParams()
-  const navigate = useNavigate()
   const { data: pages, isPending: loading } = usePages()
   const pageList = pages ?? []
   const [filter, setFilter] = useState('')
@@ -289,8 +288,6 @@ export function WikiTree({
   return (
     <SecondarySidebar
       title="Wiki"
-      primaryAction="New"
-      onPrimaryAction={() => navigate('/wiki/new')}
       search={filter}
       onSearchChange={setFilter}
     >
@@ -303,7 +300,7 @@ export function WikiTree({
             description={
               filter
                 ? 'Try a different search term.'
-                : 'Create a page with New or ask the chat agent to write one.'
+                : 'Ask the chat agent to write a wiki page.'
             }
           />
         )}

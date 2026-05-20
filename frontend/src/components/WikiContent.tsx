@@ -36,6 +36,17 @@ export default function WikiContent({ selectedSlug, onNavigate }: WikiContentPro
     setEditing(false)
   }, [selectedSlug])
 
+  useEffect(() => {
+    const onEdit = () => startEdit()
+    const onSave = () => saveEdit()
+    window.addEventListener('wiki:edit', onEdit)
+    window.addEventListener('wiki:save', onSave)
+    return () => {
+      window.removeEventListener('wiki:edit', onEdit)
+      window.removeEventListener('wiki:save', onSave)
+    }
+  }) // eslint-disable-line react-hooks/exhaustive-deps
+
   function startEdit() {
     setEditBody(page?.body_md || '')
     setEditing(true)

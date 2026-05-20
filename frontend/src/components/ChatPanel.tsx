@@ -8,6 +8,8 @@ import SessionDrawer from './SessionDrawer'
 
 const SESSION_KEY = 'chat_session_id'
 const SELECT_SESSION_EVENT = 'chat:select-session'
+const NEW_SESSION_EVENT = 'chat:new-session'
+const SEND_EVENT = 'chat:send'
 
 interface ChatPanelProps {
   onNavigate: (slug: string) => void
@@ -54,6 +56,17 @@ export default function ChatPanel({ onNavigate, activeSseEvent }: ChatPanelProps
     }
     window.addEventListener(SELECT_SESSION_EVENT, onSelect)
     return () => window.removeEventListener(SELECT_SESSION_EVENT, onSelect)
+  }) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const onNewSession = () => handleNewChat()
+    const onSend = () => handleComposerSubmit()
+    window.addEventListener(NEW_SESSION_EVENT, onNewSession)
+    window.addEventListener(SEND_EVENT, onSend)
+    return () => {
+      window.removeEventListener(NEW_SESSION_EVENT, onNewSession)
+      window.removeEventListener(SEND_EVENT, onSend)
+    }
   }) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
