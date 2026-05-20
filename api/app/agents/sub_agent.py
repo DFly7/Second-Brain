@@ -1,4 +1,5 @@
 import json
+import uuid
 from pathlib import Path
 
 import litellm
@@ -60,6 +61,7 @@ async def run(
             ]
 
             total_cost = 0.0
+            trace_id = str(uuid.uuid4())
             for turn in range(50):
                 _log.info("agent_llm_turn", turn=turn, max_turns=50)
                 resp = await litellm.acompletion(
@@ -68,6 +70,7 @@ async def run(
                     tools=tool_defs,
                     tool_choice="auto",
                     metadata={
+                        "trace_id": trace_id,
                         "trace_name": "sub_agent",
                         "session_id": source_id,
                         "tags": ["ingest", "sub-agent"],

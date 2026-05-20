@@ -1,5 +1,6 @@
 import json
 import re
+import uuid
 from pathlib import Path
 
 import litellm
@@ -80,6 +81,7 @@ async def run(
         ]
 
         cited_pages: list[str] = []
+        trace_id = str(uuid.uuid4())
 
         for turn in range(10):
             _log.info("agent_llm_turn", turn=turn, max_turns=10)
@@ -89,6 +91,7 @@ async def run(
                 tools=tool_defs,
                 tool_choice="auto",
                 metadata={
+                    "trace_id": trace_id,
                     "trace_name": "query_agent",
                     "session_id": session_id or workspace_id,
                     "tags": ["chat", "wiki"],

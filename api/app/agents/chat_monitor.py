@@ -1,4 +1,5 @@
 import json
+import uuid
 from datetime import date as _date
 from pathlib import Path
 
@@ -100,6 +101,7 @@ async def run(
         ]
 
         pages_saved = []
+        trace_id = str(uuid.uuid4())
 
         for turn in range(10):
             _log.info("agent_llm_turn", turn=turn, max_turns=10)
@@ -109,6 +111,7 @@ async def run(
                 tools=tool_defs,
                 tool_choice="auto",
                 metadata={
+                    "trace_id": trace_id,
                     "trace_name": "chat_monitor",
                     "session_id": session_id,
                     "tags": ["chat", "monitor"],

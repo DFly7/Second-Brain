@@ -1,5 +1,6 @@
 import asyncio
 import json
+import uuid
 from pathlib import Path
 
 import litellm
@@ -107,6 +108,7 @@ async def run(source_id: str, workspace_id: str, audience_user_id: str):
 
             total_cost = 0.0
             pages_touched: list[str] = []
+            trace_id = str(uuid.uuid4())
 
             for turn in range(30):
                 _log.info("agent_llm_turn", turn=turn, max_turns=30)
@@ -116,6 +118,7 @@ async def run(source_id: str, workspace_id: str, audience_user_id: str):
                     tools=tool_defs,
                     tool_choice="auto",
                     metadata={
+                        "trace_id": trace_id,
                         "trace_name": "ingest_agent",
                         "session_id": source_id,
                         "tags": ["ingest"],

@@ -1,4 +1,5 @@
 import json
+import uuid
 from pathlib import Path
 
 import httpx
@@ -88,6 +89,7 @@ async def run_turn(
         messages = [system_msg] + conversation_history
 
         reply_text = "Done."
+        trace_id = str(uuid.uuid4())
 
         try:
             async with httpx.AsyncClient(base_url=settings.browser_agent_url, timeout=60.0) as http:
@@ -112,6 +114,7 @@ async def run_turn(
                         tools=tool_defs,
                         tool_choice="auto",
                         metadata={
+                            "trace_id": trace_id,
                             "trace_name": "browser_chat_agent",
                             "session_id": chat_session_id,
                             "tags": ["chat", "browser"],

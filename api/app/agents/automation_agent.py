@@ -1,4 +1,5 @@
 import json
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -300,6 +301,7 @@ async def run(
                 _log.info("browser_session_created", session_id=browser_session_id)
 
                 max_turns = 50
+                trace_id = str(uuid.uuid4())
                 for turn in range(max_turns):
                     # Bypass SQLAlchemy identity map to catch stop signals from other requests.
                     session.expire_all()
@@ -326,6 +328,7 @@ async def run(
                         tools=tool_defs,
                         tool_choice="auto",
                         metadata={
+                            "trace_id": trace_id,
                             "trace_name": "automation_agent",
                             "session_id": run_id,
                             "tags": ["automation", "browser"],

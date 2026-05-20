@@ -1,4 +1,5 @@
 import json
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -52,6 +53,7 @@ async def run(workspace_id: str, audience_user_id: str) -> None:
 
             total_cost = 0.0
             last_assistant_content = ""
+            trace_id = str(uuid.uuid4())
 
             for turn in range(40):
                 _log.info("agent_llm_turn", turn=turn, max_turns=40)
@@ -61,6 +63,7 @@ async def run(workspace_id: str, audience_user_id: str) -> None:
                     tools=tool_defs,
                     tool_choice="auto",
                     metadata={
+                        "trace_id": trace_id,
                         "trace_name": "health_agent",
                         "session_id": workspace_id,
                         "tags": ["health"],
