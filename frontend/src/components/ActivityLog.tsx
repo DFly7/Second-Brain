@@ -2,6 +2,11 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getActivity } from '../api/client'
 import type { QueueState, QueueStatus } from '../state/ingestQueue'
+import { Button } from '@/components/ui/button'
+import {
+  Sheet,
+  SheetContent,
+} from '@/components/ui/sheet'
 
 const labels: Record<string, string> = {
   page_created: 'Page created',
@@ -69,145 +74,120 @@ export default function ActivityLog({
   )
 
   const tabBtn = (id: typeof tab, label: string) => (
-    <button
+    <Button
       type="button"
+      variant={tab === id ? 'default' : 'outline'}
+      size="sm"
+      className="h-7 text-xs"
       onClick={() => setTab(id)}
-      style={{
-        padding: '4px 12px',
-        background: tab === id ? '#238636' : '#21262d',
-        border: '1px solid #30363d',
-        borderRadius: 6,
-        color: '#e6edf3',
-        cursor: 'pointer',
-        fontSize: 12,
-      }}
     >
       {label}
-    </button>
+    </Button>
   )
 
   return (
-    <div style={{ position: 'fixed', right: 0, top: 0, bottom: 0, width: 360, background: '#161b22',
-      borderLeft: '1px solid #30363d', zIndex: 50, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        padding: '12px 16px', borderBottom: '1px solid #30363d', gap: 12 }}>
-        <div style={{ display: 'flex', gap: 4 }}>
+    <Sheet open onOpenChange={(isOpen) => { if (!isOpen) onClose() }}>
+      <SheetContent
+        side="right"
+        className="flex h-full w-[28rem] max-w-none flex-col gap-0 p-0 sm:max-w-none"
+      >
+        <div className="flex items-center gap-2 border-b border-border px-4 py-3 pr-12">
           {tabBtn('activity', 'Activity')}
           {tabBtn('changes', 'Changes')}
           {tabBtn('queue', 'Queue')}
         </div>
-        <button onClick={onClose} type="button" style={{ background: 'none', border: 'none', color: '#8b949e',
-          cursor: 'pointer', fontSize: 18, flexShrink: 0 }}>×</button>
-      </div>
-      <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
-        {tab === 'activity' && (
-          <>
-            {events.map(e => (
-              <div key={e.id} style={{ marginBottom: 12, padding: '8px 12px', background: '#0d1117',
-                borderRadius: 6, border: '1px solid #21262d' }}>
-                <div style={{ fontSize: 12, color: '#3fb950', marginBottom: 4 }}>
-                  {labels[e.event_type] || e.event_type}
-                </div>
-                <div style={{ fontSize: 11, color: '#8b949e' }}>
-                  {e.payload.slug ? `[[${e.payload.slug}]]` : ''}
-                  {e.payload.pages_touched ? ` → ${(e.payload.pages_touched as string[]).join(', ')}` : ''}
-                </div>
-                <div style={{ fontSize: 10, color: '#484f58', marginTop: 4 }}>
-                  {new Date(e.created_at).toLocaleString()}
-                </div>
-              </div>
-            ))}
-            {events.length === 0 && (
-              <div style={{ color: '#8b949e', fontSize: 13, textAlign: 'center', marginTop: 40 }}>
-                No activity yet. Ingest something!
-              </div>
-            )}
-          </>
-        )}
-        {tab === 'changes' && (
-          <>
-            {changeEvents.map(e => (
-              <div key={e.id} style={{ marginBottom: 12, padding: '8px 12px', background: '#0d1117',
-                borderRadius: 6, border: '1px solid #21262d' }}>
-                <div style={{ fontSize: 12, color: CHANGE_ACTION_COLOR[e.event_type] ?? '#8b949e', marginBottom: 4 }}>
-                  {CHANGE_ACTION_LABEL[e.event_type] ?? e.event_type}
-                </div>
-                <div style={{ fontSize: 11, color: '#8b949e', fontFamily: 'monospace' }}>
-                  {e.payload.slug ? `[[${e.payload.slug}]]` : '—'}
-                </div>
-                <div style={{ fontSize: 10, color: '#484f58', marginTop: 4 }}>
-                  {new Date(e.created_at).toLocaleString()}
-                </div>
-              </div>
-            ))}
-            {changeEvents.length === 0 && (
-              <div style={{ color: '#8b949e', fontSize: 13, textAlign: 'center', marginTop: 40 }}>
-                No wiki changes yet.
-              </div>
-            )}
-          </>
-        )}
-        {tab === 'queue' && (
-          <>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-              <button
-                type="button"
-                onClick={onClearQueue}
-                style={{
-                  padding: '6px 12px',
-                  background: '#21262d',
-                  border: '1px solid #30363d',
-                  borderRadius: 6,
-                  color: '#e6edf3',
-                  cursor: 'pointer',
-                  fontSize: 12,
-                }}
-              >
-                Clear
-              </button>
-            </div>
-            {queueSortedNewestFirst.map(item => (
-              <div
-                key={item.id}
-                style={{
-                  marginBottom: 12,
-                  padding: '10px 12px',
-                  background: '#0d1117',
-                  borderRadius: 6,
-                  border: '1px solid #21262d',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  gap: 8,
-                  alignItems: 'flex-start',
-                }}
-              >
-                <div style={{ overflow: 'hidden', flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, color: '#e6edf3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {item.fileName}
+        <div className="flex-1 overflow-y-auto p-4">
+          {tab === 'activity' && (
+            <>
+              {events.map(e => (
+                <div key={e.id} className="mb-3 rounded-md border border-border bg-card p-3">
+                  <div className="mb-1 text-xs text-[#3fb950]">
+                    {labels[e.event_type] || e.event_type}
                   </div>
-                  <div style={{ fontSize: 10, color: '#484f58', marginTop: 4 }}>
-                    {new Date(item.createdAt).toLocaleString()}
+                  <div className="text-[11px] text-muted-foreground">
+                    {e.payload.slug ? `[[${e.payload.slug}]]` : ''}
+                    {e.payload.pages_touched ? ` → ${(e.payload.pages_touched as string[]).join(', ')}` : ''}
+                  </div>
+                  <div className="mt-1 text-[10px] text-muted-foreground/70">
+                    {new Date(e.created_at).toLocaleString()}
                   </div>
                 </div>
-                <span
-                  style={{
-                    fontSize: 11,
-                    color: QUEUE_STATUS_COLOR[item.status] ?? '#8b949e',
-                    flexShrink: 0,
-                  }}
+              ))}
+              {events.length === 0 && (
+                <div className="mt-10 text-center text-sm text-muted-foreground">
+                  No activity yet. Ingest something!
+                </div>
+              )}
+            </>
+          )}
+          {tab === 'changes' && (
+            <>
+              {changeEvents.map(e => (
+                <div key={e.id} className="mb-3 rounded-md border border-border bg-card p-3">
+                  <div
+                    className="mb-1 text-xs"
+                    style={{ color: CHANGE_ACTION_COLOR[e.event_type] ?? '#8b949e' }}
+                  >
+                    {CHANGE_ACTION_LABEL[e.event_type] ?? e.event_type}
+                  </div>
+                  <div className="font-mono text-[11px] text-muted-foreground">
+                    {e.payload.slug ? `[[${e.payload.slug}]]` : '—'}
+                  </div>
+                  <div className="mt-1 text-[10px] text-muted-foreground/70">
+                    {new Date(e.created_at).toLocaleString()}
+                  </div>
+                </div>
+              ))}
+              {changeEvents.length === 0 && (
+                <div className="mt-10 text-center text-sm text-muted-foreground">
+                  No wiki changes yet.
+                </div>
+              )}
+            </>
+          )}
+          {tab === 'queue' && (
+            <>
+              <div className="mb-3 flex justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={onClearQueue}
                 >
-                  {QUEUE_STATUS_LABEL[item.status]}
-                </span>
+                  Clear
+                </Button>
               </div>
-            ))}
-            {queueSortedNewestFirst.length === 0 && (
-              <div style={{ color: '#8b949e', fontSize: 13, textAlign: 'center', marginTop: 40 }}>
-                No ingest queue items yet.
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </div>
+              {queueSortedNewestFirst.map(item => (
+                <div
+                  key={item.id}
+                  className="mb-3 flex items-start justify-between gap-2 rounded-md border border-border bg-card p-3"
+                >
+                  <div className="min-w-0 flex-1 overflow-hidden">
+                    <div className="truncate text-xs text-foreground">
+                      {item.fileName}
+                    </div>
+                    <div className="mt-1 text-[10px] text-muted-foreground/70">
+                      {new Date(item.createdAt).toLocaleString()}
+                    </div>
+                  </div>
+                  <span
+                    className="shrink-0 text-[11px]"
+                    style={{ color: QUEUE_STATUS_COLOR[item.status] ?? '#8b949e' }}
+                  >
+                    {QUEUE_STATUS_LABEL[item.status]}
+                  </span>
+                </div>
+              ))}
+              {queueSortedNewestFirst.length === 0 && (
+                <div className="mt-10 text-center text-sm text-muted-foreground">
+                  No ingest queue items yet.
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
   )
 }

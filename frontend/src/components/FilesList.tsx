@@ -1,34 +1,40 @@
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { cn } from '@/lib/utils'
+import { Info, MoreHorizontal } from 'lucide-react'
+import { EmptyState } from './EmptyState'
 import type { SourceItem } from '../api/client'
 
 interface FilesListProps {
   sources: SourceItem[]
+  loading?: boolean
   selectedId: string | null
   onSelect: (id: string) => void
   onInfo: (id: string) => void
   fullWidth?: boolean
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  done: '#3fb950',
-  error: '#f85149',
-  converting: '#d29922',
-  ingesting: '#58a6ff',
-  processing: '#58a6ff',
-}
-
-const KIND_COLOR: Record<string, string> = {
-  pdf: '#d2a8ff',
-  png: '#79c0ff',
-  jpg: '#79c0ff',
-  jpeg: '#79c0ff',
-  webp: '#79c0ff',
-  docx: '#56d364',
-  doc: '#56d364',
-  url: '#e3b341',
-  text: '#8b949e',
-  md: '#8b949e',
-  markdown: '#8b949e',
-  voice: '#56d364',
+const STATUS_CLASS: Record<string, string> = {
+  done: 'text-green-500',
+  error: 'text-destructive',
+  converting: 'text-amber-500',
+  ingesting: 'text-blue-400',
+  processing: 'text-blue-400',
 }
 
 function fileIcon(kind: string): string {
@@ -41,112 +47,134 @@ function fileIcon(kind: string): string {
   return '📄'
 }
 
-export default function FilesList({ sources, selectedId, onSelect, onInfo, fullWidth }: FilesListProps) {
+function FilesListSkeleton({ fullWidth }: { fullWidth?: boolean }) {
+  const containerClass = cn(
+    'flex min-h-0 shrink-0 flex-col overflow-hidden border-border p-3',
+    fullWidth ? 'w-full' : 'w-60 border-r',
+  )
+  return (
+    <div className={containerClass}>
+      <div className="space-y-2">
+        {Array.from({ length: 6 }, (_, i) => (
+          <div key={i} className="flex gap-2">
+            <Skeleton className="h-4 w-4 shrink-0" />
+            <div className="flex-1 space-y-1">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-3 w-2/3" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+export default function FilesList({
+  sources,
+  loading,
+  selectedId,
+  onSelect,
+  onInfo,
+  fullWidth,
+}: FilesListProps) {
+  const containerClass = cn(
+    'flex min-h-0 shrink-0 flex-col overflow-hidden border-border',
+    fullWidth ? 'w-full' : 'w-60 border-r',
+  )
+
+  if (loading) {
+    return <FilesListSkeleton fullWidth={fullWidth} />
+  }
+
   if (sources.length === 0) {
     return (
-      <div style={{ width: fullWidth ? '100%' : 240, borderRight: fullWidth ? 'none' : '1px solid #21262d', padding: 16, color: '#8b949e', fontSize: 13 }}>
-        No files ingested yet.
+      <div className={containerClass}>
+        <EmptyState
+          title="No files yet"
+          description="Upload documents from the ingest panel to build your library."
+        />
       </div>
     )
   }
 
   return (
-    <div style={{ width: fullWidth ? '100%' : 240, borderRight: fullWidth ? 'none' : '1px solid #21262d', overflowY: 'auto', padding: 8, flexShrink: 0 }}>
-      {sources.map((source) => {
-        const title = source.title ?? `${source.kind} · ${source.id.slice(0, 8).toUpperCase()}`
-        const isSelected = source.id === selectedId
-        const dotColor = STATUS_COLOR[source.status] ?? '#8b949e'
-        const badgeColor = KIND_COLOR[source.kind] ?? '#8b949e'
+    <div className={cn(containerClass, 'overflow-y-auto')}>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="h-9 px-3">Name</TableHead>
+            <TableHead className="h-9 w-16 px-3">Type</TableHead>
+            <TableHead className="h-9 w-20 px-3">Status</TableHead>
+            <TableHead className="h-9 w-10 px-2" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {sources.map((source) => {
+            const title = source.title ?? `${source.kind} · ${source.id.slice(0, 8).toUpperCase()}`
+            const isSelected = source.id === selectedId
 
-        return (
-          <div
-            key={source.id}
-            role="button"
-            tabIndex={0}
-            onClick={() => onSelect(source.id)}
-            onKeyDown={(e) => e.key === 'Enter' && onSelect(source.id)}
-            style={{
-              padding: '6px 8px',
-              borderRadius: 4,
-              cursor: 'pointer',
-              marginBottom: 2,
-              background: isSelected ? '#1f3a5f' : 'transparent',
-              border: `1px solid ${isSelected ? '#58a6ff33' : 'transparent'}`,
-              position: 'relative',
-            }}
-            className="file-row"
-          >
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-              <span style={{ flexShrink: 0, marginTop: 1 }}>{fileIcon(source.kind)}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{
-                  fontSize: 12,
-                  color: isSelected ? '#58a6ff' : '#e6edf3',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}>
-                  {title}
-                </div>
-                {source.description && (
-                  <div style={{
-                    fontSize: 10,
-                    color: '#6e7681',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    marginTop: 2,
-                  }}>
-                    {source.description}
+            return (
+              <TableRow
+                key={source.id}
+                data-state={isSelected ? 'selected' : undefined}
+                className="cursor-pointer"
+                onClick={() => onSelect(source.id)}
+              >
+                <TableCell className="max-w-0 px-3 py-2">
+                  <div className="flex min-w-0 items-start gap-2">
+                    <span className="mt-0.5 shrink-0 text-sm">{fileIcon(source.kind)}</span>
+                    <div className="min-w-0">
+                      <div
+                        className={cn(
+                          'truncate text-sm font-medium',
+                          isSelected ? 'text-primary' : 'text-foreground',
+                        )}
+                      >
+                        {title}
+                      </div>
+                      {source.description && (
+                        <div className="truncate text-xs text-muted-foreground">{source.description}</div>
+                      )}
+                    </div>
                   </div>
-                )}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-                <span style={{
-                  fontSize: 9,
-                  padding: '1px 5px',
-                  borderRadius: 3,
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
-                  background: '#21262d',
-                  color: badgeColor,
-                }}>
-                  {source.kind}
-                </span>
-                <span
-                  style={{ width: 6, height: 6, borderRadius: '50%', background: dotColor, flexShrink: 0 }}
-                  title={source.status}
-                />
-              </div>
-            </div>
-            <button
-              type="button"
-              className="info-btn"
-              onClick={(e) => { e.stopPropagation(); onInfo(source.id) }}
-              style={{
-                position: 'absolute',
-                top: 4,
-                right: 28,
-                background: 'none',
-                border: 'none',
-                color: '#6e7681',
-                cursor: 'pointer',
-                fontSize: 11,
-                padding: '0 2px',
-                opacity: 0,
-                transition: 'opacity 0.1s',
-              }}
-              aria-label="File info"
-            >
-              ⓘ
-            </button>
-          </div>
-        )
-      })}
-      <style>{`
-        .file-row:hover .info-btn { opacity: 1 !important; }
-      `}</style>
+                </TableCell>
+                <TableCell className="px-3 py-2">
+                  <Badge variant="outline" className="text-[10px] font-bold uppercase tracking-wide">
+                    {source.kind}
+                  </Badge>
+                </TableCell>
+                <TableCell className="px-3 py-2">
+                  <span
+                    className={cn(
+                      'text-xs capitalize',
+                      STATUS_CLASS[source.status] ?? 'text-muted-foreground',
+                    )}
+                    title={source.status}
+                  >
+                    {source.status}
+                  </span>
+                </TableCell>
+                <TableCell className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="File actions">
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => onSelect(source.id)}>Open</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => onInfo(source.id)}>
+                        <Info className="mr-2 h-4 w-4" />
+                        Info
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
+              </TableRow>
+            )
+          })}
+        </TableBody>
+      </Table>
     </div>
   )
 }

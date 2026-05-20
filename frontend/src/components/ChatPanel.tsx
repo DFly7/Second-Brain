@@ -1,9 +1,15 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/utils'
 import { sendMessage, listSessions, getSessionMessages } from '../api/client'
 import ChatConversation, { type Message } from './ChatConversation'
 import SessionDrawer from './SessionDrawer'
 
 const SESSION_KEY = 'chat_session_id'
+const SELECT_SESSION_EVENT = 'chat:select-session'
+const NEW_SESSION_EVENT = 'chat:new-session'
+const SEND_EVENT = 'chat:send'
 
 interface ChatPanelProps {
   onNavigate: (slug: string) => void
@@ -18,18 +24,24 @@ export default function ChatPanel({ onNavigate, activeSseEvent }: ChatPanelProps
   )
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
+  const [messagesLoading, setMessagesLoading] = useState(!!localStorage.getItem(SESSION_KEY))
   const [editMode, setEditMode] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [sessions, setSessions] = useState<Session[]>([])
+  const [sessionsLoading, setSessionsLoading] = useState(true)
   const [sessionsError, setSessionsError] = useState(false)
+  const [input, setInput] = useState('')
 
   const loadSessions = useCallback(async () => {
+    setSessionsLoading(true)
     try {
       const data = await listSessions()
       setSessions(data)
       setSessionsError(false)
     } catch {
       setSessionsError(true)
+    } finally {
+      setSessionsLoading(false)
     }
   }, [])
 
@@ -38,16 +50,41 @@ export default function ChatPanel({ onNavigate, activeSseEvent }: ChatPanelProps
   }, [loadSessions])
 
   useEffect(() => {
+    const onSelect = (e: Event) => {
+      const id = (e as CustomEvent<{ id: string }>).detail?.id
+      if (id) void handleSelectSession(id)
+    }
+    window.addEventListener(SELECT_SESSION_EVENT, onSelect)
+    return () => window.removeEventListener(SELECT_SESSION_EVENT, onSelect)
+  }) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const onNewSession = () => handleNewChat()
+    const onSend = () => handleComposerSubmit()
+    window.addEventListener(NEW_SESSION_EVENT, onNewSession)
+    window.addEventListener(SEND_EVENT, onSend)
+    return () => {
+      window.removeEventListener(NEW_SESSION_EVENT, onNewSession)
+      window.removeEventListener(SEND_EVENT, onSend)
+    }
+  }) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
     const id = localStorage.getItem(SESSION_KEY)
-    if (!id) return
-    getSessionMessages(id).then((msgs) => {
-      if (msgs.length === 0) {
-        localStorage.removeItem(SESSION_KEY)
-        setSessionId(undefined)
-        return
-      }
-      setMessages(msgs.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })))
-    })
+    if (!id) {
+      setMessagesLoading(false)
+      return
+    }
+    getSessionMessages(id)
+      .then((msgs) => {
+        if (msgs.length === 0) {
+          localStorage.removeItem(SESSION_KEY)
+          setSessionId(undefined)
+          return
+        }
+        setMessages(msgs.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })))
+      })
+      .finally(() => setMessagesLoading(false))
   }, [])
 
   function persistSession(id: string) {
@@ -69,11 +106,23 @@ export default function ChatPanel({ onNavigate, activeSseEvent }: ChatPanelProps
     }
   }
 
+  function handleComposerSubmit() {
+    if (!input.trim() || loading) return
+    const text = input.trim()
+    setInput('')
+    handleSubmit(text)
+  }
+
   async function handleSelectSession(id: string) {
     persistSession(id)
-    const msgs = await getSessionMessages(id)
-    setMessages(msgs.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })))
-    setDrawerOpen(false)
+    setMessagesLoading(true)
+    try {
+      const msgs = await getSessionMessages(id)
+      setMessages(msgs.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })))
+    } finally {
+      setMessagesLoading(false)
+      setDrawerOpen(false)
+    }
   }
 
   function handleNewChat() {
@@ -84,56 +133,90 @@ export default function ChatPanel({ onNavigate, activeSseEvent }: ChatPanelProps
   }
 
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', height: '100%',
-      background: '#0d1117', borderLeft: '1px solid #30363d',
-      position: 'relative', overflow: 'hidden',
-    }}>
-      <div style={{
-        padding: '12px 16px', borderBottom: '1px solid #30363d',
-        fontSize: 13, color: '#8b949e', background: '#161b22',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        flexShrink: 0,
-      }}>
-        <span>Chat</span>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button
+    <div className="relative flex h-full flex-col overflow-hidden border-l border-border bg-background">
+      <div className="flex h-10 shrink-0 items-center justify-between border-b border-border px-3">
+        <span className="text-sm text-muted-foreground">Chat</span>
+        <div className="flex gap-1.5">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs"
             onClick={handleNewChat}
-            style={{
-              padding: '4px 10px', fontSize: 12, borderRadius: 6,
-              border: '1px solid #30363d', background: '#0d1117',
-              color: '#8b949e', cursor: 'pointer',
-            }}
             title="Start a new chat"
           >
             New Chat
-          </button>
-          <button
+          </Button>
+          <Button
+            type="button"
+            variant={drawerOpen ? 'secondary' : 'outline'}
+            size="sm"
+            className="h-7 text-xs"
             onClick={() => setDrawerOpen(v => !v)}
-            style={{
-              padding: '4px 10px', fontSize: 12, borderRadius: 6,
-              border: '1px solid #30363d',
-              background: drawerOpen ? '#1f6feb22' : '#0d1117',
-              color: drawerOpen ? '#58a6ff' : '#8b949e', cursor: 'pointer',
-            }}
             title="View chat history"
           >
             History
-          </button>
+          </Button>
         </div>
       </div>
-      <ChatConversation
-        messages={messages}
-        loading={loading}
-        activeSseEvent={activeSseEvent}
-        editMode={editMode}
-        onSubmit={handleSubmit}
-        onNavigate={onNavigate}
-        onEditModeToggle={() => setEditMode(v => !v)}
-      />
+      <div className="flex-1 overflow-y-auto">
+        <ChatConversation
+          messages={messages}
+          loading={loading}
+          messagesLoading={messagesLoading}
+          activeSseEvent={activeSseEvent}
+          onNavigate={onNavigate}
+        />
+      </div>
+      <div
+        className={cn(
+          'shrink-0 border-t border-border p-3',
+          editMode && 'bg-amber-500/5 ring-1 ring-inset ring-amber-500/40',
+        )}
+      >
+        <div className="flex items-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setEditMode(v => !v)}
+            title={editMode ? 'Switch to read-only query' : 'Allow the agent to edit wiki pages'}
+            className={cn(
+              'shrink-0 whitespace-nowrap',
+              editMode && 'border-amber-500/60 bg-amber-500/20 text-amber-500 hover:bg-amber-500/25',
+            )}
+          >
+            Edit Mode
+          </Button>
+          <Textarea
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                handleComposerSubmit()
+              }
+            }}
+            placeholder="Ask your wiki..."
+            rows={2}
+            disabled={loading}
+            className="min-h-0 flex-1 resize-none text-sm"
+          />
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleComposerSubmit}
+            disabled={loading || !input.trim()}
+            className="shrink-0"
+          >
+            Send
+          </Button>
+        </div>
+      </div>
       <SessionDrawer
         open={drawerOpen}
         sessions={sessions}
+        loading={sessionsLoading}
         loadError={sessionsError}
         activeSessionId={sessionId}
         onSelect={handleSelectSession}

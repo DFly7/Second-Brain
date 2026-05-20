@@ -1,6 +1,6 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import TopBar from './TopBar'
 import FilesList from './FilesList'
 import FileViewer from './FileViewer'
 import SourceMetaModal from './SourceMetaModal'
@@ -9,9 +9,14 @@ import { useSse } from '../hooks/useSse'
 import { useIsMobile } from '../hooks/useIsMobile'
 
 export default function FilesView() {
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const selectedId = searchParams.get('source')
+  const setSelectedId = (id: string | null) => {
+    if (id) setSearchParams({ source: id }, { replace: true })
+    else setSearchParams({}, { replace: true })
+  }
   const [infoId, setInfoId] = useState<string | null>(null)
-  const { data: sources } = useSources()
+  const { data: sources, isPending: sourcesLoading } = useSources()
   const qc = useQueryClient()
   const isMobile = useIsMobile()
 
@@ -25,24 +30,22 @@ export default function FilesView() {
 
   const selectedSource = sources?.find((s) => s.id === selectedId) ?? null
   const infoSource = sources?.find((s) => s.id === infoId) ?? null
+  const closeViewer = () => setSelectedId(null)
 
   if (isMobile) {
     return (
-      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', flexDirection: 'column' }}>
-        <TopBar />
-        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          {selectedId === null ? (
-            <FilesList
-              sources={sources ?? []}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
-              onInfo={setInfoId}
-              fullWidth
-            />
-          ) : (
-            <FileViewer source={selectedSource} onBack={() => setSelectedId(null)} />
-          )}
+      <div className="flex h-full flex-col overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <FilesList
+            sources={sources ?? []}
+            loading={sourcesLoading}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            onInfo={setInfoId}
+            fullWidth
+          />
         </div>
+        <FileViewer source={selectedSource} onClose={closeViewer} />
         {infoSource && (
           <SourceMetaModal source={infoSource} onClose={() => setInfoId(null)} />
         )}
@@ -51,17 +54,19 @@ export default function FilesView() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      <TopBar />
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        <FilesList
-          sources={sources ?? []}
-          selectedId={selectedId}
-          onSelect={setSelectedId}
-          onInfo={setInfoId}
-        />
-        <FileViewer source={selectedSource} />
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <aside className="flex min-h-0 shrink-0 flex-col">
+          <FilesList
+            sources={sources ?? []}
+            loading={sourcesLoading}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            onInfo={setInfoId}
+          />
+        </aside>
       </div>
+      <FileViewer source={selectedSource} onClose={closeViewer} />
       {infoSource && (
         <SourceMetaModal
           source={infoSource}

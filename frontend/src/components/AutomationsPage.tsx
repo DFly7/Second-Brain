@@ -1,4 +1,35 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { MoreHorizontal, Play, Plus, Square } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { Textarea } from '@/components/ui/textarea'
+import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/EmptyState'
+import { ListSkeleton } from '@/components/ListSkeleton'
+import { cn } from '@/lib/utils'
+import { toast } from '@/lib/toast'
 import {
   type AutomationAction,
   type AutomationRun,
@@ -10,24 +41,54 @@ import {
   stopAutomationRun,
 } from '../api/client'
 import { useSse } from '../hooks/useSse'
-import TopBar from './TopBar'
 
 type PageState = 'idle' | 'running'
+
+const ACTION_ICON: Record<string, string> = {
+  navigate: '🧭',
+  click: '🖱',
+  type: '⌨️',
+  scroll: '↕️',
+  read: '📖',
+  screenshot: '📸',
+  wiki_write: '✍️',
+}
+
+function statusBadgeClass(status: string): string {
+  if (status === 'completed') return 'border-green-500/30 bg-green-500/10 text-green-500'
+  if (status === 'failed') return 'border-destructive/30 bg-destructive/10 text-destructive'
+  if (status === 'running' || status === 'stopping') return 'border-blue-500/30 bg-blue-500/10 text-blue-500'
+  return 'border-amber-500/30 bg-amber-500/10 text-amber-500'
+}
+
+function formatDuration(run: AutomationRun): string {
+  if (!run.completed_at) return '—'
+  const ms = new Date(run.completed_at).getTime() - new Date(run.created_at).getTime()
+  const s = Math.round(ms / 1000)
+  if (s < 60) return `${s}s`
+  return `${Math.floor(s / 60)}m ${s % 60}s`
+}
+
+function isActiveStatus(status: string) {
+  return status === 'running' || status === 'stopping'
+}
 
 export default function AutomationsPage() {
   const [pageState, setPageState] = useState<PageState>('idle')
   const [runs, setRuns] = useState<AutomationRun[]>([])
+  const [runsLoading, setRunsLoading] = useState(true)
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
   const [activeGoal, setActiveGoal] = useState('')
   const [actions, setActions] = useState<AutomationAction[]>([])
   const [currentUrl, setCurrentUrl] = useState('')
   const [novncUrl, setNovncUrl] = useState<string | null>(null)
   const [goal, setGoal] = useState('')
-  const [startError, setStartError] = useState<string | null>(null)
-  const [expandedRunId, setExpandedRunId] = useState<string | null>(null)
+  const [newRunOpen, setNewRunOpen] = useState(false)
+  const [actionsRunId, setActionsRunId] = useState<string | null>(null)
   const actionsEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    setRunsLoading(true)
     getAutomationRuns()
       .then(fetched => {
         setRuns(fetched)
@@ -39,6 +100,7 @@ export default function AutomationsPage() {
         }
       })
       .catch(() => {})
+      .finally(() => setRunsLoading(false))
     getNovncUrl().then(setNovncUrl).catch(() => {})
   }, [])
 
@@ -71,7 +133,6 @@ export default function AutomationsPage() {
 
   async function handleStart() {
     if (!goal.trim()) return
-    setStartError(null)
     const trimmed = goal.trim()
     try {
       const { run_id } = await startAutomationRun(trimmed)
@@ -81,16 +142,16 @@ export default function AutomationsPage() {
       setCurrentUrl('')
       setPageState('running')
       setGoal('')
+      setNewRunOpen(false)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
-      setStartError(msg.includes('409') ? 'An automation is already in progress.' : 'Failed to start.')
+      toast.error(msg.includes('409') ? 'An automation is already in progress.' : 'Failed to start.')
     }
   }
 
   async function handleStop() {
     if (!activeRunId) return
     await stopAutomationRun(activeRunId)
-    // Stay on running view until agent finishes teardown (SSE automation:status).
     getAutomationRuns().then(setRuns).catch(() => {})
   }
 
@@ -103,302 +164,288 @@ export default function AutomationsPage() {
     try {
       await openAutomationRecording(runId)
     } catch {
-      setStartError('Could not load recording.')
+      toast.error('Could not load recording.')
     }
   }
 
-  function formatDuration(run: AutomationRun): string {
-    if (!run.completed_at) return ''
-    const ms = new Date(run.completed_at).getTime() - new Date(run.created_at).getTime()
-    const s = Math.round(ms / 1000)
-    if (s < 60) return `${s}s`
-    return `${Math.floor(s / 60)}m ${s % 60}s`
-  }
-
-  function statusDot(status: string): string {
-    if (status === 'completed') return '#3fb950'
-    if (status === 'failed') return '#f85149'
-    if (status === 'running' || status === 'stopping') return '#58a6ff'
-    return '#d29922'
-  }
-
-  const isActiveStatus = (status: string) => status === 'running' || status === 'stopping'
-
-  const ACTION_ICON: Record<string, string> = {
-    navigate: '🧭',
-    click: '🖱',
-    type: '⌨️',
-    scroll: '↕️',
-    read: '📖',
-    screenshot: '📸',
-    wiki_write: '✍️',
-  }
-
   const pageContent = pageState === 'running' ? (
-      <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', background: '#0d1117' }}>
-        {/* Left panel */}
-        <div style={{
-          width: 300,
-          background: '#161b22',
-          borderRight: '1px solid #30363d',
-          display: 'flex',
-          flexDirection: 'column',
-          flexShrink: 0,
-        }}>
-          <div style={{ padding: '12px 16px', borderBottom: '1px solid #30363d', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px', color: '#8b949e' }}>
-            Goal
+    <div className="flex min-h-0 flex-1 overflow-hidden bg-background">
+      <div className="flex w-[300px] shrink-0 flex-col border-r border-border bg-card">
+        <div className="border-b border-border px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Goal
+        </div>
+        <div className="flex flex-1 flex-col gap-3 p-4">
+          <div className="rounded-lg border border-border bg-muted/50 p-3 text-[13px] leading-normal text-foreground">
+            {activeGoal || 'Running…'}
           </div>
-          <div style={{ flex: 1, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ fontSize: 13, color: '#e6edf3', lineHeight: 1.5, background: '#21262d', border: '1px solid #30363d', borderRadius: 8, padding: '10px 12px' }}>
-              {activeGoal || 'Running…'}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#388bfd18', border: '1px solid #388bfd40', borderRadius: 20, padding: '4px 12px', width: 'fit-content' }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#58a6ff', display: 'inline-block', animation: 'pulse 1.5s ease-in-out infinite' }} />
-              <span style={{ fontSize: 11, color: '#58a6ff' }}>Running — {actions.length} actions</span>
-            </div>
+          <div className="flex w-fit items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
+            <span className="text-[11px] text-blue-500">Running — {actions.length} actions</span>
           </div>
-          <div style={{ padding: 12, borderTop: '1px solid #30363d' }}>
-            <button
-              type="button"
-              onClick={handleStop}
-              style={{ width: '100%', padding: 8, background: '#f8514918', border: '1px solid #f8514940', borderRadius: 7, color: '#f85149', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+        </div>
+        <div className="border-t border-border p-3">
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive"
+            onClick={handleStop}
+          >
+            <Square className="mr-2 h-3.5 w-3.5" />
+            Stop Agent
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex min-w-0 flex-1 flex-col bg-background">
+        <div className="flex shrink-0 items-center gap-2.5 border-b border-border bg-card px-3 py-2">
+          <div className="flex gap-1">
+            <span className="h-2.5 w-2.5 rounded-full bg-destructive" />
+            <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
+            <span className="h-2.5 w-2.5 rounded-full bg-green-500" />
+          </div>
+          <div className="min-w-0 flex-1 truncate rounded-md border border-border bg-background px-3 py-1 text-xs text-muted-foreground">
+            {currentUrl || 'Starting browser…'}
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-green-500/30 bg-green-500/10 px-2 py-0.5 text-[11px] text-green-500">
+            <span className="h-1 w-1 animate-pulse rounded-full bg-green-500" />
+            LIVE
+          </div>
+        </div>
+        <div className="flex-1 overflow-hidden bg-black">
+          {novncUrl ? (
+            <iframe
+              src={novncUrl}
+              className="block h-full w-full border-0"
+              title="Live browser"
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center text-[13px] text-muted-foreground">
+              Connecting to browser…
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="flex w-[260px] shrink-0 flex-col border-l border-border bg-card">
+        <div className="border-b border-border px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Activity
+        </div>
+        <div className="flex flex-1 flex-col gap-1.5 overflow-y-auto p-2.5">
+          {actions.length === 0 && (
+            <p className="mt-5 text-center text-xs italic text-muted-foreground">
+              Waiting for agent…
+            </p>
+          )}
+          {actions.map((action, i) => (
+            <div
+              key={action.id}
+              className={cn(
+                'flex gap-2 rounded-md border px-2.5 py-1.5 text-xs',
+                i === actions.length - 1
+                  ? 'border-blue-500/40 bg-blue-500/10'
+                  : 'border-border bg-muted/50'
+              )}
             >
-              ⏹ Stop Agent
-            </button>
-          </div>
+              <span>{ACTION_ICON[action.type] ?? '•'}</span>
+              <span
+                className={cn(
+                  'flex-1 leading-snug',
+                  action.type === 'wiki_write' ? 'text-green-500' : 'text-foreground'
+                )}
+              >
+                {action.detail}
+              </span>
+            </div>
+          ))}
+          <div ref={actionsEndRef} />
+        </div>
+      </div>
+    </div>
+  ) : (
+    <div className="flex-1 overflow-y-auto bg-background p-6">
+      <div className="mx-auto flex max-w-4xl flex-col gap-4">
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-lg font-semibold text-foreground">Automations</h2>
+          <Button type="button" onClick={() => setNewRunOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            New run
+          </Button>
         </div>
 
-        {/* Center: browser */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#0d1117', minWidth: 0 }}>
-          <div style={{ background: '#161b22', borderBottom: '1px solid #30363d', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-            <div style={{ display: 'flex', gap: 4 }}>
-              <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#f85149', display: 'inline-block' }} />
-              <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#ffbd2e', display: 'inline-block' }} />
-              <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#3fb950', display: 'inline-block' }} />
-            </div>
-            <div style={{ flex: 1, background: '#0d1117', border: '1px solid #30363d', borderRadius: 6, padding: '4px 12px', fontSize: 12, color: '#8b949e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {currentUrl || 'Starting browser…'}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#3fb95012', border: '1px solid #3fb95030', padding: '3px 8px', borderRadius: 20, fontSize: 11, color: '#3fb950', flexShrink: 0 }}>
-              <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#3fb950', display: 'inline-block', animation: 'pulse 1.5s ease-in-out infinite' }} />
-              LIVE
-            </div>
+        {runsLoading ? (
+          <div className="space-y-3">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-3/4" />
           </div>
-          <div style={{ flex: 1, overflow: 'hidden', background: '#000' }}>
-            {novncUrl ? (
-              <iframe
-                src={novncUrl}
-                style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
-                title="Live browser"
-              />
-            ) : (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#8b949e', fontSize: 13 }}>
-                Connecting to browser…
-              </div>
-            )}
-          </div>
-        </div>
+        ) : runs.length === 0 ? (
+          <EmptyState
+            title="No automation runs yet"
+            description='Start one with "New run".'
+          />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Goal</TableHead>
+                <TableHead className="w-[120px]">Status</TableHead>
+                <TableHead className="w-[100px]">Duration</TableHead>
+                <TableHead className="w-10" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {runs.map(run => (
+                <TableRow key={run.id}>
+                  <TableCell className="max-w-0">
+                    <span className="block truncate font-medium">{run.goal}</span>
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant="outline"
+                      className={cn('capitalize', statusBadgeClass(run.status))}
+                    >
+                      {run.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {formatDuration(run)}
+                  </TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Run actions">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setActionsRunId(run.id)}>
+                          View action log
+                        </DropdownMenuItem>
+                        {run.recording_url && !isActiveStatus(run.status) && (
+                          <DropdownMenuItem onClick={() => handleWatch(run.id)}>
+                            <Play className="mr-2 h-4 w-4" />
+                            Watch recording
+                          </DropdownMenuItem>
+                        )}
+                        {isActiveStatus(run.status) && (
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => handleForceStop(run.id)}
+                          >
+                            <Square className="mr-2 h-4 w-4" />
+                            Force stop
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </div>
+    </div>
+  )
 
-        {/* Right panel: activity */}
-        <div style={{
-          width: 260,
-          background: '#161b22',
-          borderLeft: '1px solid #30363d',
-          display: 'flex',
-          flexDirection: 'column',
-          flexShrink: 0,
-        }}>
-          <div style={{ padding: '12px 16px', borderBottom: '1px solid #30363d', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px', color: '#8b949e' }}>
-            Activity
-          </div>
-          <div style={{ flex: 1, overflowY: 'auto', padding: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {actions.length === 0 && (
-              <div style={{ color: '#8b949e', fontSize: 12, fontStyle: 'italic', textAlign: 'center', marginTop: 20 }}>
-                Waiting for agent…
-              </div>
-            )}
-            {actions.map((action, i) => (
-              <div key={action.id} style={{
-                display: 'flex',
-                gap: 8,
-                padding: '7px 10px',
-                background: i === actions.length - 1 ? '#388bfd10' : '#21262d',
-                border: `1px solid ${i === actions.length - 1 ? '#388bfd40' : '#30363d'}`,
-                borderRadius: 7,
-                fontSize: 12,
-              }}>
-                <span>{ACTION_ICON[action.type] ?? '•'}</span>
-                <span style={{ color: action.type === 'wiki_write' ? '#3fb950' : '#c9d1d9', flex: 1, lineHeight: 1.4 }}>
-                  {action.detail}
+  return (
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">{pageContent}</div>
+
+      <Dialog open={newRunOpen} onOpenChange={setNewRunOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>New automation run</DialogTitle>
+            <DialogDescription>
+              Give the browser agent a goal. It will browse the web and can save findings to your wiki.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={goal}
+            onChange={e => setGoal(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleStart()
+            }}
+            placeholder="e.g. Research the top 5 note-taking apps and save a comparison to tools/note-apps"
+            rows={4}
+            className="resize-none text-[13px] leading-normal"
+          />
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setNewRunOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={handleStart} disabled={!goal.trim()}>
+              Run
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ActionLogDialog runId={actionsRunId} onClose={() => setActionsRunId(null)} />
+    </div>
+  )
+}
+
+function ActionLogDialog({
+  runId,
+  onClose,
+}: {
+  runId: string | null
+  onClose: () => void
+}) {
+  const [actions, setActions] = useState<AutomationAction[]>([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!runId) {
+      setActions([])
+      return
+    }
+    setLoading(true)
+    getAutomationRun(runId)
+      .then(data => setActions(data.actions))
+      .catch(() => setActions([]))
+      .finally(() => setLoading(false))
+  }, [runId])
+
+  return (
+    <Dialog open={runId !== null} onOpenChange={open => !open && onClose()}>
+      <DialogContent className="flex max-h-[80vh] max-w-2xl flex-col">
+        <DialogHeader>
+          <DialogTitle>Action log</DialogTitle>
+        </DialogHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {loading && <ListSkeleton rows={4} className="p-0" />}
+          {!loading && actions.length === 0 && (
+            <EmptyState
+              className="min-h-[6rem] py-6"
+              title="No actions recorded"
+              description="This run did not log any steps."
+            />
+          )}
+          <div className="flex flex-col gap-2">
+            {actions.map(a => (
+              <div key={a.id} className="flex gap-2.5 text-xs">
+                <span className="w-11 shrink-0 text-muted-foreground">
+                  {new Date(a.timestamp).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </span>
+                <span>{ACTION_ICON[a.type] ?? '•'}</span>
+                <span
+                  className={cn(
+                    'flex-1 leading-snug',
+                    a.type === 'wiki_write' ? 'text-green-500' : 'text-muted-foreground'
+                  )}
+                >
+                  {a.detail}
                 </span>
               </div>
             ))}
-            <div ref={actionsEndRef} />
           </div>
         </div>
-
-        <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }`}</style>
-      </div>
-  ) : (
-    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: '#0d1117', padding: 24 }}>
-      <div style={{ maxWidth: 720, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 700, color: '#e6edf3', margin: '0 0 8px' }}>Automations</h2>
-
-        {/* New run */}
-        <div style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <textarea
-            value={goal}
-            onChange={e => setGoal(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleStart() }}
-            placeholder="Give the agent a goal, e.g. 'Research the top 5 note-taking apps and save a comparison to tools/note-apps'"
-            rows={3}
-            style={{
-              width: '100%',
-              background: '#0d1117',
-              border: '1px solid #30363d',
-              borderRadius: 8,
-              padding: '10px 12px',
-              color: '#e6edf3',
-              fontSize: 13,
-              resize: 'none',
-              outline: 'none',
-              fontFamily: 'inherit',
-              lineHeight: 1.5,
-              boxSizing: 'border-box',
-            }}
-          />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12 }}>
-            {startError && (
-              <span style={{ fontSize: 12, color: '#f85149' }}>{startError}</span>
-            )}
-            <button
-              type="button"
-              onClick={handleStart}
-              disabled={!goal.trim()}
-              style={{
-                padding: '8px 20px',
-                background: goal.trim() ? '#238636' : '#21262d',
-                border: `1px solid ${goal.trim() ? '#2ea043' : '#30363d'}`,
-                borderRadius: 7,
-                color: goal.trim() ? '#ffffff' : '#8b949e',
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: goal.trim() ? 'pointer' : 'default',
-              }}
-            >
-              Run
-            </button>
-          </div>
-        </div>
-
-        {/* Run history */}
-        {runs.map(run => (
-          <div key={run.id} style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: 10, overflow: 'hidden' }}>
-            <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: statusDot(run.status), display: 'inline-block', flexShrink: 0 }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, color: '#e6edf3', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {run.goal}
-                </div>
-                <div style={{ fontSize: 11, color: '#8b949e', marginTop: 2 }}>
-                  {run.status.charAt(0).toUpperCase() + run.status.slice(1)}
-                  {run.completed_at && ` · ${formatDuration(run)}`}
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                {isActiveStatus(run.status) && (
-                  <button
-                    type="button"
-                    onClick={() => handleForceStop(run.id)}
-                    style={{ ...smallBtn, color: '#f85149', borderColor: '#f8514940' }}
-                  >
-                    Force stop
-                  </button>
-                )}
-                {run.recording_url && !isActiveStatus(run.status) && (
-                  <button
-                    type="button"
-                    onClick={() => handleWatch(run.id)}
-                    style={smallBtn}
-                  >
-                    ▶ Watch
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setExpandedRunId(expandedRunId === run.id ? null : run.id)}
-                  style={smallBtn}
-                >
-                  Actions {expandedRunId === run.id ? '▴' : '▾'}
-                </button>
-              </div>
-            </div>
-            {expandedRunId === run.id && (
-              <ExpandedActions runId={run.id} />
-            )}
-          </div>
-        ))}
-
-        {runs.length === 0 && (
-          <div style={{ textAlign: 'center', color: '#8b949e', fontSize: 13, marginTop: 32 }}>
-            No automation runs yet. Write a goal above to get started.
-          </div>
-        )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      <TopBar />
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
-        {pageContent}
-      </div>
-    </div>
-  )
-}
-
-function ExpandedActions({ runId }: { runId: string }) {
-  const [actions, setActions] = useState<AutomationAction[]>([])
-
-  useEffect(() => {
-    getAutomationRun(runId).then(data => setActions(data.actions)).catch(() => {})
-  }, [runId])
-
-  const ACTION_ICON: Record<string, string> = {
-    navigate: '🧭', click: '🖱', type: '⌨️', scroll: '↕️',
-    read: '📖', screenshot: '📸', wiki_write: '✍️',
-  }
-
-  return (
-    <div style={{ borderTop: '1px solid #30363d', background: '#0d1117', padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: 5 }}>
-      <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#8b949e', marginBottom: 4 }}>
-        Action Log
-      </div>
-      <div style={{ overflowY: 'auto', maxHeight: 300, display: 'flex', flexDirection: 'column', gap: 5 }}>
-        {actions.map(a => (
-          <div key={a.id} style={{ display: 'flex', gap: 10, fontSize: 12 }}>
-            <span style={{ color: '#8b949e', width: 42, flexShrink: 0 }}>
-              {new Date(a.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </span>
-            <span>{ACTION_ICON[a.type] ?? '•'}</span>
-            <span style={{ color: a.type === 'wiki_write' ? '#3fb950' : '#8b949e' }}>{a.detail}</span>
-          </div>
-        ))}
-        {actions.length === 0 && (
-          <div style={{ fontSize: 12, color: '#8b949e', fontStyle: 'italic' }}>Loading…</div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-const smallBtn: React.CSSProperties = {
-  padding: '4px 10px',
-  background: '#21262d',
-  border: '1px solid #30363d',
-  borderRadius: 6,
-  color: '#8b949e',
-  fontSize: 11,
-  cursor: 'pointer',
 }

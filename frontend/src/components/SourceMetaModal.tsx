@@ -2,6 +2,17 @@ import { useState, useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { SourceItem } from '../api/client'
 import { patchSource } from '../api/client'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { toast } from '@/lib/toast'
 
 interface SourceMetaModalProps {
   source: SourceItem
@@ -12,85 +23,59 @@ export default function SourceMetaModal({ source, onClose }: SourceMetaModalProp
   const [title, setTitle] = useState(source.title ?? '')
   const [description, setDescription] = useState(source.description ?? '')
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const qc = useQueryClient()
 
   useEffect(() => {
     setTitle(source.title ?? '')
     setDescription(source.description ?? '')
-    setError(null)
   }, [source.id])
 
   async function handleSave() {
     setSaving(true)
-    setError(null)
     try {
       await patchSource(source.id, { title: title || undefined, description: description || undefined })
       qc.invalidateQueries({ queryKey: ['sources'] })
+      toast.success('Saved')
       onClose()
     } catch {
-      setError('Failed to save. Please try again.')
+      toast.error('Failed to save. Please try again.')
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
-      }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div style={{
-        background: '#161b22', border: '1px solid #30363d', borderRadius: 12,
-        padding: 0, width: 460, maxWidth: '92vw',
-        maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden',
-      }}>
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 24 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-            <h3 style={{ color: '#e6edf3', margin: 0, fontSize: 15 }}>File info</h3>
-            <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', fontSize: 18 }}>✕</button>
-          </div>
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>File info</DialogTitle>
+        </DialogHeader>
 
-          {/* Editable fields */}
-          <div style={{ marginBottom: 14 }}>
-            <label style={{ display: 'block', fontSize: 11, color: '#8b949e', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Title
             </label>
-            <input
+            <Input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="File title"
-              style={{
-                width: '100%', boxSizing: 'border-box',
-                background: '#0d1117', border: '1px solid #30363d', borderRadius: 6,
-                color: '#e6edf3', fontSize: 13, padding: '7px 10px', outline: 'none',
-              }}
             />
           </div>
 
-          <div style={{ marginBottom: 20 }}>
-            <label style={{ display: 'block', fontSize: 11, color: '#8b949e', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <div className="space-y-2">
+            <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Description
             </label>
-            <textarea
+            <Textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="One sentence summary"
               rows={3}
-              style={{
-                width: '100%', boxSizing: 'border-box',
-                background: '#0d1117', border: '1px solid #30363d', borderRadius: 6,
-                color: '#e6edf3', fontSize: 13, padding: '7px 10px', outline: 'none',
-                resize: 'vertical', fontFamily: 'inherit',
-              }}
             />
           </div>
 
-          {/* Read-only metadata */}
-          <div style={{ borderTop: '1px solid #21262d', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className="space-y-2 border-t border-border pt-4">
             {source.filename && (
               <MetaRow label="Original filename" value={source.filename} />
             )}
@@ -98,36 +83,26 @@ export default function SourceMetaModal({ source, onClose }: SourceMetaModalProp
             <MetaRow label="Status" value={source.status} />
             <MetaRow label="Ingested" value={new Date(source.created_at).toLocaleString()} />
           </div>
-
-          {error && (
-            <div style={{ marginTop: 12, color: '#f85149', fontSize: 12 }}>{error}</div>
-          )}
         </div>
 
-        <div style={{ padding: '12px 24px', borderTop: '1px solid #21262d', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button type="button" onClick={onClose} style={{
-            padding: '6px 14px', background: '#21262d', border: '1px solid #30363d',
-            borderRadius: 6, color: '#e6edf3', cursor: 'pointer', fontSize: 13,
-          }}>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>
             Cancel
-          </button>
-          <button type="button" onClick={handleSave} disabled={saving} style={{
-            padding: '6px 14px', background: saving ? '#1a3a1a' : '#238636', border: '1px solid #2ea043',
-            borderRadius: 6, color: '#e6edf3', cursor: saving ? 'not-allowed' : 'pointer', fontSize: 13,
-          }}>
+          </Button>
+          <Button onClick={() => void handleSave()} disabled={saving}>
             {saving ? 'Saving…' : 'Save'}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
 function MetaRow({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ display: 'flex', gap: 8, fontSize: 12 }}>
-      <span style={{ color: '#6e7681', minWidth: 120, flexShrink: 0 }}>{label}</span>
-      <span style={{ color: '#8b949e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</span>
+    <div className="flex gap-2 text-xs">
+      <span className="min-w-[120px] shrink-0 text-muted-foreground">{label}</span>
+      <span className="truncate text-muted-foreground">{value}</span>
     </div>
   )
 }

@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { Toaster } from '@/components/ui/sonner'
 import { redirectToAuthentik, devLogin, DEV_AUTH_BYPASS, saveAccessToken, getStoredAccessToken, clearStoredTokens } from './auth'
-import Layout from './components/Layout'
+import { AppShell } from './components/shell/AppShell'
+import WikiWorkspace from './components/shell/WikiWorkspace'
 import FilesView from './components/FilesView'
 import AutomationsPage from './components/AutomationsPage'
 import BrowserChatPage from './components/BrowserChatPage'
 
 type AuthState = 'loading' | 'authenticated' | 'unauthenticated'
 
-/** Full-viewport placeholder so OAuth callback / session checks don’t flash an empty shell before Layout. */
+/** Full-viewport placeholder so OAuth callback / session checks don’t flash an empty shell before AppShell. */
 function AuthGateSplash({ label }: { label: string }) {
   return (
     <div
@@ -145,33 +147,46 @@ export default function App() {
 
   if (authState === 'authenticated') {
     return (
-      <BrowserRouter>
-        <Routes>
-          <Route path="/wiki" element={<Layout />} />
-          <Route path="/files" element={<FilesView />} />
-          <Route path="/automations" element={<AutomationsPage />} />
-          <Route path="/browser-chat" element={<BrowserChatPage />} />
-          <Route path="*" element={<Navigate to="/wiki" replace />} />
-        </Routes>
-      </BrowserRouter>
+      <>
+        <BrowserRouter>
+          <Routes>
+            <Route element={<AppShell />}>
+              <Route path="/wiki" element={<WikiWorkspace />} />
+              <Route path="/files" element={<FilesView />} />
+              <Route path="/automations" element={<AutomationsPage />} />
+              <Route path="/browser-chat" element={<BrowserChatPage />} />
+              <Route path="*" element={<Navigate to="/wiki" replace />} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+        <Toaster position="bottom-right" theme="dark" />
+      </>
     )
   }
 
   if (authState === 'unauthenticated' && DEV_AUTH_BYPASS) {
     return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0d1117' }}>
-        <button
-          onClick={() => devLogin().then(() => setAuthState('authenticated'))}
-          style={{ padding: '10px 24px', fontSize: 14, cursor: 'pointer', borderRadius: 6, border: '1px solid #30363d', background: '#21262d', color: '#c9d1d9' }}
-        >
-          Dev Login
-        </button>
-      </div>
+      <>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0d1117' }}>
+          <button
+            onClick={() => devLogin().then(() => setAuthState('authenticated'))}
+            style={{ padding: '10px 24px', fontSize: 14, cursor: 'pointer', borderRadius: 6, border: '1px solid #30363d', background: '#21262d', color: '#c9d1d9' }}
+          >
+            Dev Login
+          </button>
+        </div>
+        <Toaster position="bottom-right" theme="dark" />
+      </>
     )
   }
 
   const splashLabel =
     authState === 'unauthenticated' ? 'Redirecting to sign in…' : 'Signing you in…'
 
-  return <AuthGateSplash label={splashLabel} />
+  return (
+    <>
+      <AuthGateSplash label={splashLabel} />
+      <Toaster position="bottom-right" theme="dark" />
+    </>
+  )
 }
