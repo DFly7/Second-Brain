@@ -7,6 +7,7 @@ import ChatPanel from '@/components/ChatPanel'
 import IngestModal from '@/components/IngestModal'
 import ActivityLog from '@/components/ActivityLog'
 import { ContextBar } from '@/components/shell/ContextBar'
+import { useShell } from '@/components/shell/ShellContext'
 import { useShellState } from '@/components/shell/ShellStateContext'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { usePage } from '@/hooks/useWiki'
@@ -26,6 +27,7 @@ export default function WikiWorkspace() {
     chatSseEvent,
     onSelectSlug,
   } = useShellState()
+  const { openPalette } = useShell()
 
   const isMobile = useIsMobile()
   const [activeTab, setActiveTab] = useState<'pages' | 'content' | 'chat'>('content')
@@ -94,7 +96,7 @@ export default function WikiWorkspace() {
   if (isMobile) {
     return (
       <div className="flex h-full flex-col overflow-hidden">
-        <ContextBar breadcrumbs={breadcrumbs} actions={contextActions} />
+        <ContextBar breadcrumbs={breadcrumbs} actions={contextActions} onOpenPalette={openPalette} />
         {activityRow}
         <div className="min-h-0 flex-1 overflow-hidden">
           {activeTab === 'pages' && (
@@ -144,7 +146,7 @@ export default function WikiWorkspace() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <ContextBar breadcrumbs={breadcrumbs} actions={contextActions} />
+      <ContextBar breadcrumbs={breadcrumbs} actions={contextActions} onOpenPalette={openPalette} />
       {activityRow}
       <div className="min-h-0 flex-1 overflow-hidden">
         <WikiContent selectedSlug={selectedSlug} onNavigate={onSelectSlug} />

@@ -11,7 +11,7 @@ const sections = [
   { to: '/browser-chat', icon: Globe, label: 'Browser' },
 ]
 
-export function IconRail() {
+export function IconRail({ onOpenHelp }: { onOpenHelp: () => void }) {
   return (
     <TooltipProvider delayDuration={300}>
       <nav className="flex h-full w-14 flex-col items-center border-r border-border bg-background py-3">
@@ -46,6 +46,7 @@ export function IconRail() {
                 size="icon"
                 className="h-9 w-9 text-muted-foreground"
                 aria-label="Help"
+                onClick={onOpenHelp}
               >
                 <HelpCircle className="h-4 w-4" />
               </Button>
