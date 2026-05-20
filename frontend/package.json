@@ -10,6 +10,8 @@
   "dependencies": {
     "@codemirror/lang-markdown": "^6.0.0",
     "@codemirror/view": "^6.0.0",
+    "@fontsource-variable/inter": "^5.2.8",
+    "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@tanstack/react-query": "^5.56.2",
     "@uiw/react-codemirror": "^4.23.0",
     "clsx": "^2.1.1",
