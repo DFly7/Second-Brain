@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/utils'
 import {
   type BrowserChatMessage,
   type BrowserChatSession,
@@ -50,9 +52,8 @@ export default function BrowserChatPage() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [messages, actions, agentRunning])
 
-  // Blur listener: fires when user clicks into the noVNC iframe while agent is running.
   const handleWindowBlur = useCallback(() => {
     if (activeSessionId && agentRunning) {
       interruptBrowserChat(activeSessionId).catch(() => {})
@@ -195,169 +196,157 @@ export default function BrowserChatPage() {
   }
 
   const pageContent = connectionState === 'connected' ? (
-      <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', background: '#0d1117' }}>
-        {/* Left: chat */}
-        <div style={{
-          width: 320,
-          flexShrink: 0,
-          background: '#161b22',
-          borderRight: '1px solid #30363d',
-          display: 'flex',
-          flexDirection: 'column',
-        }}>
-          <div style={{ padding: '10px 14px', borderBottom: '1px solid #30363d', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px', color: '#8b949e' }}>
+    <div className="flex min-h-0 flex-1 overflow-hidden bg-background">
+      {/* Left: chat */}
+      <div className="flex w-80 shrink-0 flex-col border-r border-border bg-background">
+        <div className="shrink-0 border-b border-border px-3 py-2.5">
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Chat
-          </div>
-          <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {messages.length === 0 && (
-              <div style={{ color: '#8b949e', fontSize: 12, fontStyle: 'italic', textAlign: 'center', marginTop: 24 }}>
-                Type a message to get started.
-              </div>
-            )}
-            {messages.map(msg => (
-              <React.Fragment key={msg.id}>
-                <div style={{
-                  alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                  maxWidth: '90%',
-                  background: msg.role === 'user' ? '#1f3a5f' : '#21262d',
-                  border: `1px solid ${msg.role === 'user' ? '#388bfd40' : '#30363d'}`,
-                  borderRadius: msg.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
-                  padding: '8px 12px',
-                  fontSize: 13,
-                  color: '#e6edf3',
-                  lineHeight: 1.5,
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                }}>
-                  {msg.content}
-                </div>
-              </React.Fragment>
-            ))}
-            {actions.map(action => (
-              <div key={action.id} style={{
-                alignSelf: 'flex-start',
-                display: 'flex',
-                alignItems: 'baseline',
-                gap: 6,
-                padding: '3px 8px',
-                fontSize: 11,
-                color: action.error ? '#f85149' : '#8b949e',
-                fontFamily: 'monospace',
-              }}>
-                <span>{action.error ? '⚠' : actionIcon(action.type)}</span>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 260 }}>
-                  {action.detail}
-                </span>
-              </div>
-            ))}
-            {agentRunning && (
-              <div style={{ alignSelf: 'flex-start', background: '#21262d', border: '1px solid #30363d', borderRadius: '12px 12px 12px 2px', padding: '8px 12px', fontSize: 13, color: '#8b949e' }}>
-                <span style={{ animation: 'pulse 1.5s ease-in-out infinite', display: 'inline-block' }}>thinking…</span>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-          <div style={{ padding: '10px 12px', borderTop: '1px solid #30363d', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <Textarea
-              ref={inputRef}
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSend() }}
-              disabled={agentRunning}
-              placeholder={agentRunning ? 'Agent is working…' : 'Tell the agent what to do… (⌘↵ to send)'}
-              rows={3}
-              className="resize-none text-[13px] leading-normal"
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 border-destructive/40 text-destructive hover:text-destructive"
-                onClick={handleDisconnect}
-              >
-                Disconnect
-              </Button>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <label style={{ fontSize: 11, color: '#8b949e' }}>Turns</label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={maxTurns}
-                  onChange={e => setMaxTurns(Math.max(1, Math.min(100, Number(e.target.value))))}
-                  className="h-7 w-12 px-1.5 text-center text-[11px]"
-                />
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 text-[11px]"
-                onClick={handleRecover}
-                disabled={recovering || agentRunning}
-              >
-                {recovering ? 'Recovering…' : 'Recover Browser'}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                className="h-7"
-                onClick={handleSend}
-                disabled={!input.trim() || agentRunning}
-              >
-                Send
-              </Button>
-            </div>
-          </div>
+          </span>
         </div>
 
-        {/* Right: browser */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-          <div style={{ background: '#161b22', borderBottom: '1px solid #30363d', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-            <div style={{ display: 'flex', gap: 4 }}>
-              <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#f85149', display: 'inline-block' }} />
-              <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#ffbd2e', display: 'inline-block' }} />
-              <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#3fb950', display: 'inline-block' }} />
-            </div>
-            <div style={{ flex: 1, background: '#0d1117', border: '1px solid #30363d', borderRadius: 6, padding: '4px 12px', fontSize: 12, color: '#8b949e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {currentUrl || 'Browser ready'}
-            </div>
-            {agentRunning && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#388bfd12', border: '1px solid #388bfd40', padding: '3px 8px', borderRadius: 20, fontSize: 11, color: '#58a6ff', flexShrink: 0 }}>
-                <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#58a6ff', display: 'inline-block', animation: 'pulse 1.5s ease-in-out infinite' }} />
-                Working
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto py-2">
+          {messages.length === 0 && (
+            <p className="mt-10 px-3 text-center text-sm italic text-muted-foreground">
+              Type a message to get started.
+            </p>
+          )}
+          {messages.map(msg =>
+            msg.role === 'user' ? (
+              <div
+                key={msg.id}
+                className="whitespace-pre-wrap break-words px-3 py-2 text-sm text-foreground"
+              >
+                {msg.content}
               </div>
-            )}
-          </div>
-          <div style={{ flex: 1, background: '#000', overflow: 'hidden' }}>
-            {novncUrl ? (
-              <iframe
-                src={novncUrl}
-                style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
-                title="Live browser"
-              />
             ) : (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#8b949e', fontSize: 13 }}>
-                Connecting to browser…
-              </div>
-            )}
-          </div>
+              <Card
+                key={msg.id}
+                className="mx-3 my-2 border-border bg-card p-3 text-sm leading-relaxed text-card-foreground"
+              >
+                <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+              </Card>
+            ),
+          )}
+          {actions.map(action => (
+            <div
+              key={action.id}
+              className={cn(
+                'flex items-baseline gap-1.5 px-3 py-0.5 font-mono text-xs',
+                action.error ? 'text-destructive' : 'text-muted-foreground',
+              )}
+            >
+              <span className="shrink-0">{action.error ? '⚠' : actionIcon(action.type)}</span>
+              <span className="max-w-[260px] truncate">{action.detail}</span>
+            </div>
+          ))}
+          {agentRunning && (
+            <Card className="mx-3 my-2 border-border bg-muted/50 p-3 text-sm text-muted-foreground">
+              <span className="inline-block animate-pulse">thinking…</span>
+            </Card>
+          )}
+          <div ref={messagesEndRef} />
         </div>
 
-        <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }`}</style>
-      </div>
-  ) : (
-    <div style={{ flex: 1, overflowY: 'auto', background: '#0d1117', padding: 24 }}>
-      <div style={{ maxWidth: 680, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 700, color: '#e6edf3', margin: 0 }}>Browser Chat</h2>
-
-        <div style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: 10, padding: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-          <div style={{ fontSize: 13, color: '#8b949e', textAlign: 'center', lineHeight: 1.6 }}>
-            Connect to a live browser and chat with an agent that controls it in real time.
+        <div className="shrink-0 space-y-2 border-t border-border p-3">
+          <Textarea
+            ref={inputRef}
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSend() }}
+            disabled={agentRunning}
+            placeholder={agentRunning ? 'Agent is working…' : 'Tell the agent what to do… (⌘↵ to send)'}
+            rows={3}
+            className="min-h-0 resize-none text-sm"
+          />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 border-destructive/40 text-destructive hover:text-destructive"
+              onClick={handleDisconnect}
+            >
+              Disconnect
+            </Button>
+            <div className="flex items-center gap-1.5">
+              <label className="text-xs text-muted-foreground">Turns</label>
+              <Input
+                type="number"
+                min={1}
+                max={100}
+                value={maxTurns}
+                onChange={e => setMaxTurns(Math.max(1, Math.min(100, Number(e.target.value))))}
+                className="h-7 w-12 px-1.5 text-center text-xs"
+              />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={handleRecover}
+              disabled={recovering || agentRunning}
+            >
+              {recovering ? 'Recovering…' : 'Recover Browser'}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              className="h-7"
+              onClick={handleSend}
+              disabled={!input.trim() || agentRunning}
+            >
+              Send
+            </Button>
           </div>
+        </div>
+      </div>
+
+      {/* Right: browser */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex shrink-0 items-center gap-2.5 border-b border-border bg-muted/30 px-3 py-2">
+          <div className="flex gap-1">
+            <span className="inline-block size-2.5 rounded-full bg-destructive" />
+            <span className="inline-block size-2.5 rounded-full bg-amber-400" />
+            <span className="inline-block size-2.5 rounded-full bg-emerald-500" />
+          </div>
+          <div className="min-w-0 flex-1 truncate rounded-md border border-border bg-background px-3 py-1 text-xs text-muted-foreground">
+            {currentUrl || 'Browser ready'}
+          </div>
+          {agentRunning && (
+            <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-xs text-primary">
+              <span className="inline-block size-1.5 animate-pulse rounded-full bg-primary" />
+              Working
+            </div>
+          )}
+        </div>
+        <div className="min-h-0 flex-1 overflow-hidden bg-black">
+          {novncUrl ? (
+            <iframe
+              src={novncUrl}
+              className="block h-full w-full border-0"
+              title="Live browser"
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              Connecting to browser…
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  ) : (
+    <div className="min-h-0 flex-1 overflow-y-auto bg-background p-6">
+      <div className="mx-auto flex max-w-2xl flex-col gap-4">
+        <h2 className="text-lg font-semibold text-foreground">Browser Chat</h2>
+
+        <Card className="flex flex-col items-center gap-3 border-border p-6">
+          <p className="text-center text-sm leading-relaxed text-muted-foreground">
+            Connect to a live browser and chat with an agent that controls it in real time.
+          </p>
           {connectError && (
-            <div style={{ fontSize: 12, color: '#f85149' }}>{connectError}</div>
+            <p className="text-sm text-destructive">{connectError}</p>
           )}
           <Button
             type="button"
@@ -366,23 +355,30 @@ export default function BrowserChatPage() {
           >
             {connectionState === 'connecting' ? 'Connecting…' : 'Connect'}
           </Button>
-        </div>
+        </Card>
 
         {pastSessions.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px', color: '#8b949e' }}>Past Sessions</div>
+          <div className="flex flex-col gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Past Sessions
+            </p>
             {pastSessions.map(s => (
-              <div key={s.id} style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: 10, overflow: 'hidden' }}>
-                <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: s.status === 'active' ? '#58a6ff' : '#8b949e', display: 'inline-block', flexShrink: 0 }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12, color: '#e6edf3' }}>
+              <Card key={s.id} className="overflow-hidden border-border">
+                <div className="flex items-center gap-2.5 p-3">
+                  <span
+                    className={cn(
+                      'inline-block size-1.5 shrink-0 rounded-full',
+                      s.status === 'active' ? 'bg-primary' : 'bg-muted-foreground',
+                    )}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-foreground">
                       {new Date(s.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
-                    </div>
-                    <div style={{ fontSize: 11, color: '#8b949e' }}>
+                    </p>
+                    <p className="text-xs text-muted-foreground">
                       {s.status === 'active' ? 'Active' : 'Completed'}
                       {s.completed_at && ` · ${Math.round((new Date(s.completed_at).getTime() - new Date(s.created_at).getTime()) / 60000)}m`}
-                    </div>
+                    </p>
                   </div>
                   {s.status === 'active' && (
                     <Button
@@ -406,30 +402,30 @@ export default function BrowserChatPage() {
                   </Button>
                 </div>
                 {expandedSessionId === s.id && (
-                  <div style={{ borderTop: '1px solid #30363d', background: '#0d1117', padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div className="flex flex-col gap-1.5 border-t border-border bg-muted/20 p-3">
                     {expandedMessages.length === 0 && (
-                      <div style={{ fontSize: 12, color: '#8b949e', fontStyle: 'italic' }}>No messages.</div>
+                      <p className="text-sm italic text-muted-foreground">No messages.</p>
                     )}
-                    {expandedMessages.map(m => (
-                      <div key={m.id} style={{
-                        alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
-                        maxWidth: '90%',
-                        background: m.role === 'user' ? '#1f3a5f' : '#21262d',
-                        border: `1px solid ${m.role === 'user' ? '#388bfd40' : '#30363d'}`,
-                        borderRadius: 8,
-                        padding: '6px 10px',
-                        fontSize: 12,
-                        color: '#c9d1d9',
-                        lineHeight: 1.5,
-                        whiteSpace: 'pre-wrap',
-                        wordBreak: 'break-word',
-                      }}>
-                        {m.content}
-                      </div>
-                    ))}
+                    {expandedMessages.map(m =>
+                      m.role === 'user' ? (
+                        <div
+                          key={m.id}
+                          className="ml-auto max-w-[90%] whitespace-pre-wrap break-words text-right text-sm text-foreground"
+                        >
+                          {m.content}
+                        </div>
+                      ) : (
+                        <Card
+                          key={m.id}
+                          className="max-w-[90%] border-border bg-card p-2.5 text-sm leading-relaxed text-card-foreground"
+                        >
+                          <div className="whitespace-pre-wrap break-words">{m.content}</div>
+                        </Card>
+                      ),
+                    )}
                   </div>
                 )}
-              </div>
+              </Card>
             ))}
           </div>
         )}
