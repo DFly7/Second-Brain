@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useLocation, Outlet } from 'react-router-dom'
 import { usePanelRef } from 'react-resizable-panels'
 import {
@@ -24,12 +24,6 @@ function useIsWiki() {
   return pathname.startsWith('/wiki')
 }
 
-/** Returns the initial layout for the three-panel group based on the starting route. */
-function initialLayout(pathname: string): Record<string, number> {
-  return pathname.startsWith('/wiki')
-    ? { 'secondary-sidebar': 22, main: 53, chat: 25 }
-    : { 'secondary-sidebar': 0, main: 100, chat: 0 }
-}
 
 function SecondaryForRoute() {
   const { selectedSlug, highlightedSlug, onSelectSlug } = useShellState()
@@ -52,9 +46,6 @@ function AppShellLayout() {
   const [helpOpen, setHelpOpen] = useState(false)
   const sidebarRef = usePanelRef()
   const chatRef = usePanelRef()
-  // Capture the initial pathname once so defaultLayout doesn't re-compute on navigation
-  const initialPathnameRef = useRef(pathname)
-  const defaultPanelLayout = useMemo(() => initialLayout(initialPathnameRef.current), [])
 
   const handleShortcut = useCallback((id: string) => {
     if (id === 'palette') setPaletteOpen(true)
@@ -122,16 +113,15 @@ function AppShellLayout() {
             orientation="horizontal"
             className="h-full min-h-0 flex-1"
             resizeTargetMinimumSize={{ coarse: 28, fine: 10 }}
-            defaultLayout={defaultPanelLayout}
           >
             <ResizablePanel
               id="secondary-sidebar"
               panelRef={sidebarRef}
-              defaultSize={22}
-              minSize={16}
-              maxSize={40}
+              defaultSize="22%"
+              minSize="16%"
+              maxSize="40%"
               collapsible
-              collapsedSize={0}
+              collapsedSize="0%"
               className="min-w-0"
             >
               <div className="h-full min-w-0 overflow-hidden">
@@ -141,8 +131,8 @@ function AppShellLayout() {
             <ResizableHandle withHandle />
             <ResizablePanel
               id="main"
-              defaultSize={53}
-              minSize={30}
+              defaultSize="53%"
+              minSize="30%"
               className="min-w-0"
             >
               <main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
@@ -155,11 +145,11 @@ function AppShellLayout() {
             <ResizablePanel
               id="chat"
               panelRef={chatRef}
-              defaultSize={25}
-              minSize={18}
-              maxSize={50}
+              defaultSize="25%"
+              minSize="18%"
+              maxSize="50%"
               collapsible
-              collapsedSize={0}
+              collapsedSize="0%"
               className="min-w-0"
             >
               <div className="h-full min-w-0 overflow-hidden">
