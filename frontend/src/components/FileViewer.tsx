@@ -5,6 +5,12 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { fetchSourceFile, fetchSourceImage } from '../api/client'
@@ -16,10 +22,13 @@ const NO_FILE_KINDS = ['url', 'text', 'md', 'markdown', 'txt']
 
 interface FileViewerProps {
   source: SourceItem | null
+  onClose?: () => void
+  /** @deprecated use onClose */
   onBack?: () => void
 }
 
-export default function FileViewer({ source, onBack }: FileViewerProps) {
+export default function FileViewer({ source, onClose, onBack }: FileViewerProps) {
+  const handleClose = onClose ?? onBack
   const defaultView = (s: SourceItem | null) =>
     s?.has_markdown ? 'markdown' : 'original'
 
@@ -31,74 +40,65 @@ export default function FileViewer({ source, onBack }: FileViewerProps) {
     setBlobUrl(null)
   }, [source?.id])
 
-  if (!source) {
-    return (
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {onBack && (
-          <div style={{ padding: '8px 14px', borderBottom: '1px solid #21262d', flexShrink: 0 }}>
-            <Button type="button" variant="outline" size="sm" onClick={onBack}>← Back</Button>
-          </div>
-        )}
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8b949e', fontSize: 13 }}>
-          Select a file to view it.
-        </div>
-      </div>
-    )
-  }
+  if (!source) return null
 
   const showToggle = source.has_file && source.has_markdown
   const filename = source.filename ?? `file.${source.kind}`
+  const title =
+    source.title ?? `${source.kind} · ${source.id.slice(0, 8).toUpperCase()}`
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        padding: '8px 14px',
-        borderBottom: '1px solid #21262d',
-        flexShrink: 0,
-      }}>
-        {onBack && (
-          <Button type="button" variant="outline" size="sm" onClick={onBack}>← Back</Button>
-        )}
-        <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: '#e6edf3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {source.title ?? `${source.kind} · ${source.id.slice(0, 8).toUpperCase()}`}
-        </span>
-        {view === 'original' && blobUrl && (
-          <div style={{ display: 'flex', gap: 6 }}>
-            <a href={blobUrl} download={filename} style={linkBtnStyle}>⬇ Download</a>
-            <a href={blobUrl} target="_blank" rel="noreferrer" style={linkBtnStyle}>↗ Open</a>
-          </div>
-        )}
-        {showToggle && (
-          <div style={{ display: 'flex', background: '#21262d', borderRadius: 6, padding: 2, gap: 2 }}>
-            {(['original', 'markdown'] as const).map((v) => (
-              <Button
-                key={v}
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setView(v)}
-                className={cn(
-                  'h-7 px-2.5 text-[11px] font-semibold',
-                  view === v
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:bg-transparent',
-                )}
-              >
-                {v === 'original' ? 'Original' : 'Markdown'}
+    <Dialog open onOpenChange={(o) => !o && handleClose?.()}>
+      <DialogContent className="flex h-[80vh] max-w-4xl flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="flex shrink-0 flex-row items-center gap-2 space-y-0 border-b px-4 py-2 pr-12">
+          <DialogTitle className="min-w-0 flex-1 truncate text-sm font-semibold">
+            {title}
+          </DialogTitle>
+          {view === 'original' && blobUrl && (
+            <div className="flex shrink-0 gap-2">
+              <Button variant="outline" size="sm" asChild>
+                <a href={blobUrl} download={filename}>
+                  Download
+                </a>
               </Button>
-            ))}
-          </div>
-        )}
-      </div>
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {view === 'markdown'
-          ? <MarkdownPane source={source} />
-          : <OriginalPane source={source} onBlobUrl={setBlobUrl} />}
-      </div>
-    </div>
+              <Button variant="outline" size="sm" asChild>
+                <a href={blobUrl} target="_blank" rel="noreferrer">
+                  Open
+                </a>
+              </Button>
+            </div>
+          )}
+          {showToggle && (
+            <div className="flex shrink-0 gap-0.5 rounded-md bg-muted p-0.5">
+              {(['original', 'markdown'] as const).map((v) => (
+                <Button
+                  key={v}
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setView(v)}
+                  className={cn(
+                    'h-7 px-2.5 text-[11px] font-semibold',
+                    view === v
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:bg-transparent',
+                  )}
+                >
+                  {v === 'original' ? 'Original' : 'Markdown'}
+                </Button>
+              ))}
+            </div>
+          )}
+        </DialogHeader>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {view === 'markdown' ? (
+            <MarkdownPane source={source} />
+          ) : (
+            <OriginalPane source={source} onBlobUrl={setBlobUrl} />
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -127,10 +127,10 @@ function AuthedImg({ src, alt, sourceId }: { src?: string; alt?: string; sourceI
   }, [src, sourceId, isExternal])
 
   if (!src) return null
-  if (isExternal) return <img src={src} alt={alt ?? ''} style={{ maxWidth: '100%', borderRadius: 4 }} />
-  if (failed) return <span style={{ color: '#6e7681', fontSize: 12 }}>[image unavailable]</span>
-  if (!blobUrl) return <span style={{ color: '#6e7681', fontSize: 12 }}>[loading image…]</span>
-  return <img src={blobUrl} alt={alt ?? ''} style={{ maxWidth: '100%', borderRadius: 4 }} />
+  if (isExternal) return <img src={src} alt={alt ?? ''} className="max-w-full rounded" />
+  if (failed) return <span className="text-xs text-muted-foreground">[image unavailable]</span>
+  if (!blobUrl) return <span className="text-xs text-muted-foreground">[loading image…]</span>
+  return <img src={blobUrl} alt={alt ?? ''} className="max-w-full rounded" />
 }
 
 const imgComponents = (sourceId: string): React.ComponentProps<typeof ReactMarkdown>['components'] => ({
@@ -164,9 +164,9 @@ function MarkdownPane({ source }: { source: SourceItem }) {
   }
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 16px', borderBottom: '1px solid #21262d', background: '#161b22', flexShrink: 0 }}>
-        <span style={{ color: '#e6edf3', fontWeight: 600 }}>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="flex shrink-0 items-center gap-2 border-b bg-muted/30 px-4 py-1.5">
+        <span className="text-sm font-semibold text-foreground">
           {source.filename ?? source.kind} — markdown
         </span>
         <Button
@@ -179,17 +179,9 @@ function MarkdownPane({ source }: { source: SourceItem }) {
           {rawMode ? 'Rendered' : 'Raw'}
         </Button>
       </div>
-      <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+      <div className="min-h-0 flex-1 overflow-y-auto p-6">
         {rawMode ? (
-          <pre
-            style={{
-              color: '#c9d1d9',
-              fontSize: 13,
-              lineHeight: 1.6,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-            }}
-          >
+          <pre className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-foreground">
             {markdown}
           </pre>
         ) : (
@@ -264,12 +256,18 @@ function OriginalPane({ source, onBlobUrl }: { source: SourceItem; onBlobUrl: (u
   const filename = source.filename ?? `file.${source.kind}`
 
   if (blobUrl && source.kind === 'pdf') {
-    return <iframe src={blobUrl} style={{ flex: 1, width: '100%', height: '100%', border: 'none', display: 'block' }} title={filename} />
+    return (
+      <iframe
+        src={blobUrl}
+        className="block h-full min-h-0 w-full flex-1 border-0"
+        title={filename}
+      />
+    )
   }
   if (blobUrl && IMAGE_KINDS.includes(source.kind)) {
     return (
-      <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', alignItems: 'flex-start', justifyContent: 'center' }}>
-        <img src={blobUrl} alt={filename} style={{ maxWidth: '100%' }} />
+      <div className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto p-4">
+        <img src={blobUrl} alt={filename} className="max-w-full" />
       </div>
     )
   }
@@ -285,24 +283,18 @@ function LoadingBar({ progress }: { progress: { received: number; total: number 
     : 'Connecting…'
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-      <div style={{ width: 260, background: '#21262d', borderRadius: 4, overflow: 'hidden', height: 6 }}>
+    <div className="flex flex-1 flex-col items-center justify-center gap-3">
+      <div className="h-1.5 w-64 overflow-hidden rounded bg-muted">
         {pct !== null ? (
           <div
-            style={{
-              height: '100%',
-              width: `${pct}%`,
-              background: '#388bfd',
-              borderRadius: 4,
-              transition: 'width 0.1s ease',
-            }}
+            className="h-full rounded bg-primary transition-[width] duration-100"
+            style={{ width: `${pct}%` }}
           />
         ) : (
-          <div style={{ height: '100%', background: 'linear-gradient(90deg, #21262d 25%, #388bfd 50%, #21262d 75%)', backgroundSize: '200% 100%', animation: 'indeterminate 1.4s ease infinite' }} />
+          <div className="h-full w-full animate-pulse bg-primary/60" />
         )}
       </div>
-      <span style={{ color: '#8b949e', fontSize: 12 }}>{label}</span>
-      <style>{`@keyframes indeterminate { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }`}</style>
+      <span className="text-xs text-muted-foreground">{label}</span>
     </div>
   )
 }
@@ -315,29 +307,8 @@ function fmt(bytes: number): string {
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (
-    <div
-      style={{
-        flex: 1,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: '#8b949e',
-        fontSize: 13,
-        gap: 8,
-      }}
-    >
+    <div className="flex flex-1 items-center justify-center gap-2 text-[13px] text-muted-foreground">
       {children}
     </div>
   )
-}
-
-const linkBtnStyle: React.CSSProperties = {
-  padding: '3px 10px',
-  background: '#21262d',
-  border: '1px solid #30363d',
-  borderRadius: 4,
-  color: '#e6edf3',
-  cursor: 'pointer',
-  fontSize: 12,
-  textDecoration: 'none',
 }
