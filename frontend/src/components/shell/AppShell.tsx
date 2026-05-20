@@ -24,6 +24,12 @@ function useShowSecondarySidebar() {
   return pathname.startsWith('/wiki')
 }
 
+/** Routes that manage their own chat UI should not show the global chat panel. */
+function useShowGlobalChat() {
+  const { pathname } = useLocation()
+  return !pathname.startsWith('/browser-chat')
+}
+
 function SecondaryForRoute() {
   const { selectedSlug, highlightedSlug, onSelectSlug } = useShellState()
 
@@ -39,6 +45,7 @@ function SecondaryForRoute() {
 function AppShellLayout() {
   const isMobile = useIsMobile()
   const showSecondary = useShowSecondarySidebar()
+  const showGlobalChat = useShowGlobalChat()
   const { pathname } = useLocation()
   const { onSelectSlug, chatSseEvent } = useShellState()
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -65,6 +72,22 @@ function AppShellLayout() {
   }, [pathname])
 
   useShortcuts(shortcutsRegistry, handleShortcut)
+
+  // Collapse/expand secondary sidebar based on route — no remount needed
+  useEffect(() => {
+    const p = sidebarRef.current
+    if (!p) return
+    if (showSecondary) p.expand()
+    else p.collapse()
+  }, [showSecondary])
+
+  // Collapse/expand global chat based on route — browser-chat manages its own
+  useEffect(() => {
+    const p = chatRef.current
+    if (!p) return
+    if (showGlobalChat) p.expand()
+    else p.collapse()
+  }, [showGlobalChat])
 
   useEffect(() => {
     if (localStorage.getItem('sb.helpHintShown') === '1') return
@@ -95,34 +118,29 @@ function AppShellLayout() {
           </main>
         ) : (
           <ResizablePanelGroup
-            key={showSecondary ? 'wiki-layout' : 'main-chat-layout'}
             id="app-shell"
             orientation="horizontal"
             className="h-full min-h-0 flex-1"
             resizeTargetMinimumSize={{ coarse: 28, fine: 10 }}
           >
-            {showSecondary && (
-              <>
-                <ResizablePanel
-                  id="secondary-sidebar"
-                  panelRef={sidebarRef}
-                  defaultSize={22}
-                  minSize={16}
-                  maxSize={35}
-                  collapsible
-                  collapsedSize={0}
-                  className="min-w-0"
-                >
-                  <div className="h-full min-w-0 overflow-hidden">
-                    <SecondaryForRoute />
-                  </div>
-                </ResizablePanel>
-                <ResizableHandle withHandle />
-              </>
-            )}
+            <ResizablePanel
+              id="secondary-sidebar"
+              panelRef={sidebarRef}
+              defaultSize={0}
+              minSize={16}
+              maxSize={35}
+              collapsible
+              collapsedSize={0}
+              className="min-w-0"
+            >
+              <div className="h-full min-w-0 overflow-hidden">
+                <SecondaryForRoute />
+              </div>
+            </ResizablePanel>
+            <ResizableHandle withHandle />
             <ResizablePanel
               id="main"
-              defaultSize={showSecondary ? 53 : 72}
+              defaultSize={75}
               minSize={35}
               className="min-w-0"
             >
@@ -136,7 +154,7 @@ function AppShellLayout() {
             <ResizablePanel
               id="chat"
               panelRef={chatRef}
-              defaultSize={showSecondary ? 25 : 28}
+              defaultSize={25}
               minSize={18}
               maxSize={45}
               collapsible

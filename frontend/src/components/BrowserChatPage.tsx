@@ -4,6 +4,13 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import {
+  ResizablePanelGroup,
+  ResizablePanel,
+  ResizableHandle,
+} from '@/components/ui/resizable'
 import {
   type BrowserChatMessage,
   type BrowserChatSession,
@@ -196,9 +203,9 @@ export default function BrowserChatPage() {
   }
 
   const pageContent = connectionState === 'connected' ? (
-    <div className="flex min-h-0 flex-1 overflow-hidden bg-background">
+    <ResizablePanelGroup id="browser-chat" orientation="horizontal" className="min-h-0 flex-1">
       {/* Left: chat */}
-      <div className="flex w-80 shrink-0 flex-col border-r border-border bg-background">
+      <ResizablePanel id="browser-chat-panel" defaultSize={28} minSize={18} maxSize={50} className="flex flex-col border-r border-border bg-background">
         <div className="shrink-0 border-b border-border px-3 py-2.5">
           <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Chat
@@ -224,26 +231,31 @@ export default function BrowserChatPage() {
                 key={msg.id}
                 className="mx-3 my-2 border-border bg-card p-3 text-sm leading-relaxed text-card-foreground"
               >
-                <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    p: ({ children }) => <p className="my-1">{children}</p>,
+                    ul: ({ children }) => <ul className="my-1 list-disc pl-5">{children}</ul>,
+                    ol: ({ children }) => <ol className="my-1 list-decimal pl-5">{children}</ol>,
+                    a: ({ href, children }) => <a href={href} target="_blank" rel="noreferrer" className="text-primary underline">{children}</a>,
+                    code: ({ children }) => <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{children}</code>,
+                    pre: ({ children }) => <pre className="my-2 overflow-x-auto rounded bg-muted p-2 font-mono text-xs">{children}</pre>,
+                  }}
+                >
+                  {msg.content}
+                </ReactMarkdown>
               </Card>
             ),
           )}
-          {actions.map(action => (
-            <div
-              key={action.id}
-              className={cn(
-                'flex items-baseline gap-1.5 px-3 py-0.5 font-mono text-xs',
-                action.error ? 'text-destructive' : 'text-muted-foreground',
-              )}
-            >
-              <span className="shrink-0">{action.error ? '⚠' : actionIcon(action.type)}</span>
-              <span className="max-w-[260px] truncate">{action.detail}</span>
-            </div>
-          ))}
           {agentRunning && (
-            <Card className="mx-3 my-2 border-border bg-muted/50 p-3 text-sm text-muted-foreground">
-              <span className="inline-block animate-pulse">thinking…</span>
-            </Card>
+            <div className="mx-3 my-2 flex flex-col gap-1.5">
+              {actions.length > 0 && (
+                <ActionLog actions={actions} />
+              )}
+              <Card className="border-border bg-muted/50 p-3 text-sm text-muted-foreground">
+                <span className="inline-block animate-pulse">thinking…</span>
+              </Card>
+            </div>
           )}
           <div ref={messagesEndRef} />
         </div>
@@ -301,10 +313,10 @@ export default function BrowserChatPage() {
             </Button>
           </div>
         </div>
-      </div>
-
+      </ResizablePanel>
+      <ResizableHandle withHandle />
       {/* Right: browser */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <ResizablePanel id="browser-view" defaultSize={72} minSize={50} className="flex flex-col">
         <div className="flex shrink-0 items-center gap-2.5 border-b border-border bg-muted/30 px-3 py-2">
           <div className="flex gap-1">
             <span className="inline-block size-2.5 rounded-full bg-destructive" />
@@ -334,8 +346,8 @@ export default function BrowserChatPage() {
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </ResizablePanel>
+    </ResizablePanelGroup>
   ) : (
     <div className="min-h-0 flex-1 overflow-y-auto bg-background p-6">
       <div className="mx-auto flex max-w-2xl flex-col gap-4">
@@ -438,6 +450,48 @@ export default function BrowserChatPage() {
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {pageContent}
       </div>
+    </div>
+  )
+}
+
+function ActionLog({ actions }: { actions: ActionItem[] }) {
+  const [expanded, setExpanded] = useState(false)
+  const errorCount = actions.filter(a => a.error).length
+
+  return (
+    <div className="rounded-md border border-border bg-muted/30 text-xs">
+      <button
+        type="button"
+        onClick={() => setExpanded(v => !v)}
+        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-muted-foreground hover:text-foreground"
+      >
+        <span className="font-mono">{expanded ? '▾' : '▸'}</span>
+        <span>{actions.length} action{actions.length !== 1 ? 's' : ''}</span>
+        {errorCount > 0 && (
+          <span className="ml-auto text-destructive">{errorCount} error{errorCount !== 1 ? 's' : ''}</span>
+        )}
+        {errorCount === 0 && (
+          <span className="ml-auto truncate font-mono text-muted-foreground/70">
+            {actions[actions.length - 1]?.detail}
+          </span>
+        )}
+      </button>
+      {expanded && (
+        <div className="flex flex-col border-t border-border py-1">
+          {actions.map(action => (
+            <div
+              key={action.id}
+              className={cn(
+                'flex items-baseline gap-1.5 px-2.5 py-0.5 font-mono',
+                action.error ? 'text-destructive' : 'text-muted-foreground',
+              )}
+            >
+              <span className="shrink-0">{action.error ? '⚠' : actionIcon(action.type)}</span>
+              <span className="min-w-0 break-all">{action.detail}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
