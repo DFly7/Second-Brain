@@ -51,12 +51,14 @@ export default function FilesView() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <FilesList
-          sources={sources ?? []}
-          selectedId={selectedId}
-          onSelect={setSelectedId}
-          onInfo={setInfoId}
-        />
+        <aside className="flex min-h-0 shrink-0 flex-col">
+          <FilesList
+            sources={sources ?? []}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            onInfo={setInfoId}
+          />
+        </aside>
         <FileViewer source={selectedSource} />
       </div>
       {infoSource && (
