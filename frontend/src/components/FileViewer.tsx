@@ -26,9 +26,11 @@ interface FileViewerProps {
   onClose?: () => void
   /** @deprecated use onClose */
   onBack?: () => void
+  /** Render inline (no dialog wrapper) — use when embedding in a panel */
+  inline?: boolean
 }
 
-export default function FileViewer({ source, onClose, onBack }: FileViewerProps) {
+export default function FileViewer({ source, onClose, onBack, inline }: FileViewerProps) {
   const handleClose = onClose ?? onBack
   const defaultView = (s: SourceItem | null) =>
     s?.has_markdown ? 'markdown' : 'original'
@@ -48,56 +50,72 @@ export default function FileViewer({ source, onClose, onBack }: FileViewerProps)
   const title =
     source.title ?? `${source.kind} · ${source.id.slice(0, 8).toUpperCase()}`
 
+  const header = (
+    <div className="flex shrink-0 flex-row items-center gap-2 border-b px-4 py-2">
+      <span className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</span>
+      {view === 'original' && blobUrl && (
+        <div className="flex shrink-0 gap-2">
+          <Button variant="outline" size="sm" asChild>
+            <a href={blobUrl} download={filename}>Download</a>
+          </Button>
+          <Button variant="outline" size="sm" asChild>
+            <a href={blobUrl} target="_blank" rel="noreferrer">Open</a>
+          </Button>
+        </div>
+      )}
+      {showToggle && (
+        <div className="flex shrink-0 gap-0.5 rounded-md bg-muted p-0.5">
+          {(['original', 'markdown'] as const).map((v) => (
+            <Button
+              key={v}
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setView(v)}
+              className={cn(
+                'h-7 px-2.5 text-[11px] font-semibold',
+                view === v
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:bg-transparent',
+              )}
+            >
+              {v === 'original' ? 'Original' : 'Markdown'}
+            </Button>
+          ))}
+        </div>
+      )}
+      {inline && handleClose && (
+        <Button variant="ghost" size="sm" className="ml-1 h-7 px-2 text-muted-foreground" onClick={handleClose}>
+          ✕
+        </Button>
+      )}
+    </div>
+  )
+
+  const body = (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      {view === 'markdown' ? (
+        <MarkdownPane source={source} />
+      ) : (
+        <OriginalPane source={source} onBlobUrl={setBlobUrl} />
+      )}
+    </div>
+  )
+
+  if (inline) {
+    return (
+      <div className="flex h-full flex-col overflow-hidden border-l border-border bg-background">
+        {header}
+        {body}
+      </div>
+    )
+  }
+
   return (
     <Dialog open onOpenChange={(o) => !o && handleClose?.()}>
       <DialogContent className="flex h-[80vh] max-w-4xl flex-col gap-0 overflow-hidden p-0">
-        <DialogHeader className="flex shrink-0 flex-row items-center gap-2 space-y-0 border-b px-4 py-2 pr-12">
-          <DialogTitle className="min-w-0 flex-1 truncate text-sm font-semibold">
-            {title}
-          </DialogTitle>
-          {view === 'original' && blobUrl && (
-            <div className="flex shrink-0 gap-2">
-              <Button variant="outline" size="sm" asChild>
-                <a href={blobUrl} download={filename}>
-                  Download
-                </a>
-              </Button>
-              <Button variant="outline" size="sm" asChild>
-                <a href={blobUrl} target="_blank" rel="noreferrer">
-                  Open
-                </a>
-              </Button>
-            </div>
-          )}
-          {showToggle && (
-            <div className="flex shrink-0 gap-0.5 rounded-md bg-muted p-0.5">
-              {(['original', 'markdown'] as const).map((v) => (
-                <Button
-                  key={v}
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setView(v)}
-                  className={cn(
-                    'h-7 px-2.5 text-[11px] font-semibold',
-                    view === v
-                      ? 'bg-background text-foreground shadow-sm'
-                      : 'text-muted-foreground hover:bg-transparent',
-                  )}
-                >
-                  {v === 'original' ? 'Original' : 'Markdown'}
-                </Button>
-              ))}
-            </div>
-          )}
-        </DialogHeader>
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {view === 'markdown' ? (
-            <MarkdownPane source={source} />
-          ) : (
-            <OriginalPane source={source} onBlobUrl={setBlobUrl} />
-          )}
-        </div>
+        <DialogHeader className="space-y-0 p-0">{header}</DialogHeader>
+        {body}
       </DialogContent>
     </Dialog>
   )

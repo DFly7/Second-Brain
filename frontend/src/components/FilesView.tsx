@@ -54,19 +54,26 @@ export default function FilesView() {
   }
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        <aside className="flex min-h-0 shrink-0 flex-col">
-          <FilesList
-            sources={sources ?? []}
-            loading={sourcesLoading}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-            onInfo={setInfoId}
-          />
-        </aside>
+    <div className="flex h-full overflow-hidden">
+      <aside className="flex w-72 shrink-0 flex-col border-r border-border">
+        <FilesList
+          sources={sources ?? []}
+          loading={sourcesLoading}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          onInfo={setInfoId}
+          fullWidth
+        />
+      </aside>
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        {selectedSource ? (
+          <FileViewer source={selectedSource} onClose={closeViewer} inline />
+        ) : (
+          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+            Select a file to preview
+          </div>
+        )}
       </div>
-      <FileViewer source={selectedSource} onClose={closeViewer} />
       {infoSource && (
         <SourceMetaModal
           source={infoSource}
