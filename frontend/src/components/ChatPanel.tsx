@@ -7,6 +7,7 @@ import ChatConversation, { type Message } from './ChatConversation'
 import SessionDrawer from './SessionDrawer'
 
 const SESSION_KEY = 'chat_session_id'
+const SELECT_SESSION_EVENT = 'chat:select-session'
 
 interface ChatPanelProps {
   onNavigate: (slug: string) => void
@@ -40,6 +41,15 @@ export default function ChatPanel({ onNavigate, activeSseEvent }: ChatPanelProps
   useEffect(() => {
     loadSessions()
   }, [loadSessions])
+
+  useEffect(() => {
+    const onSelect = (e: Event) => {
+      const id = (e as CustomEvent<{ id: string }>).detail?.id
+      if (id) void handleSelectSession(id)
+    }
+    window.addEventListener(SELECT_SESSION_EVENT, onSelect)
+    return () => window.removeEventListener(SELECT_SESSION_EVENT, onSelect)
+  }) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const id = localStorage.getItem(SESSION_KEY)

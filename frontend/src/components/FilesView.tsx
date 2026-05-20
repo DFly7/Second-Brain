@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import FilesList from './FilesList'
 import FileViewer from './FileViewer'
@@ -8,7 +9,12 @@ import { useSse } from '../hooks/useSse'
 import { useIsMobile } from '../hooks/useIsMobile'
 
 export default function FilesView() {
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const selectedId = searchParams.get('source')
+  const setSelectedId = (id: string | null) => {
+    if (id) setSearchParams({ source: id }, { replace: true })
+    else setSearchParams({}, { replace: true })
+  }
   const [infoId, setInfoId] = useState<string | null>(null)
   const { data: sources } = useSources()
   const qc = useQueryClient()

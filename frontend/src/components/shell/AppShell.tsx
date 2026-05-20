@@ -29,7 +29,7 @@ function SecondaryForRoute() {
   }
   if (pathname.startsWith('/files')) return <FilesTree />
   if (pathname.startsWith('/automations')) return <AutomationsList />
-  if (pathname.startsWith('/browser')) return <BrowserSessionsList />
+  if (pathname.startsWith('/browser-chat')) return <BrowserSessionsList />
   if (pathname.startsWith('/sessions')) return <SessionsList />
   return null
 }
