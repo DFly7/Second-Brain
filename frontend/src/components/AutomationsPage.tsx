@@ -262,7 +262,7 @@ export default function AutomationsPage() {
       </div>
     </div>
   ) : (
-    <div className="flex-1 overflow-y-auto bg-background p-6">
+    <div className="flex h-full min-w-0 flex-1 flex-col overflow-y-auto bg-background p-6">
       <div className="mx-auto flex max-w-4xl flex-col gap-4">
         <div className="flex items-center justify-between gap-4">
           <h2 className="text-lg font-semibold text-foreground">Automations</h2>

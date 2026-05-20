@@ -10,9 +10,6 @@ import { IconRail } from '@/components/shell/IconRail'
 import { ShellStateProvider, useShellState } from '@/components/shell/ShellStateContext'
 import { ShellContext } from '@/components/shell/ShellContext'
 import { WikiTree } from '@/components/secondary-sidebar/WikiTree'
-import { FilesTree } from '@/components/secondary-sidebar/FilesTree'
-import { AutomationsList } from '@/components/secondary-sidebar/AutomationsList'
-import { BrowserSessionsList } from '@/components/secondary-sidebar/BrowserSessionsList'
 import ChatPanel from '@/components/ChatPanel'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useShortcuts } from '@/lib/keyboard'
@@ -21,27 +18,27 @@ import { shortcuts as shortcutsRegistry } from '@/components/help/shortcuts'
 import { CommandPalette } from '@/components/command-palette/CommandPalette'
 import { HelpOverlay } from '@/components/help/HelpOverlay'
 
-function SecondaryForRoute() {
+/** Wiki-only: other routes render their own nav in the main column. */
+function useShowSecondarySidebar() {
   const { pathname } = useLocation()
+  return pathname.startsWith('/wiki')
+}
+
+function SecondaryForRoute() {
   const { selectedSlug, highlightedSlug, onSelectSlug } = useShellState()
 
-  if (pathname.startsWith('/wiki')) {
-    return (
-      <WikiTree
-        selectedSlug={selectedSlug}
-        highlightedSlug={highlightedSlug}
-        onSelect={onSelectSlug}
-      />
-    )
-  }
-  if (pathname.startsWith('/files')) return <FilesTree />
-  if (pathname.startsWith('/automations')) return <AutomationsList />
-  if (pathname.startsWith('/browser-chat')) return <BrowserSessionsList />
-  return null
+  return (
+    <WikiTree
+      selectedSlug={selectedSlug}
+      highlightedSlug={highlightedSlug}
+      onSelect={onSelectSlug}
+    />
+  )
 }
 
 function AppShellLayout() {
   const isMobile = useIsMobile()
+  const showSecondary = useShowSecondarySidebar()
   const { pathname } = useLocation()
   const { onSelectSlug, chatSseEvent } = useShellState()
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -97,22 +94,39 @@ function AppShellLayout() {
             </ShellContext.Provider>
           </main>
         ) : (
-          <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
+          <ResizablePanelGroup
+            key={showSecondary ? 'wiki-layout' : 'main-chat-layout'}
+            id="app-shell"
+            orientation="horizontal"
+            className="h-full min-h-0 flex-1"
+            resizeTargetMinimumSize={{ coarse: 28, fine: 10 }}
+          >
+            {showSecondary && (
+              <>
+                <ResizablePanel
+                  id="secondary-sidebar"
+                  panelRef={sidebarRef}
+                  defaultSize={22}
+                  minSize={16}
+                  maxSize={35}
+                  collapsible
+                  collapsedSize={0}
+                  className="min-w-0"
+                >
+                  <div className="h-full min-w-0 overflow-hidden">
+                    <SecondaryForRoute />
+                  </div>
+                </ResizablePanel>
+                <ResizableHandle withHandle />
+              </>
+            )}
             <ResizablePanel
-              panelRef={sidebarRef}
-              defaultSize={18}
-              minSize={14}
-              maxSize={30}
-              collapsible
-              collapsedSize={0}
+              id="main"
+              defaultSize={showSecondary ? 53 : 72}
+              minSize={35}
+              className="min-w-0"
             >
-              <div className="h-full overflow-hidden">
-                <SecondaryForRoute />
-              </div>
-            </ResizablePanel>
-            <ResizableHandle withHandle />
-            <ResizablePanel defaultSize={56} minSize={30}>
-              <main className="flex h-full min-h-0 flex-col overflow-hidden">
+              <main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
                 <ShellContext.Provider value={shellUi}>
                   <Outlet />
                 </ShellContext.Provider>
@@ -120,14 +134,16 @@ function AppShellLayout() {
             </ResizablePanel>
             <ResizableHandle withHandle />
             <ResizablePanel
+              id="chat"
               panelRef={chatRef}
-              defaultSize={26}
-              minSize={20}
+              defaultSize={showSecondary ? 25 : 28}
+              minSize={18}
               maxSize={45}
               collapsible
               collapsedSize={0}
+              className="min-w-0"
             >
-              <div className="h-full overflow-hidden">
+              <div className="h-full min-w-0 overflow-hidden">
                 <ChatPanel onNavigate={onSelectSlug} activeSseEvent={chatSseEvent} />
               </div>
             </ResizablePanel>
