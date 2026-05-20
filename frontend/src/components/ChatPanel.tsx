@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/utils'
 import { sendMessage, listSessions, getSessionMessages } from '../api/client'
 import ChatConversation, { type Message } from './ChatConversation'
 import SessionDrawer from './SessionDrawer'
@@ -23,6 +25,7 @@ export default function ChatPanel({ onNavigate, activeSseEvent }: ChatPanelProps
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [sessions, setSessions] = useState<Session[]>([])
   const [sessionsError, setSessionsError] = useState(false)
+  const [input, setInput] = useState('')
 
   const loadSessions = useCallback(async () => {
     try {
@@ -70,6 +73,13 @@ export default function ChatPanel({ onNavigate, activeSseEvent }: ChatPanelProps
     }
   }
 
+  function handleComposerSubmit() {
+    if (!input.trim() || loading) return
+    const text = input.trim()
+    setInput('')
+    handleSubmit(text)
+  }
+
   async function handleSelectSession(id: string) {
     persistSession(id)
     const msgs = await getSessionMessages(id)
@@ -85,19 +95,10 @@ export default function ChatPanel({ onNavigate, activeSseEvent }: ChatPanelProps
   }
 
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', height: '100%',
-      background: '#0d1117', borderLeft: '1px solid #30363d',
-      position: 'relative', overflow: 'hidden',
-    }}>
-      <div style={{
-        padding: '12px 16px', borderBottom: '1px solid #30363d',
-        fontSize: 13, color: '#8b949e', background: '#161b22',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        flexShrink: 0,
-      }}>
-        <span>Chat</span>
-        <div style={{ display: 'flex', gap: 6 }}>
+    <div className="relative flex h-full flex-col overflow-hidden border-l border-border bg-background">
+      <div className="flex h-10 shrink-0 items-center justify-between border-b border-border px-3">
+        <span className="text-sm text-muted-foreground">Chat</span>
+        <div className="flex gap-1.5">
           <Button
             type="button"
             variant="outline"
@@ -120,15 +121,59 @@ export default function ChatPanel({ onNavigate, activeSseEvent }: ChatPanelProps
           </Button>
         </div>
       </div>
-      <ChatConversation
-        messages={messages}
-        loading={loading}
-        activeSseEvent={activeSseEvent}
-        editMode={editMode}
-        onSubmit={handleSubmit}
-        onNavigate={onNavigate}
-        onEditModeToggle={() => setEditMode(v => !v)}
-      />
+      <div className="flex-1 overflow-y-auto">
+        <ChatConversation
+          messages={messages}
+          loading={loading}
+          activeSseEvent={activeSseEvent}
+          onNavigate={onNavigate}
+        />
+      </div>
+      <div
+        className={cn(
+          'shrink-0 border-t border-border p-3',
+          editMode && 'bg-amber-500/5 ring-1 ring-inset ring-amber-500/40',
+        )}
+      >
+        <div className="flex items-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setEditMode(v => !v)}
+            title={editMode ? 'Switch to read-only query' : 'Allow the agent to edit wiki pages'}
+            className={cn(
+              'shrink-0 whitespace-nowrap',
+              editMode && 'border-amber-500/60 bg-amber-500/20 text-amber-500 hover:bg-amber-500/25',
+            )}
+          >
+            Edit Mode
+          </Button>
+          <Textarea
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                handleComposerSubmit()
+              }
+            }}
+            placeholder="Ask your wiki..."
+            rows={2}
+            disabled={loading}
+            className="min-h-0 flex-1 resize-none text-sm"
+          />
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleComposerSubmit}
+            disabled={loading || !input.trim()}
+            className="shrink-0"
+          >
+            Send
+          </Button>
+        </div>
+      </div>
       <SessionDrawer
         open={drawerOpen}
         sessions={sessions}

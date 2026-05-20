@@ -1,7 +1,5 @@
-import { useState, useRef, useEffect } from 'react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { cn } from '@/lib/utils'
+import { useRef, useEffect } from 'react'
+import { Card } from '@/components/ui/card'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -14,10 +12,7 @@ interface ChatConversationProps {
   messages: Message[]
   loading: boolean
   activeSseEvent: { event: string; slug?: string } | null
-  editMode: boolean
-  onSubmit: (text: string) => void
   onNavigate: (slug: string) => void
-  onEditModeToggle: () => void
 }
 
 function processWikilinks(text: string): string {
@@ -50,26 +45,44 @@ function sseStatusAnimKey(active: { event: string; slug?: string } | null): stri
   return active.slug ?? active.event
 }
 
+const markdownComponents = (onNavigate: (slug: string) => void) => ({
+  a({ href, children }: { href?: string; children?: React.ReactNode }) {
+    const slug = href ? hrefToSlug(href) : null
+    if (href && slug) {
+      return (
+        <span
+          role="link"
+          tabIndex={0}
+          onClick={() => onNavigate(slug)}
+          onKeyDown={(e) => e.key === 'Enter' && onNavigate(slug)}
+          className="cursor-pointer text-primary underline"
+        >
+          {children}
+        </span>
+      )
+    }
+    return <a href={href} target="_blank" rel="noreferrer">{children}</a>
+  },
+  ul({ children }: { children?: React.ReactNode }) {
+    return <ul className="my-1 list-disc pl-5">{children}</ul>
+  },
+  ol({ children }: { children?: React.ReactNode }) {
+    return <ol className="my-1 list-decimal pl-5">{children}</ol>
+  },
+  p({ children }: { children?: React.ReactNode }) {
+    return <p className="my-1">{children}</p>
+  },
+})
+
 export default function ChatConversation({
   messages,
   loading,
   activeSseEvent,
-  editMode,
-  onSubmit,
   onNavigate,
-  onEditModeToggle,
 }: ChatConversationProps) {
-  const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
-
-  function handleSubmit() {
-    if (!input.trim() || loading) return
-    const text = input.trim()
-    setInput('')
-    onSubmit(text)
-  }
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, loading])
 
   return (
     <>
@@ -79,123 +92,63 @@ export default function ChatConversation({
           to { opacity: 1; transform: translateY(0); }
         }
       `}</style>
-      <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div className="flex flex-col gap-1 py-2">
         {messages.length === 0 && (
-          <div style={{ color: '#8b949e', fontSize: 13, textAlign: 'center', marginTop: 40 }}>
+          <p className="mt-10 px-3 text-center text-sm text-muted-foreground">
             Ask anything — the agent will search your wiki.
-          </div>
+          </p>
         )}
-        {messages.map((m, i) => (
-          <div key={i} style={{ maxWidth: '90%', alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
-            <div style={{
-              padding: '8px 12px', borderRadius: 8, fontSize: 13, lineHeight: 1.6,
-              background: m.role === 'user' ? '#1f6feb' : '#161b22',
-              color: '#e6edf3', border: m.role === 'assistant' ? '1px solid #30363d' : 'none',
-            }}>
-              {m.role === 'assistant' ? (
+        {messages.map((m, i) =>
+          m.role === 'user' ? (
+            <div key={i} className="px-3 py-2 text-sm text-foreground">
+              {m.content}
+            </div>
+          ) : (
+            <div key={i} className="flex flex-col">
+              <Card className="mx-3 my-2 border-border bg-card p-3 text-sm leading-relaxed text-card-foreground">
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm, remarkMath]}
                   rehypePlugins={[rehypeKatex]}
                   urlTransform={(url) => url}
-                  components={{
-                    a({ href, children }) {
-                      const slug = href ? hrefToSlug(href) : null
-                      if (href && slug) {
-                        return (
-                          <span
-                            role="link"
-                            tabIndex={0}
-                            onClick={() => onNavigate(slug)}
-                            onKeyDown={(e) => e.key === 'Enter' && onNavigate(slug)}
-                            style={{ color: '#58a6ff', cursor: 'pointer', textDecoration: 'underline' }}
-                          >
-                            {children}
-                          </span>
-                        )
-                      }
-                      return <a href={href} target="_blank" rel="noreferrer">{children}</a>
-                    },
-                    ul({ children }) { return <ul style={{ margin: '4px 0', paddingLeft: 20 }}>{children}</ul> },
-                    ol({ children }) { return <ol style={{ margin: '4px 0', paddingLeft: 20 }}>{children}</ol> },
-                    p({ children }) { return <p style={{ margin: '4px 0' }}>{children}</p> },
-                  }}
+                  components={markdownComponents(onNavigate)}
                 >
                   {processWikilinks(m.content)}
                 </ReactMarkdown>
-              ) : (
-                m.content
+              </Card>
+              {m.cited && m.cited.length > 0 && (
+                <>
+                  <p className="mx-3 mt-0.5 px-1 text-xs text-muted-foreground/80">
+                    searched {m.cited.length} page{m.cited.length === 1 ? '' : 's'}
+                  </p>
+                  <p className="mx-3 mt-0.5 px-1 text-xs text-muted-foreground">
+                    Sources:{' '}
+                    {m.cited.map((slug) => (
+                      <span
+                        key={slug}
+                        onClick={() => onNavigate(slug)}
+                        className="mr-1.5 cursor-pointer text-primary underline"
+                      >
+                        {slug}
+                      </span>
+                    ))}
+                  </p>
+                </>
               )}
             </div>
-            {m.role === 'assistant' && m.cited && m.cited.length > 0 && (
-              <div style={{ fontSize: 11, color: '#6e7681', marginTop: 6, paddingLeft: 4 }}>
-                searched {m.cited.length} page{m.cited.length === 1 ? '' : 's'}
-              </div>
-            )}
-            {m.cited && m.cited.length > 0 && (
-              <div style={{ fontSize: 11, color: '#8b949e', marginTop: 4, paddingLeft: 4 }}>
-                Sources: {m.cited.map((slug) => (
-                  <span
-                    key={slug}
-                    onClick={() => onNavigate(slug)}
-                    style={{ color: '#58a6ff', cursor: 'pointer', marginRight: 6, textDecoration: 'underline' }}
-                  >
-                    {slug}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
+          )
+        )}
         {loading && (
-          <div style={{
-            alignSelf: 'flex-start', padding: '8px 12px', borderRadius: 8,
-            fontSize: 13, lineHeight: 1.6, background: '#21262d',
-            color: '#8b949e', border: '1px solid #30363d',
-          }}>
+          <Card className="mx-3 my-2 border-border bg-muted/50 p-3 text-sm text-muted-foreground">
             <span
               key={sseStatusAnimKey(activeSseEvent)}
-              style={{ display: 'inline-block', animation: 'fadeSlide 200ms ease' }}
+              className="inline-block"
+              style={{ animation: 'fadeSlide 200ms ease' }}
             >
               {sseStatusLabel(activeSseEvent)}
             </span>
-          </div>
+          </Card>
         )}
         <div ref={bottomRef} />
-      </div>
-      <div style={{
-        padding: 12, borderTop: '1px solid #30363d',
-        display: 'flex', alignItems: 'center', gap: 8,
-        ...(editMode ? { boxShadow: 'inset 0 0 0 1px #d29922', background: 'rgba(210, 153, 34, 0.06)' } : {}),
-      }}>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={onEditModeToggle}
-          title={editMode ? 'Switch to read-only query' : 'Allow the agent to edit wiki pages'}
-          className={cn(
-            'shrink-0 whitespace-nowrap',
-            editMode && 'border-amber-500/60 bg-amber-500/20 text-amber-500 hover:bg-amber-500/25',
-          )}
-        >
-          Edit Mode
-        </Button>
-        <Input
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSubmit()}
-          placeholder="Ask your wiki..."
-          className="h-9 flex-1 text-[13px]"
-        />
-        <Button
-          type="button"
-          size="sm"
-          onClick={handleSubmit}
-          disabled={loading}
-          className="shrink-0"
-        >
-          Send
-        </Button>
       </div>
     </>
   )
