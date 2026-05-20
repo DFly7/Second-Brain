@@ -16,7 +16,7 @@ export default function FilesView() {
     else setSearchParams({}, { replace: true })
   }
   const [infoId, setInfoId] = useState<string | null>(null)
-  const { data: sources } = useSources()
+  const { data: sources, isPending: sourcesLoading } = useSources()
   const qc = useQueryClient()
   const isMobile = useIsMobile()
 
@@ -38,6 +38,7 @@ export default function FilesView() {
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <FilesList
             sources={sources ?? []}
+            loading={sourcesLoading}
             selectedId={selectedId}
             onSelect={setSelectedId}
             onInfo={setInfoId}
@@ -58,6 +59,7 @@ export default function FilesView() {
         <aside className="flex min-h-0 shrink-0 flex-col">
           <FilesList
             sources={sources ?? []}
+            loading={sourcesLoading}
             selectedId={selectedId}
             onSelect={setSelectedId}
             onInfo={setInfoId}

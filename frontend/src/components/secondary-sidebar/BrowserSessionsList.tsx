@@ -3,6 +3,8 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { listBrowserChatSessions, type BrowserChatSession } from '@/api/client'
 import { useSse } from '@/hooks/useSse'
+import { EmptyState } from '@/components/EmptyState'
+import { ListSkeleton } from '@/components/ListSkeleton'
 import { SecondarySidebar } from './SecondarySidebar'
 
 function sessionLabel(s: BrowserChatSession): string {
@@ -23,11 +25,14 @@ export function BrowserSessionsList() {
   const [searchParams] = useSearchParams()
   const activeId = searchParams.get('session')
   const [sessions, setSessions] = useState<BrowserChatSession[]>([])
+  const [loading, setLoading] = useState(true)
 
   const loadSessions = useCallback(() => {
+    setLoading(true)
     listBrowserChatSessions()
       .then(setSessions)
       .catch(() => setSessions([]))
+      .finally(() => setLoading(false))
   }, [])
 
   useEffect(() => {
@@ -62,23 +67,32 @@ export function BrowserSessionsList() {
   return (
     <SecondarySidebar title="Browser" search={filter} onSearchChange={setFilter}>
       <div className="p-1">
-        {filtered.length === 0 && (
-          <p className="px-2 py-3 text-xs text-muted-foreground">
-            {sessions.length === 0 ? 'No browser sessions yet.' : 'No matches.'}
-          </p>
+        {loading && <ListSkeleton />}
+        {!loading && filtered.length === 0 && (
+          <EmptyState
+            className="min-h-[6rem] p-4"
+            title={sessions.length === 0 ? 'No browser sessions yet' : 'No matches'}
+            description={
+              sessions.length === 0
+                ? 'Start a browser chat to see sessions here.'
+                : 'Try a different search term.'
+            }
+          />
         )}
-        {filtered.map((i) => (
-          <Link
-            key={i.id}
-            to={i.href}
-            className={cn(
-              'flex h-7 items-center rounded-sm px-2 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground',
-              activeId === i.id && 'bg-muted text-foreground before:mr-1 before:h-4 before:w-0.5 before:rounded-r before:bg-primary',
-            )}
-          >
-            <span className="truncate">{i.name}</span>
-          </Link>
-        ))}
+        {!loading &&
+          filtered.map((i) => (
+            <Link
+              key={i.id}
+              to={i.href}
+              className={cn(
+                'flex h-7 items-center rounded-sm px-2 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground',
+                activeId === i.id &&
+                  'bg-muted text-foreground before:mr-1 before:h-4 before:w-0.5 before:rounded-r before:bg-primary',
+              )}
+            >
+              <span className="truncate">{i.name}</span>
+            </Link>
+          ))}
       </div>
     </SecondarySidebar>
   )

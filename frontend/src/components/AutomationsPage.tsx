@@ -25,6 +25,9 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/EmptyState'
+import { ListSkeleton } from '@/components/ListSkeleton'
 import { cn } from '@/lib/utils'
 import { toast } from '@/lib/toast'
 import {
@@ -73,6 +76,7 @@ function isActiveStatus(status: string) {
 export default function AutomationsPage() {
   const [pageState, setPageState] = useState<PageState>('idle')
   const [runs, setRuns] = useState<AutomationRun[]>([])
+  const [runsLoading, setRunsLoading] = useState(true)
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
   const [activeGoal, setActiveGoal] = useState('')
   const [actions, setActions] = useState<AutomationAction[]>([])
@@ -84,6 +88,7 @@ export default function AutomationsPage() {
   const actionsEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    setRunsLoading(true)
     getAutomationRuns()
       .then(fetched => {
         setRuns(fetched)
@@ -95,6 +100,7 @@ export default function AutomationsPage() {
         }
       })
       .catch(() => {})
+      .finally(() => setRunsLoading(false))
     getNovncUrl().then(setNovncUrl).catch(() => {})
   }, [])
 
@@ -266,10 +272,17 @@ export default function AutomationsPage() {
           </Button>
         </div>
 
-        {runs.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
-            No automation runs yet. Start one with &ldquo;New run&rdquo;.
+        {runsLoading ? (
+          <div className="space-y-3">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-3/4" />
           </div>
+        ) : runs.length === 0 ? (
+          <EmptyState
+            title="No automation runs yet"
+            description='Start one with "New run".'
+          />
         ) : (
           <Table>
             <TableHeader>
@@ -300,9 +313,8 @@ export default function AutomationsPage() {
                   <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-7 w-7">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Run actions">
                           <MoreHorizontal className="h-4 w-4" />
-                          <span className="sr-only">Actions</span>
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">

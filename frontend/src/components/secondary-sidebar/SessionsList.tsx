@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { listSessions } from '@/api/client'
+import { EmptyState } from '@/components/EmptyState'
+import { ListSkeleton } from '@/components/ListSkeleton'
 import { SecondarySidebar } from './SecondarySidebar'
 
 const SESSION_KEY = 'chat_session_id'
@@ -59,12 +61,14 @@ function selectChatSession(id: string) {
 export function SessionsList() {
   const [filter, setFilter] = useState('')
   const [sessions, setSessions] = useState<Session[]>([])
+  const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [activeId, setActiveId] = useState<string | undefined>(
     () => localStorage.getItem(SESSION_KEY) ?? undefined,
   )
 
   const loadSessions = useCallback(() => {
+    setLoading(true)
     listSessions()
       .then((data) => {
         setSessions(data)
@@ -74,6 +78,7 @@ export function SessionsList() {
         setSessions([])
         setLoadError(true)
       })
+      .finally(() => setLoading(false))
   }, [])
 
   useEffect(() => {
@@ -110,35 +115,46 @@ export function SessionsList() {
   return (
     <SecondarySidebar title="Sessions" search={filter} onSearchChange={setFilter}>
       <div className="p-1">
-        {loadError && (
+        {loading && <ListSkeleton />}
+        {!loading && loadError && (
           <p className="px-2 py-3 text-xs text-destructive">Failed to load sessions.</p>
         )}
-        {!loadError && sessions.length === 0 && (
-          <p className="px-2 py-3 text-xs text-muted-foreground">No previous chats.</p>
+        {!loading && !loadError && sessions.length === 0 && (
+          <EmptyState
+            className="min-h-[6rem] p-4"
+            title="No chats yet"
+            description="Start a conversation in the chat panel."
+          />
         )}
-        {!loadError && sessions.length > 0 && filtered.length === 0 && (
-          <p className="px-2 py-3 text-xs text-muted-foreground">No matches.</p>
+        {!loading && !loadError && sessions.length > 0 && filtered.length === 0 && (
+          <EmptyState
+            className="min-h-[6rem] p-4"
+            title="No matches"
+            description="Try a different search term."
+          />
         )}
-        {groups.map(([label, group]) => (
-          <div key={label} className="mb-1">
-            <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-              {label}
+        {!loading &&
+          groups.map(([label, group]) => (
+            <div key={label} className="mb-1">
+              <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                {label}
+              </div>
+              {group.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => selectChatSession(s.id)}
+                  className={cn(
+                    'flex h-7 w-full items-center rounded-sm px-2 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground',
+                    activeId === s.id &&
+                      'bg-muted text-foreground before:mr-1 before:h-4 before:w-0.5 before:rounded-r before:bg-primary',
+                  )}
+                >
+                  <span className="truncate">{sessionTimeLabel(s.created_at)}</span>
+                </button>
+              ))}
             </div>
-            {group.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => selectChatSession(s.id)}
-                className={cn(
-                  'flex h-7 w-full items-center rounded-sm px-2 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground',
-                  activeId === s.id && 'bg-muted text-foreground before:mr-1 before:h-4 before:w-0.5 before:rounded-r before:bg-primary',
-                )}
-              >
-                <span className="truncate">{sessionTimeLabel(s.created_at)}</span>
-              </button>
-            ))}
-          </div>
-        ))}
+          ))}
       </div>
     </SecondarySidebar>
   )

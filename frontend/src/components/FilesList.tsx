@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,10 +17,12 @@ import {
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import { Info, MoreHorizontal } from 'lucide-react'
+import { EmptyState } from './EmptyState'
 import type { SourceItem } from '../api/client'
 
 interface FilesListProps {
   sources: SourceItem[]
+  loading?: boolean
   selectedId: string | null
   onSelect: (id: string) => void
   onInfo: (id: string) => void
@@ -44,16 +47,52 @@ function fileIcon(kind: string): string {
   return '📄'
 }
 
-export default function FilesList({ sources, selectedId, onSelect, onInfo, fullWidth }: FilesListProps) {
+function FilesListSkeleton({ fullWidth }: { fullWidth?: boolean }) {
+  const containerClass = cn(
+    'flex min-h-0 shrink-0 flex-col overflow-hidden border-border p-3',
+    fullWidth ? 'w-full' : 'w-60 border-r',
+  )
+  return (
+    <div className={containerClass}>
+      <div className="space-y-2">
+        {Array.from({ length: 6 }, (_, i) => (
+          <div key={i} className="flex gap-2">
+            <Skeleton className="h-4 w-4 shrink-0" />
+            <div className="flex-1 space-y-1">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-3 w-2/3" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+export default function FilesList({
+  sources,
+  loading,
+  selectedId,
+  onSelect,
+  onInfo,
+  fullWidth,
+}: FilesListProps) {
   const containerClass = cn(
     'flex min-h-0 shrink-0 flex-col overflow-hidden border-border',
     fullWidth ? 'w-full' : 'w-60 border-r',
   )
 
+  if (loading) {
+    return <FilesListSkeleton fullWidth={fullWidth} />
+  }
+
   if (sources.length === 0) {
     return (
-      <div className={cn(containerClass, 'p-4 text-sm text-muted-foreground')}>
-        No files ingested yet.
+      <div className={containerClass}>
+        <EmptyState
+          title="No files yet"
+          description="Upload documents from the ingest panel to build your library."
+        />
       </div>
     )
   }
@@ -118,9 +157,8 @@ export default function FilesList({ sources, selectedId, onSelect, onInfo, fullW
                 <TableCell className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-7 w-7">
+                      <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="File actions">
                         <MoreHorizontal className="h-4 w-4" />
-                        <span className="sr-only">File actions</span>
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">

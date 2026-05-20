@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { usePages } from '@/hooks/useWiki'
 import { runHealthCheck } from '@/api/client'
+import { EmptyState } from '@/components/EmptyState'
+import { ListSkeleton } from '@/components/ListSkeleton'
 import { SecondarySidebar } from './SecondarySidebar'
 
 interface Page {
@@ -110,7 +112,7 @@ function PageRow({
   const isHighlighted = highlightedSlug === page.slug
 
   const className = cn(
-    'group flex h-7 w-full items-center gap-1 rounded-sm px-2 text-left text-[13px] hover:bg-muted hover:text-foreground',
+    'group flex h-7 w-full items-center gap-1 rounded-sm px-2 text-left text-[13px] hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background',
     isMeta ? 'text-muted-foreground/60' : 'text-muted-foreground',
     isActive && 'bg-muted text-foreground',
     isHighlighted && 'ring-1 ring-primary/50',
@@ -239,7 +241,8 @@ export function WikiTree({
 } = {}) {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const { data: pages = [] } = usePages()
+  const { data: pages, isPending: loading } = usePages()
+  const pageList = pages ?? []
   const [filter, setFilter] = useState('')
   const [collapsed, setCollapsedState] = useState<Record<string, boolean>>(getCollapsed)
   const [healthRunning, setHealthRunning] = useState(false)
@@ -275,11 +278,13 @@ export function WikiTree({
   }
 
   const tree = useMemo(() => {
-    const built = buildTree(Array.isArray(pages) ? pages : [])
+    const built = buildTree(pageList)
     return filter ? filterTreeNode(built, filter) : built
-  }, [pages, filter])
+  }, [pageList, filter])
 
   const sortedRootFolders = tree ? sortFolderEntries(tree.children) : []
+  const hasTreeContent =
+    tree && (tree.pages.length > 0 || Object.keys(tree.children).length > 0)
 
   return (
     <SecondarySidebar
@@ -290,7 +295,19 @@ export function WikiTree({
       onSearchChange={setFilter}
     >
       <div className="p-1">
-        {tree?.pages.map((p) => (
+        {loading && <ListSkeleton />}
+        {!loading && !hasTreeContent && (
+          <EmptyState
+            className="min-h-[6rem] p-4"
+            title={filter ? 'No matches' : 'No wiki pages yet'}
+            description={
+              filter
+                ? 'Try a different search term.'
+                : 'Create a page with New or ask the chat agent to write one.'
+            }
+          />
+        )}
+        {!loading && tree?.pages.map((p) => (
           <PageRow
             key={p.slug}
             page={p}
@@ -301,7 +318,7 @@ export function WikiTree({
             onSelect={onSelect}
           />
         ))}
-        {sortedRootFolders.map(([name, node]) => (
+        {!loading && sortedRootFolders.map(([name, node]) => (
           <FolderRow
             key={name}
             name={name}

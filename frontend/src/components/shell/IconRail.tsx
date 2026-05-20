@@ -4,6 +4,9 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
+const navLinkClass =
+  'relative flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background'
+
 const sections = [
   { to: '/wiki', icon: BookOpen, label: 'Wiki' },
   { to: '/files', icon: FolderOpen, label: 'Files' },
@@ -24,7 +27,7 @@ export function IconRail({ onOpenHelp }: { onOpenHelp: () => void }) {
                   aria-label={label}
                   className={({ isActive }) =>
                     cn(
-                      'relative flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
+                      navLinkClass,
                       isActive &&
                         'bg-muted text-foreground before:absolute before:left-[-10px] before:top-1/2 before:h-5 before:w-0.5 before:-translate-y-1/2 before:rounded-r before:bg-primary'
                     )
