@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { redirectToAuthentik, devLogin, DEV_AUTH_BYPASS, saveAccessToken, getStoredAccessToken, clearStoredTokens } from './auth'
-import Layout from './components/Layout'
+import { AppShell } from './components/shell/AppShell'
+import WikiWorkspace from './components/shell/WikiWorkspace'
 import FilesView from './components/FilesView'
 import AutomationsPage from './components/AutomationsPage'
 import BrowserChatPage from './components/BrowserChatPage'
@@ -147,11 +148,13 @@ export default function App() {
     return (
       <BrowserRouter>
         <Routes>
-          <Route path="/wiki" element={<Layout />} />
-          <Route path="/files" element={<FilesView />} />
-          <Route path="/automations" element={<AutomationsPage />} />
-          <Route path="/browser-chat" element={<BrowserChatPage />} />
-          <Route path="*" element={<Navigate to="/wiki" replace />} />
+          <Route element={<AppShell />}>
+            <Route path="/wiki" element={<WikiWorkspace />} />
+            <Route path="/files" element={<FilesView />} />
+            <Route path="/automations" element={<AutomationsPage />} />
+            <Route path="/browser-chat" element={<BrowserChatPage />} />
+            <Route path="*" element={<Navigate to="/wiki" replace />} />
+          </Route>
         </Routes>
       </BrowserRouter>
     )
