@@ -415,11 +415,13 @@ function ActionLogDialog({
           <DialogTitle>Action log</DialogTitle>
         </DialogHeader>
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {loading && (
-            <p className="text-sm italic text-muted-foreground">Loading…</p>
-          )}
+          {loading && <ListSkeleton rows={4} className="p-0" />}
           {!loading && actions.length === 0 && (
-            <p className="text-sm italic text-muted-foreground">No actions recorded.</p>
+            <EmptyState
+              className="min-h-[6rem] py-6"
+              title="No actions recorded"
+              description="This run did not log any steps."
+            />
           )}
           <div className="flex flex-col gap-2">
             {actions.map(a => (

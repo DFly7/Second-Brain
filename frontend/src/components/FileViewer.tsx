@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { fetchSourceFile, fetchSourceImage } from '../api/client'
 import { useSourceMarkdown } from '../hooks/useSources'
@@ -151,7 +152,17 @@ function MarkdownPane({ source }: { source: SourceItem }) {
   if (!source.has_markdown) {
     return <Centered>No markdown available yet.</Centered>
   }
-  if (isLoading) return <Centered>Loading…</Centered>
+  if (isLoading) {
+    return (
+      <div className="space-y-3 p-6">
+        <Skeleton className="h-6 w-1/3" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-4/5" />
+        <Skeleton className="h-4 w-3/5" />
+      </div>
+    )
+  }
   if (isError) {
     return (
       <Centered>

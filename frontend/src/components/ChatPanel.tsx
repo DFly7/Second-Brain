@@ -22,19 +22,24 @@ export default function ChatPanel({ onNavigate, activeSseEvent }: ChatPanelProps
   )
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
+  const [messagesLoading, setMessagesLoading] = useState(!!localStorage.getItem(SESSION_KEY))
   const [editMode, setEditMode] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [sessions, setSessions] = useState<Session[]>([])
+  const [sessionsLoading, setSessionsLoading] = useState(true)
   const [sessionsError, setSessionsError] = useState(false)
   const [input, setInput] = useState('')
 
   const loadSessions = useCallback(async () => {
+    setSessionsLoading(true)
     try {
       const data = await listSessions()
       setSessions(data)
       setSessionsError(false)
     } catch {
       setSessionsError(true)
+    } finally {
+      setSessionsLoading(false)
     }
   }, [])
 
@@ -53,15 +58,20 @@ export default function ChatPanel({ onNavigate, activeSseEvent }: ChatPanelProps
 
   useEffect(() => {
     const id = localStorage.getItem(SESSION_KEY)
-    if (!id) return
-    getSessionMessages(id).then((msgs) => {
-      if (msgs.length === 0) {
-        localStorage.removeItem(SESSION_KEY)
-        setSessionId(undefined)
-        return
-      }
-      setMessages(msgs.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })))
-    })
+    if (!id) {
+      setMessagesLoading(false)
+      return
+    }
+    getSessionMessages(id)
+      .then((msgs) => {
+        if (msgs.length === 0) {
+          localStorage.removeItem(SESSION_KEY)
+          setSessionId(undefined)
+          return
+        }
+        setMessages(msgs.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })))
+      })
+      .finally(() => setMessagesLoading(false))
   }, [])
 
   function persistSession(id: string) {
@@ -92,9 +102,14 @@ export default function ChatPanel({ onNavigate, activeSseEvent }: ChatPanelProps
 
   async function handleSelectSession(id: string) {
     persistSession(id)
-    const msgs = await getSessionMessages(id)
-    setMessages(msgs.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })))
-    setDrawerOpen(false)
+    setMessagesLoading(true)
+    try {
+      const msgs = await getSessionMessages(id)
+      setMessages(msgs.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })))
+    } finally {
+      setMessagesLoading(false)
+      setDrawerOpen(false)
+    }
   }
 
   function handleNewChat() {
@@ -135,6 +150,7 @@ export default function ChatPanel({ onNavigate, activeSseEvent }: ChatPanelProps
         <ChatConversation
           messages={messages}
           loading={loading}
+          messagesLoading={messagesLoading}
           activeSseEvent={activeSseEvent}
           onNavigate={onNavigate}
         />
@@ -187,6 +203,7 @@ export default function ChatPanel({ onNavigate, activeSseEvent }: ChatPanelProps
       <SessionDrawer
         open={drawerOpen}
         sessions={sessions}
+        loading={sessionsLoading}
         loadError={sessionsError}
         activeSessionId={sessionId}
         onSelect={handleSelectSession}

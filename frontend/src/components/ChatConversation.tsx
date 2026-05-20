@@ -1,5 +1,7 @@
 import { useRef, useEffect } from 'react'
 import { Card } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from './EmptyState'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -11,6 +13,7 @@ export interface Message { role: 'user' | 'assistant'; content: string; cited?: 
 interface ChatConversationProps {
   messages: Message[]
   loading: boolean
+  messagesLoading?: boolean
   activeSseEvent: { event: string; slug?: string } | null
   onNavigate: (slug: string) => void
 }
@@ -77,6 +80,7 @@ const markdownComponents = (onNavigate: (slug: string) => void) => ({
 export default function ChatConversation({
   messages,
   loading,
+  messagesLoading,
   activeSseEvent,
   onNavigate,
 }: ChatConversationProps) {
@@ -93,10 +97,18 @@ export default function ChatConversation({
         }
       `}</style>
       <div className="flex flex-col gap-1 py-2">
-        {messages.length === 0 && (
-          <p className="mt-10 px-3 text-center text-sm text-muted-foreground">
-            Ask anything — the agent will search your wiki.
-          </p>
+        {messagesLoading && (
+          <div className="space-y-3 px-3 py-4">
+            <Skeleton className="ml-auto h-8 w-3/5" />
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-12 w-4/5" />
+          </div>
+        )}
+        {!messagesLoading && messages.length === 0 && (
+          <EmptyState
+            title="No messages yet"
+            description="Ask anything — the agent will search your wiki."
+          />
         )}
         {messages.map((m, i) =>
           m.role === 'user' ? (
@@ -138,10 +150,15 @@ export default function ChatConversation({
           )
         )}
         {loading && (
-          <Card className="mx-3 my-2 border-border bg-muted/50 p-3 text-sm text-muted-foreground">
+          <Card className="mx-3 my-2 border-border bg-muted/50 p-3">
+            <div className="mb-2 space-y-1.5">
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-4/5" />
+              <Skeleton className="h-3 w-2/3" />
+            </div>
             <span
               key={sseStatusAnimKey(activeSseEvent)}
-              className="inline-block"
+              className="inline-block text-sm text-muted-foreground"
               style={{ animation: 'fadeSlide 200ms ease' }}
             >
               {sseStatusLabel(activeSseEvent)}

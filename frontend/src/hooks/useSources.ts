@@ -9,7 +9,6 @@ export function useSources() {
     queryKey: ['sources'],
     queryFn: listSources,
     refetchOnWindowFocus: true,
-    initialData: [],
   })
 }
 
