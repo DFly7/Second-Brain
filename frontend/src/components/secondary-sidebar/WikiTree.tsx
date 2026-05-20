@@ -95,29 +95,49 @@ function PageRow({
   isMeta,
   activeSlug,
   highlightedSlug,
+  onSelect,
 }: {
   page: Page
   depth: number
   isMeta: boolean
   activeSlug: string | null
   highlightedSlug: string | null
+  onSelect?: (slug: string) => void
 }) {
   const leafName = page.slug.split('/').pop() || page.slug
   const isActive = activeSlug === page.slug
   const isHighlighted = highlightedSlug === page.slug
 
+  const className = cn(
+    'group flex h-7 w-full items-center gap-1 rounded-sm px-2 text-left text-[13px] hover:bg-muted hover:text-foreground',
+    isMeta ? 'text-muted-foreground/60' : 'text-muted-foreground',
+    isActive && 'bg-muted text-foreground',
+    isHighlighted && 'ring-1 ring-primary/50',
+    isActive && 'before:mr-1 before:h-4 before:w-0.5 before:rounded-r before:bg-primary',
+  )
+  const style = { paddingLeft: 8 + depth * 12 }
+
+  if (onSelect) {
+    return (
+      <button
+        type="button"
+        title={page.title}
+        onClick={() => onSelect(page.slug)}
+        className={className}
+        style={style}
+      >
+        <FileText className="h-3 w-3 shrink-0 text-muted-foreground/60" />
+        <span className="truncate">{leafName}</span>
+      </button>
+    )
+  }
+
   return (
     <Link
       to={wikiPageHref(page.slug)}
       title={page.title}
-      className={cn(
-        'group flex h-7 items-center gap-1 rounded-sm px-2 text-[13px] hover:bg-muted hover:text-foreground',
-        isMeta ? 'text-muted-foreground/60' : 'text-muted-foreground',
-        isActive && 'bg-muted text-foreground',
-        isHighlighted && 'ring-1 ring-primary/50',
-        isActive && 'before:mr-1 before:h-4 before:w-0.5 before:rounded-r before:bg-primary',
-      )}
-      style={{ paddingLeft: 8 + depth * 12 }}
+      className={className}
+      style={style}
     >
       <FileText className="h-3 w-3 shrink-0 text-muted-foreground/60" />
       <span className="truncate">{leafName}</span>
@@ -136,6 +156,7 @@ function FolderRow({
   collapsed,
   onToggle,
   filter,
+  onSelect,
 }: {
   name: string
   node: TreeNode
@@ -147,6 +168,7 @@ function FolderRow({
   collapsed: Record<string, boolean>
   onToggle: (path: string) => void
   filter: string
+  onSelect?: (slug: string) => void
 }) {
   const isCollapsed = collapsed[fullPath]
   const sortedChildren = sortFolderEntries(node.children)
@@ -178,6 +200,7 @@ function FolderRow({
               isMeta={isMeta || name === 'meta'}
               activeSlug={activeSlug}
               highlightedSlug={highlightedSlug}
+              onSelect={onSelect}
             />
           ))}
           {sortedChildren.map(([childName, childNode]) => (
@@ -193,6 +216,7 @@ function FolderRow({
               collapsed={collapsed}
               onToggle={onToggle}
               filter={filter}
+              onSelect={onSelect}
             />
           ))}
         </>
@@ -204,9 +228,11 @@ function FolderRow({
 export function WikiTree({
   selectedSlug: selectedSlugProp,
   highlightedSlug = null,
+  onSelect,
 }: {
   selectedSlug?: string | null
   highlightedSlug?: string | null
+  onSelect?: (slug: string) => void
 } = {}) {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -269,6 +295,7 @@ export function WikiTree({
             isMeta={false}
             activeSlug={activeSlug}
             highlightedSlug={highlightedSlug}
+            onSelect={onSelect}
           />
         ))}
         {sortedRootFolders.map(([name, node]) => (
@@ -284,6 +311,7 @@ export function WikiTree({
             collapsed={collapsed}
             onToggle={toggleFolder}
             filter={filter}
+            onSelect={onSelect}
           />
         ))}
       </div>

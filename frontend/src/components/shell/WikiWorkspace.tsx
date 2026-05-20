@@ -1,0 +1,154 @@
+import { useState } from 'react'
+import { logout } from '@/auth'
+import { Button } from '@/components/ui/button'
+import { WikiTree } from '@/components/secondary-sidebar/WikiTree'
+import WikiContent from '@/components/WikiContent'
+import ChatPanel from '@/components/ChatPanel'
+import IngestModal from '@/components/IngestModal'
+import ActivityLog from '@/components/ActivityLog'
+import { ContextBar } from '@/components/shell/ContextBar'
+import { useShellState } from '@/components/shell/ShellStateContext'
+import { useIsMobile } from '@/hooks/useIsMobile'
+import { usePage } from '@/hooks/useWiki'
+import { cn } from '@/lib/utils'
+
+export default function WikiWorkspace() {
+  const {
+    selectedSlug,
+    highlightedSlug,
+    agentStatus,
+    showActivity,
+    setShowActivity,
+    showIngest,
+    setShowIngest,
+    queue,
+    queueActions,
+    chatSseEvent,
+    onSelectSlug,
+  } = useShellState()
+
+  const isMobile = useIsMobile()
+  const [activeTab, setActiveTab] = useState<'pages' | 'content' | 'chat'>('content')
+  const { data: page } = usePage(selectedSlug)
+
+  function handleSelect(slug: string) {
+    onSelectSlug(slug)
+    if (isMobile) setActiveTab('content')
+  }
+
+  const breadcrumbs = [
+    { label: 'Wiki', href: '/wiki' },
+    ...(selectedSlug
+      ? [{ label: page?.title ?? selectedSlug.split('/').pop() ?? selectedSlug }]
+      : []),
+  ]
+
+  const contextActions = (
+    <>
+      {agentStatus && (
+        <span className="text-xs text-primary">⟳ {agentStatus}</span>
+      )}
+      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setShowIngest(true)}>
+        + Ingest
+      </Button>
+      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => logout()}>
+        Sign out
+      </Button>
+    </>
+  )
+
+  const activityRow = (
+    <div className="flex shrink-0 justify-end border-b border-border bg-background px-4 py-1">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-6 text-xs"
+        onClick={() => setShowActivity(!showActivity)}
+      >
+        Activity
+      </Button>
+    </div>
+  )
+
+  const modals = (
+    <>
+      {showActivity && (
+        <ActivityLog
+          onClose={() => setShowActivity(false)}
+          queue={queue}
+          onClearQueue={() => queueActions.clear()}
+        />
+      )}
+      {showIngest && (
+        <IngestModal
+          onClose={() => setShowIngest(false)}
+          queue={queue}
+          onUpsertQueueItems={items => queueActions.upsertMany(items)}
+          onPatchQueueById={(id, patch) => queueActions.patchById(id, patch)}
+        />
+      )}
+    </>
+  )
+
+  if (isMobile) {
+    return (
+      <div className="flex h-full flex-col overflow-hidden">
+        <ContextBar breadcrumbs={breadcrumbs} actions={contextActions} />
+        {activityRow}
+        <div className="min-h-0 flex-1 overflow-hidden">
+          {activeTab === 'pages' && (
+            <WikiTree
+              selectedSlug={selectedSlug}
+              highlightedSlug={highlightedSlug}
+              onSelect={handleSelect}
+            />
+          )}
+          {activeTab === 'content' && (
+            <WikiContent selectedSlug={selectedSlug} onNavigate={handleSelect} />
+          )}
+          {activeTab === 'chat' && (
+            <ChatPanel onNavigate={handleSelect} activeSseEvent={chatSseEvent} />
+          )}
+        </div>
+        <div
+          className="flex shrink-0 border-t-2 border-border bg-background pb-[env(safe-area-inset-bottom)]"
+        >
+          {(
+            [
+              { id: 'pages' as const, label: '≡ Pages' },
+              { id: 'content' as const, label: '□ Content' },
+              { id: 'chat' as const, label: '◎ Chat' },
+            ] as const
+          ).map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setActiveTab(id)}
+              className={cn(
+                'flex-1 border-t-2 py-3 text-[13px]',
+                activeTab === id
+                  ? '-mt-0.5 border-primary text-primary'
+                  : 'border-transparent text-muted-foreground',
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {modals}
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden">
+      <ContextBar breadcrumbs={breadcrumbs} actions={contextActions} />
+      {activityRow}
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <WikiContent selectedSlug={selectedSlug} onNavigate={onSelectSlug} />
+      </div>
+      {modals}
+    </div>
+  )
+}
