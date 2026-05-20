@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useLocation, Outlet } from 'react-router-dom'
 import { usePanelRef } from 'react-resizable-panels'
 import {
@@ -18,16 +18,17 @@ import { shortcuts as shortcutsRegistry } from '@/components/help/shortcuts'
 import { CommandPalette } from '@/components/command-palette/CommandPalette'
 import { HelpOverlay } from '@/components/help/HelpOverlay'
 
-/** Wiki-only: other routes render their own nav in the main column. */
-function useShowSecondarySidebar() {
+/** Both sidebar and chat are wiki-only — other routes get a full-width main panel. */
+function useIsWiki() {
   const { pathname } = useLocation()
   return pathname.startsWith('/wiki')
 }
 
-/** Routes that manage their own chat UI should not show the global chat panel. */
-function useShowGlobalChat() {
-  const { pathname } = useLocation()
-  return !pathname.startsWith('/browser-chat')
+/** Returns the initial layout for the three-panel group based on the starting route. */
+function initialLayout(pathname: string): Record<string, number> {
+  return pathname.startsWith('/wiki')
+    ? { 'secondary-sidebar': 22, main: 53, chat: 25 }
+    : { 'secondary-sidebar': 0, main: 100, chat: 0 }
 }
 
 function SecondaryForRoute() {
@@ -44,14 +45,16 @@ function SecondaryForRoute() {
 
 function AppShellLayout() {
   const isMobile = useIsMobile()
-  const showSecondary = useShowSecondarySidebar()
-  const showGlobalChat = useShowGlobalChat()
+  const isWiki = useIsWiki()
   const { pathname } = useLocation()
   const { onSelectSlug, chatSseEvent } = useShellState()
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const sidebarRef = usePanelRef()
   const chatRef = usePanelRef()
+  // Capture the initial pathname once so defaultLayout doesn't re-compute on navigation
+  const initialPathnameRef = useRef(pathname)
+  const defaultPanelLayout = useMemo(() => initialLayout(initialPathnameRef.current), [])
 
   const handleShortcut = useCallback((id: string) => {
     if (id === 'palette') setPaletteOpen(true)
@@ -73,21 +76,18 @@ function AppShellLayout() {
 
   useShortcuts(shortcutsRegistry, handleShortcut)
 
-  // Collapse/expand secondary sidebar based on route — no remount needed
+  // Sidebar and chat are wiki-only — collapse both when navigating away
   useEffect(() => {
-    const p = sidebarRef.current
-    if (!p) return
-    if (showSecondary) p.expand()
-    else p.collapse()
-  }, [showSecondary])
-
-  // Collapse/expand global chat based on route — browser-chat manages its own
-  useEffect(() => {
-    const p = chatRef.current
-    if (!p) return
-    if (showGlobalChat) p.expand()
-    else p.collapse()
-  }, [showGlobalChat])
+    const sidebar = sidebarRef.current
+    const chat = chatRef.current
+    if (isWiki) {
+      sidebar?.expand()
+      chat?.expand()
+    } else {
+      sidebar?.collapse()
+      chat?.collapse()
+    }
+  }, [isWiki])
 
   useEffect(() => {
     if (localStorage.getItem('sb.helpHintShown') === '1') return
@@ -122,13 +122,14 @@ function AppShellLayout() {
             orientation="horizontal"
             className="h-full min-h-0 flex-1"
             resizeTargetMinimumSize={{ coarse: 28, fine: 10 }}
+            defaultLayout={defaultPanelLayout}
           >
             <ResizablePanel
               id="secondary-sidebar"
               panelRef={sidebarRef}
-              defaultSize={0}
+              defaultSize={22}
               minSize={16}
-              maxSize={35}
+              maxSize={40}
               collapsible
               collapsedSize={0}
               className="min-w-0"
@@ -140,8 +141,8 @@ function AppShellLayout() {
             <ResizableHandle withHandle />
             <ResizablePanel
               id="main"
-              defaultSize={75}
-              minSize={35}
+              defaultSize={53}
+              minSize={30}
               className="min-w-0"
             >
               <main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
@@ -156,7 +157,7 @@ function AppShellLayout() {
               panelRef={chatRef}
               defaultSize={25}
               minSize={18}
-              maxSize={45}
+              maxSize={50}
               collapsible
               collapsedSize={0}
               className="min-w-0"
