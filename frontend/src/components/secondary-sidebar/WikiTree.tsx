@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { ChevronRight, FileText } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { usePages } from '@/hooks/useWiki'
 import { runHealthCheck } from '@/api/client'
@@ -119,8 +120,9 @@ function PageRow({
 
   if (onSelect) {
     return (
-      <button
+      <Button
         type="button"
+        variant="ghost"
         title={page.title}
         onClick={() => onSelect(page.slug)}
         className={className}
@@ -128,7 +130,7 @@ function PageRow({
       >
         <FileText className="h-3 w-3 shrink-0 text-muted-foreground/60" />
         <span className="truncate">{leafName}</span>
-      </button>
+      </Button>
     )
   }
 
@@ -175,11 +177,12 @@ function FolderRow({
 
   return (
     <div>
-      <button
+      <Button
         type="button"
+        variant="ghost"
         onClick={() => onToggle(fullPath)}
         className={cn(
-          'flex h-7 w-full items-center gap-1 rounded-sm px-2 text-[11px] uppercase tracking-wide hover:bg-muted',
+          'flex h-7 w-full items-center gap-1 rounded-sm px-2 text-[11px] font-normal uppercase tracking-wide hover:bg-muted',
           isMeta ? 'text-muted-foreground/50' : 'text-muted-foreground/70',
         )}
         style={{ paddingLeft: 8 + depth * 12 }}
@@ -189,7 +192,7 @@ function FolderRow({
         />
         <span className="truncate">{name}/</span>
         <span className="ml-auto text-[10px] opacity-60">{countPages(node)}</span>
-      </button>
+      </Button>
       {!isCollapsed && (
         <>
           {node.pages.map((p) => (
@@ -316,19 +319,19 @@ export function WikiTree({
         ))}
       </div>
       <div className="shrink-0 border-t border-border p-2">
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           onClick={handleHealthRun}
           disabled={healthRunning}
           className={cn(
-            'w-full rounded-md border border-border px-2 py-1.5 text-[11px] tracking-wide',
-            healthRunning
-              ? 'cursor-default text-muted-foreground/50'
-              : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+            'h-auto w-full px-2 py-1.5 text-[11px] tracking-wide',
+            healthRunning && 'text-muted-foreground/50',
           )}
         >
           {healthRunning ? 'running health check…' : '⚕ health check'}
-        </button>
+        </Button>
       </div>
     </SecondarySidebar>
   )

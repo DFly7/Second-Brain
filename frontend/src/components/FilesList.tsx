@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button'
 import type { SourceItem } from '../api/client'
 
 interface FilesListProps {
@@ -120,27 +121,16 @@ export default function FilesList({ sources, selectedId, onSelect, onInfo, fullW
                 />
               </div>
             </div>
-            <button
+            <Button
               type="button"
-              className="info-btn"
+              variant="ghost"
+              size="icon"
+              className="info-btn absolute right-7 top-1 h-5 w-5 opacity-0 transition-opacity hover:bg-transparent"
               onClick={(e) => { e.stopPropagation(); onInfo(source.id) }}
-              style={{
-                position: 'absolute',
-                top: 4,
-                right: 28,
-                background: 'none',
-                border: 'none',
-                color: '#6e7681',
-                cursor: 'pointer',
-                fontSize: 11,
-                padding: '0 2px',
-                opacity: 0,
-                transition: 'opacity 0.1s',
-              }}
               aria-label="File info"
             >
-              ⓘ
-            </button>
+              <span className="text-[11px] text-muted-foreground">ⓘ</span>
+            </Button>
           </div>
         )
       })}

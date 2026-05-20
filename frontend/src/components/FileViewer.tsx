@@ -6,6 +6,8 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 import 'github-markdown-css/github-markdown-dark.css'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { fetchSourceFile, fetchSourceImage } from '../api/client'
 import { useSourceMarkdown } from '../hooks/useSources'
 import type { SourceItem } from '../hooks/useSources'
@@ -35,7 +37,7 @@ export default function FileViewer({ source, onBack }: FileViewerProps) {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {onBack && (
           <div style={{ padding: '8px 14px', borderBottom: '1px solid #21262d', flexShrink: 0 }}>
-            <button type="button" onClick={onBack} style={btnStyle}>← Back</button>
+            <Button type="button" variant="outline" size="sm" onClick={onBack}>← Back</Button>
           </div>
         )}
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8b949e', fontSize: 13 }}>
@@ -59,7 +61,7 @@ export default function FileViewer({ source, onBack }: FileViewerProps) {
         flexShrink: 0,
       }}>
         {onBack && (
-          <button type="button" onClick={onBack} style={btnStyle}>← Back</button>
+          <Button type="button" variant="outline" size="sm" onClick={onBack}>← Back</Button>
         )}
         <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: '#e6edf3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {source.title ?? `${source.kind} · ${source.id.slice(0, 8).toUpperCase()}`}
@@ -73,24 +75,21 @@ export default function FileViewer({ source, onBack }: FileViewerProps) {
         {showToggle && (
           <div style={{ display: 'flex', background: '#21262d', borderRadius: 6, padding: 2, gap: 2 }}>
             {(['original', 'markdown'] as const).map((v) => (
-              <button
+              <Button
                 key={v}
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => setView(v)}
-                style={{
-                  padding: '3px 10px',
-                  borderRadius: 4,
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  background: view === v ? '#0d1117' : 'transparent',
-                  color: view === v ? '#e6edf3' : '#6e7681',
-                  boxShadow: view === v ? '0 1px 3px rgba(0,0,0,0.4)' : 'none',
-                }}
+                className={cn(
+                  'h-7 px-2.5 text-[11px] font-semibold',
+                  view === v
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:bg-transparent',
+                )}
               >
                 {v === 'original' ? 'Original' : 'Markdown'}
-              </button>
+              </Button>
             ))}
           </div>
         )}
@@ -158,9 +157,9 @@ function MarkdownPane({ source }: { source: SourceItem }) {
     return (
       <Centered>
         Could not load file.{' '}
-        <button type="button" onClick={() => refetch()} style={btnStyle}>
+        <Button type="button" variant="outline" size="sm" onClick={() => refetch()}>
           Retry
-        </button>
+        </Button>
       </Centered>
     )
   }
@@ -171,9 +170,15 @@ function MarkdownPane({ source }: { source: SourceItem }) {
         <span style={{ color: '#e6edf3', fontWeight: 600 }}>
           {source.filename ?? source.kind} — markdown
         </span>
-        <button type="button" onClick={() => setRawMode((m) => !m)} style={{ ...btnStyle, marginLeft: 'auto' }}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="ml-auto"
+          onClick={() => setRawMode((m) => !m)}
+        >
           {rawMode ? 'Rendered' : 'Raw'}
-        </button>
+        </Button>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
         {rawMode ? (
@@ -250,9 +255,9 @@ function OriginalPane({ source, onBlobUrl }: { source: SourceItem; onBlobUrl: (u
     return (
       <Centered>
         Could not load file.{' '}
-        <button type="button" onClick={() => setRetryCount((c) => c + 1)} style={btnStyle}>
+        <Button type="button" variant="outline" size="sm" onClick={() => setRetryCount((c) => c + 1)}>
           Retry
-        </button>
+        </Button>
       </Centered>
     )
   }
@@ -325,16 +330,6 @@ function Centered({ children }: { children: React.ReactNode }) {
       {children}
     </div>
   )
-}
-
-const btnStyle: React.CSSProperties = {
-  padding: '3px 10px',
-  background: '#21262d',
-  border: '1px solid #30363d',
-  borderRadius: 4,
-  color: '#e6edf3',
-  cursor: 'pointer',
-  fontSize: 12,
 }
 
 const linkBtnStyle: React.CSSProperties = {

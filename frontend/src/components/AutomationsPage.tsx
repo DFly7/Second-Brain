@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
 import {
   type AutomationAction,
   type AutomationRun,
@@ -157,13 +159,14 @@ export default function AutomationsPage() {
             </div>
           </div>
           <div style={{ padding: 12, borderTop: '1px solid #30363d' }}>
-            <button
+            <Button
               type="button"
+              variant="outline"
+              className="w-full border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive"
               onClick={handleStop}
-              style={{ width: '100%', padding: 8, background: '#f8514918', border: '1px solid #f8514940', borderRadius: 7, color: '#f85149', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
             >
               ⏹ Stop Agent
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -245,48 +248,25 @@ export default function AutomationsPage() {
 
         {/* New run */}
         <div style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <textarea
+          <Textarea
             value={goal}
             onChange={e => setGoal(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleStart() }}
             placeholder="Give the agent a goal, e.g. 'Research the top 5 note-taking apps and save a comparison to tools/note-apps'"
             rows={3}
-            style={{
-              width: '100%',
-              background: '#0d1117',
-              border: '1px solid #30363d',
-              borderRadius: 8,
-              padding: '10px 12px',
-              color: '#e6edf3',
-              fontSize: 13,
-              resize: 'none',
-              outline: 'none',
-              fontFamily: 'inherit',
-              lineHeight: 1.5,
-              boxSizing: 'border-box',
-            }}
+            className="resize-none text-[13px] leading-normal"
           />
           <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12 }}>
             {startError && (
               <span style={{ fontSize: 12, color: '#f85149' }}>{startError}</span>
             )}
-            <button
+            <Button
               type="button"
               onClick={handleStart}
               disabled={!goal.trim()}
-              style={{
-                padding: '8px 20px',
-                background: goal.trim() ? '#238636' : '#21262d',
-                border: `1px solid ${goal.trim() ? '#2ea043' : '#30363d'}`,
-                borderRadius: 7,
-                color: goal.trim() ? '#ffffff' : '#8b949e',
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: goal.trim() ? 'pointer' : 'default',
-              }}
             >
               Run
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -306,30 +286,36 @@ export default function AutomationsPage() {
               </div>
               <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                 {isActiveStatus(run.status) && (
-                  <button
+                  <Button
                     type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 border-destructive/40 text-destructive hover:text-destructive"
                     onClick={() => handleForceStop(run.id)}
-                    style={{ ...smallBtn, color: '#f85149', borderColor: '#f8514940' }}
                   >
                     Force stop
-                  </button>
+                  </Button>
                 )}
                 {run.recording_url && !isActiveStatus(run.status) && (
-                  <button
+                  <Button
                     type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
                     onClick={() => handleWatch(run.id)}
-                    style={smallBtn}
                   >
                     ▶ Watch
-                  </button>
+                  </Button>
                 )}
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
                   onClick={() => setExpandedRunId(expandedRunId === run.id ? null : run.id)}
-                  style={smallBtn}
                 >
                   Actions {expandedRunId === run.id ? '▴' : '▾'}
-                </button>
+                </Button>
               </div>
             </div>
             {expandedRunId === run.id && (
@@ -391,12 +377,3 @@ function ExpandedActions({ runId }: { runId: string }) {
   )
 }
 
-const smallBtn: React.CSSProperties = {
-  padding: '4px 10px',
-  background: '#21262d',
-  border: '1px solid #30363d',
-  borderRadius: 6,
-  color: '#8b949e',
-  fontSize: 11,
-  cursor: 'pointer',
-}

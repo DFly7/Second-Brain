@@ -1,4 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import {
   type BrowserChatMessage,
   type BrowserChatSession,
@@ -255,7 +258,7 @@ export default function BrowserChatPage() {
             <div ref={messagesEndRef} />
           </div>
           <div style={{ padding: '10px 12px', borderTop: '1px solid #30363d', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <textarea
+            <Textarea
               ref={inputRef}
               value={input}
               onChange={e => setInput(e.target.value)}
@@ -263,73 +266,48 @@ export default function BrowserChatPage() {
               disabled={agentRunning}
               placeholder={agentRunning ? 'Agent is working…' : 'Tell the agent what to do… (⌘↵ to send)'}
               rows={3}
-              style={{
-                width: '100%',
-                background: '#0d1117',
-                border: `1px solid ${agentRunning ? '#30363d' : '#388bfd40'}`,
-                borderRadius: 8,
-                padding: '8px 10px',
-                color: agentRunning ? '#8b949e' : '#e6edf3',
-                fontSize: 13,
-                resize: 'none',
-                outline: 'none',
-                fontFamily: 'inherit',
-                lineHeight: 1.5,
-                boxSizing: 'border-box',
-              }}
+              className="resize-none text-[13px] leading-normal"
             />
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 border-destructive/40 text-destructive hover:text-destructive"
                 onClick={handleDisconnect}
-                style={{ padding: '5px 10px', background: 'transparent', border: '1px solid #f8514940', borderRadius: 6, color: '#f85149', fontSize: 11, cursor: 'pointer' }}
               >
                 Disconnect
-              </button>
+              </Button>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <label style={{ fontSize: 11, color: '#8b949e' }}>Turns</label>
-                <input
+                <Input
                   type="number"
                   min={1}
                   max={100}
                   value={maxTurns}
                   onChange={e => setMaxTurns(Math.max(1, Math.min(100, Number(e.target.value))))}
-                  style={{ width: 46, padding: '3px 6px', background: '#0d1117', border: '1px solid #30363d', borderRadius: 5, color: '#e6edf3', fontSize: 11, textAlign: 'center' }}
+                  className="h-7 w-12 px-1.5 text-center text-[11px]"
                 />
               </div>
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-[11px]"
                 onClick={handleRecover}
                 disabled={recovering || agentRunning}
-                style={{
-                  padding: '5px 10px',
-                  background: 'transparent',
-                  border: `1px solid ${recovering || agentRunning ? '#30363d' : '#d2992240'}`,
-                  borderRadius: 6,
-                  color: recovering || agentRunning ? '#8b949e' : '#d29922',
-                  fontSize: 11,
-                  cursor: recovering || agentRunning ? 'default' : 'pointer',
-                }}
               >
                 {recovering ? 'Recovering…' : 'Recover Browser'}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                size="sm"
+                className="h-7"
                 onClick={handleSend}
                 disabled={!input.trim() || agentRunning}
-                style={{
-                  padding: '6px 14px',
-                  background: input.trim() && !agentRunning ? '#238636' : '#21262d',
-                  border: `1px solid ${input.trim() && !agentRunning ? '#2ea043' : '#30363d'}`,
-                  borderRadius: 6,
-                  color: input.trim() && !agentRunning ? '#ffffff' : '#8b949e',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: input.trim() && !agentRunning ? 'pointer' : 'default',
-                }}
               >
                 Send
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -381,23 +359,13 @@ export default function BrowserChatPage() {
           {connectError && (
             <div style={{ fontSize: 12, color: '#f85149' }}>{connectError}</div>
           )}
-          <button
+          <Button
             type="button"
             onClick={handleConnect}
             disabled={connectionState === 'connecting'}
-            style={{
-              padding: '10px 28px',
-              background: connectionState === 'connecting' ? '#21262d' : '#238636',
-              border: `1px solid ${connectionState === 'connecting' ? '#30363d' : '#2ea043'}`,
-              borderRadius: 8,
-              color: connectionState === 'connecting' ? '#8b949e' : '#ffffff',
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: connectionState === 'connecting' ? 'default' : 'pointer',
-            }}
           >
             {connectionState === 'connecting' ? 'Connecting…' : 'Connect'}
-          </button>
+          </Button>
         </div>
 
         {pastSessions.length > 0 && (
@@ -417,21 +385,25 @@ export default function BrowserChatPage() {
                     </div>
                   </div>
                   {s.status === 'active' && (
-                    <button
+                    <Button
                       type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 border-destructive/40 text-destructive hover:text-destructive"
                       onClick={() => handlePastDisconnect(s.id)}
-                      style={{ padding: '4px 8px', background: 'transparent', border: '1px solid #f8514940', borderRadius: 5, color: '#f85149', fontSize: 11, cursor: 'pointer' }}
                     >
                       Disconnect
-                    </button>
+                    </Button>
                   )}
-                  <button
+                  <Button
                     type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 shrink-0 text-xs"
                     onClick={() => toggleExpandSession(s.id)}
-                    style={smallBtn}
                   >
                     Messages {expandedSessionId === s.id ? '▴' : '▾'}
-                  </button>
+                  </Button>
                 </div>
                 {expandedSessionId === s.id && (
                   <div style={{ borderTop: '1px solid #30363d', background: '#0d1117', padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -472,17 +444,6 @@ export default function BrowserChatPage() {
       </div>
     </div>
   )
-}
-
-const smallBtn: React.CSSProperties = {
-  padding: '4px 10px',
-  background: '#21262d',
-  border: '1px solid #30363d',
-  borderRadius: 6,
-  color: '#8b949e',
-  fontSize: 11,
-  cursor: 'pointer',
-  flexShrink: 0,
 }
 
 function actionIcon(type: string): string {

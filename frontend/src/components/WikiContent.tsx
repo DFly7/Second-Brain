@@ -4,6 +4,8 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
 import { usePage, useUpdatePage } from '../hooks/useWiki'
 
 interface WikiContentProps {
@@ -69,28 +71,20 @@ export default function WikiContent({ selectedSlug, onNavigate }: WikiContentPro
     <div style={{ height: '100%', overflowY: 'auto', padding: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h1 style={{ fontSize: 20, color: '#e6edf3' }}>{page.title}</h1>
-        <button
+        <Button
+          type="button"
+          variant={editing ? 'default' : 'outline'}
+          size="sm"
           onClick={editing ? saveEdit : startEdit}
-          style={{
-            padding: '4px 14px',
-            background: editing ? '#238636' : '#21262d',
-            border: '1px solid #30363d', borderRadius: 6,
-            color: '#e6edf3', cursor: 'pointer', fontSize: 13,
-          }}
         >
           {editing ? 'Save' : 'Edit'}
-        </button>
+        </Button>
       </div>
       {editing ? (
-        <textarea
+        <Textarea
           value={editBody}
           onChange={e => setEditBody(e.target.value)}
-          style={{
-            width: '100%', minHeight: 400, background: '#0d1117',
-            border: '1px solid #30363d', borderRadius: 6,
-            color: '#e6edf3', padding: 16, fontFamily: 'monospace',
-            fontSize: 13, resize: 'vertical',
-          }}
+          className="min-h-[400px] resize-y font-mono text-[13px]"
         />
       ) : (
         <div style={{ lineHeight: 1.7, fontSize: 14 }}>

@@ -121,19 +121,20 @@ export default function WikiWorkspace() {
               { id: 'chat' as const, label: '◎ Chat' },
             ] as const
           ).map(({ id, label }) => (
-            <button
+            <Button
               key={id}
               type="button"
+              variant="ghost"
               onClick={() => setActiveTab(id)}
               className={cn(
-                'flex-1 border-t-2 py-3 text-[13px]',
+                'h-auto flex-1 rounded-none border-t-2 py-3 text-[13px] hover:bg-transparent',
                 activeTab === id
                   ? '-mt-0.5 border-primary text-primary'
                   : 'border-transparent text-muted-foreground',
               )}
             >
               {label}
-            </button>
+            </Button>
           ))}
         </div>
         {modals}

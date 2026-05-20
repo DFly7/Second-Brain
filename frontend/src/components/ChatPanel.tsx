@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Button } from '@/components/ui/button'
 import { sendMessage, listSessions, getSessionMessages } from '../api/client'
 import ChatConversation, { type Message } from './ChatConversation'
 import SessionDrawer from './SessionDrawer'
@@ -97,29 +98,26 @@ export default function ChatPanel({ onNavigate, activeSseEvent }: ChatPanelProps
       }}>
         <span>Chat</span>
         <div style={{ display: 'flex', gap: 6 }}>
-          <button
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs"
             onClick={handleNewChat}
-            style={{
-              padding: '4px 10px', fontSize: 12, borderRadius: 6,
-              border: '1px solid #30363d', background: '#0d1117',
-              color: '#8b949e', cursor: 'pointer',
-            }}
             title="Start a new chat"
           >
             New Chat
-          </button>
-          <button
+          </Button>
+          <Button
+            type="button"
+            variant={drawerOpen ? 'secondary' : 'outline'}
+            size="sm"
+            className="h-7 text-xs"
             onClick={() => setDrawerOpen(v => !v)}
-            style={{
-              padding: '4px 10px', fontSize: 12, borderRadius: 6,
-              border: '1px solid #30363d',
-              background: drawerOpen ? '#1f6feb22' : '#0d1117',
-              color: drawerOpen ? '#58a6ff' : '#8b949e', cursor: 'pointer',
-            }}
             title="View chat history"
           >
             History
-          </button>
+          </Button>
         </div>
       </div>
       <ChatConversation

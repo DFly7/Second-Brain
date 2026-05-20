@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import { BookOpen, FolderOpen, Bot, Globe, HelpCircle } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
@@ -39,13 +40,15 @@ export function IconRail() {
         <div className="flex flex-col gap-1">
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
+              <Button
                 type="button"
-                className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 text-muted-foreground"
                 aria-label="Help"
               >
                 <HelpCircle className="h-4 w-4" />
-              </button>
+              </Button>
             </TooltipTrigger>
             <TooltipContent side="right">Help (?)</TooltipContent>
           </Tooltip>

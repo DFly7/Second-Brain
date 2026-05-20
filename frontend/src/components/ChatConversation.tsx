@@ -1,4 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { cn } from '@/lib/utils'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -164,40 +167,35 @@ export default function ChatConversation({
         display: 'flex', alignItems: 'center', gap: 8,
         ...(editMode ? { boxShadow: 'inset 0 0 0 1px #d29922', background: 'rgba(210, 153, 34, 0.06)' } : {}),
       }}>
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           onClick={onEditModeToggle}
           title={editMode ? 'Switch to read-only query' : 'Allow the agent to edit wiki pages'}
-          style={{
-            padding: '8px 12px', borderRadius: 6, fontSize: 13, cursor: 'pointer', flexShrink: 0,
-            border: editMode ? '1px solid #d29922' : '1px solid #30363d',
-            background: editMode ? 'rgba(210, 153, 34, 0.22)' : '#161b22',
-            color: editMode ? '#d29922' : '#8b949e', whiteSpace: 'nowrap',
-          }}
+          className={cn(
+            'shrink-0 whitespace-nowrap',
+            editMode && 'border-amber-500/60 bg-amber-500/20 text-amber-500 hover:bg-amber-500/25',
+          )}
         >
           Edit Mode
-        </button>
-        <input
+        </Button>
+        <Input
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSubmit()}
           placeholder="Ask your wiki..."
-          style={{
-            flex: 1, padding: '8px 12px', background: '#161b22',
-            border: '1px solid #30363d', borderRadius: 6, color: '#e6edf3', fontSize: 13,
-          }}
+          className="h-9 flex-1 text-[13px]"
         />
-        <button
+        <Button
+          type="button"
+          size="sm"
           onClick={handleSubmit}
           disabled={loading}
-          style={{
-            padding: '8px 16px', background: '#238636', border: 'none',
-            borderRadius: 6, color: '#fff',
-            cursor: loading ? 'not-allowed' : 'pointer', fontSize: 13, flexShrink: 0,
-          }}
+          className="shrink-0"
         >
           Send
-        </button>
+        </Button>
       </div>
     </>
   )
