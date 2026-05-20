@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import TopBar from './TopBar'
 import FilesList from './FilesList'
 import FileViewer from './FileViewer'
 import SourceMetaModal from './SourceMetaModal'
@@ -28,9 +27,8 @@ export default function FilesView() {
 
   if (isMobile) {
     return (
-      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', flexDirection: 'column' }}>
-        <TopBar />
-        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div className="flex h-full flex-col overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {selectedId === null ? (
             <FilesList
               sources={sources ?? []}
@@ -51,9 +49,8 @@ export default function FilesView() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      <TopBar />
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         <FilesList
           sources={sources ?? []}
           selectedId={selectedId}

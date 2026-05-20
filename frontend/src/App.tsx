@@ -9,7 +9,7 @@ import BrowserChatPage from './components/BrowserChatPage'
 
 type AuthState = 'loading' | 'authenticated' | 'unauthenticated'
 
-/** Full-viewport placeholder so OAuth callback / session checks don’t flash an empty shell before Layout. */
+/** Full-viewport placeholder so OAuth callback / session checks don’t flash an empty shell before AppShell. */
 function AuthGateSplash({ label }: { label: string }) {
   return (
     <div

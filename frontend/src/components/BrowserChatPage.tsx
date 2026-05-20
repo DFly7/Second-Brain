@@ -12,7 +12,6 @@ import {
   sendBrowserChatMessage,
 } from '../api/client'
 import { useSse } from '../hooks/useSse'
-import TopBar from './TopBar'
 
 type ActionItem = {
   id: string
@@ -467,9 +466,8 @@ export default function BrowserChatPage() {
   )
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      <TopBar />
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {pageContent}
       </div>
     </div>
