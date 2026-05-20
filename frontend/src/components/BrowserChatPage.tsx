@@ -205,7 +205,7 @@ export default function BrowserChatPage() {
   const pageContent = connectionState === 'connected' ? (
     <ResizablePanelGroup id="browser-chat" orientation="horizontal" className="min-h-0 flex-1">
       {/* Left: chat */}
-      <ResizablePanel id="browser-chat-panel" defaultSize={28} minSize={18} maxSize={50} className="flex flex-col border-r border-border bg-background">
+      <ResizablePanel id="browser-chat-panel" defaultSize="28%" minSize="18%" maxSize="50%" className="flex flex-col border-r border-border bg-background">
         <div className="shrink-0 border-b border-border px-3 py-2.5">
           <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Chat
@@ -316,7 +316,7 @@ export default function BrowserChatPage() {
       </ResizablePanel>
       <ResizableHandle withHandle />
       {/* Right: browser */}
-      <ResizablePanel id="browser-view" defaultSize={72} minSize={50} className="flex flex-col">
+      <ResizablePanel id="browser-view" defaultSize="72%" minSize="50%" className="flex flex-col">
         <div className="flex shrink-0 items-center gap-2.5 border-b border-border bg-muted/30 px-3 py-2">
           <div className="flex gap-1">
             <span className="inline-block size-2.5 rounded-full bg-destructive" />
