@@ -40,6 +40,7 @@ async def run(
     history: list[dict],
     session: AsyncSession,
     audience_user_id: str,
+    session_id: str = "",
 ) -> tuple[str, list[str]]:
     with agent_run_context(
         "query_agent",
@@ -87,6 +88,11 @@ async def run(
                 messages=messages,
                 tools=tool_defs,
                 tool_choice="auto",
+                metadata={
+                    "trace_name": "query_agent",
+                    "session_id": session_id or workspace_id,
+                    "tags": ["chat", "wiki"],
+                },
             )
             turn_cost = 0.0
             try:

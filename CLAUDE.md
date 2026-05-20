@@ -151,6 +151,62 @@ docker compose -f docker-compose.prod.yml up --build -d
 
 Verify `https://auth.smoothstudy.ai` is responding before testing `https://smoothstudy.ai`.
 
+## Langfuse (LLM observability)
+
+Langfuse runs as a separate compose stack on the Pi at `~/langfuse/`. It sits on a shared Docker network (`langfuse_net`) so the Second Brain API can reach it as `http://langfuse-server:3000`.
+
+### First-time setup on the Pi
+
+```bash
+# 1. Create the shared network (once — survives reboots)
+docker network create langfuse_net
+
+# 2. Create secrets (generate each value with: openssl rand -hex 32)
+cp ~/langfuse/.env.example ~/langfuse/.env
+# edit ~/langfuse/.env — fill LANGFUSE_DB_PASSWORD, LANGFUSE_NEXTAUTH_SECRET, LANGFUSE_SALT
+# set LANGFUSE_NEXTAUTH_URL to the public URL if exposing, otherwise leave as http://localhost:3000
+
+# 3. Start Langfuse
+cd ~/langfuse && docker compose up -d
+
+# 4. Open http://pi-server.local:3000 — create your account
+#    Settings → API Keys → create a key pair (public + secret)
+
+# 5. Add to Second Brain .env
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_HOST=http://langfuse-server:3000
+
+# 6. Rebuild the API so the new requirements (langfuse package) are installed
+cd ~/second-brain/Second-Brain
+docker compose -f docker-compose.prod.yml up --build -d api
+```
+
+### Start order (with Langfuse)
+
+```bash
+cd ~/auth-compose/auth-config && docker compose up -d          # 1. auth
+cd ~/langfuse && docker compose up -d                          # 2. langfuse
+cd ~/second-brain/Second-Brain
+docker compose -f docker-compose.prod.yml up --build -d        # 3. app
+```
+
+### What gets traced
+
+All 7 agents send traces automatically once `LANGFUSE_SECRET_KEY` is set. Each trace includes the full messages array (system prompt, history, tool results), token counts, cost, and latency per turn.
+
+| Agent | `trace_name` | `session_id` groups by |
+|---|---|---|
+| `query_agent` | `query_agent` | chat session ID |
+| `edit_agent` | `edit_agent` | chat session ID |
+| `browser_chat_agent` | `browser_chat_agent` | browser chat session ID |
+| `chat_monitor` | `chat_monitor` | chat session ID |
+| `automation_agent` | `automation_agent` | automation run ID |
+| `ingest_agent` | `ingest_agent` | source ID |
+| `sub_agent` | `sub_agent` | source ID |
+
+Traces are disabled automatically when `LANGFUSE_SECRET_KEY` is absent (e.g. local dev).
+
 ## Key conventions
 
 - Migrations live in `api/alembic/versions/` — always generate via `alembic revision --autogenerate`

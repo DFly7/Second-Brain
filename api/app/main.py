@@ -15,6 +15,9 @@ import structlog  # noqa: E402 — must import after configure_logging()
 from app.middleware import RequestLoggingMiddleware  # noqa: E402
 
 litellm.suppress_debug_info = True
+if os.environ.get("LANGFUSE_SECRET_KEY"):
+    litellm.success_callback = ["langfuse"]
+    litellm.failure_callback = ["langfuse"]
 
 log = structlog.get_logger()
 

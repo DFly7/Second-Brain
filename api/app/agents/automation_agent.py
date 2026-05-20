@@ -325,6 +325,11 @@ async def run(
                         messages=turn_messages,
                         tools=tool_defs,
                         tool_choice="auto",
+                        metadata={
+                            "trace_name": "automation_agent",
+                            "session_id": run_id,
+                            "tags": ["automation", "browser"],
+                        },
                     )
                     msg = resp.choices[0].message
                     tool_calls = getattr(msg, "tool_calls", None) or []

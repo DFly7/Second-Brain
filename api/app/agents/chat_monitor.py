@@ -108,6 +108,11 @@ async def run(
                 messages=llm_messages,
                 tools=tool_defs,
                 tool_choice="auto",
+                metadata={
+                    "trace_name": "chat_monitor",
+                    "session_id": session_id,
+                    "tags": ["chat", "monitor"],
+                },
             )
             turn_cost = 0.0
             try:

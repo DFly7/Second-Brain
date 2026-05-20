@@ -95,6 +95,9 @@ services:
       LOG_FORMAT: console
       BROWSER_AGENT_URL: http://browser-agent:8001
       NOVNC_URL: /vnc/vnc.html
+    networks:
+      - default
+      - langfuse_net
     restart: unless-stopped
 
   frontend:
@@ -121,3 +124,7 @@ volumes:
   pgdata:
   minio_data:
   # marker_models:
+
+networks:
+  langfuse_net:
+    external: true

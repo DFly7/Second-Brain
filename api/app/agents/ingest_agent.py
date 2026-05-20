@@ -115,6 +115,11 @@ async def run(source_id: str, workspace_id: str, audience_user_id: str):
                     messages=messages,
                     tools=tool_defs,
                     tool_choice="auto",
+                    metadata={
+                        "trace_name": "ingest_agent",
+                        "session_id": source_id,
+                        "tags": ["ingest"],
+                    },
                 )
                 try:
                     total_cost += litellm.completion_cost(resp) or 0.0

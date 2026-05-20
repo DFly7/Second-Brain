@@ -111,6 +111,11 @@ async def run_turn(
                         messages=messages,
                         tools=tool_defs,
                         tool_choice="auto",
+                        metadata={
+                            "trace_name": "browser_chat_agent",
+                            "session_id": chat_session_id,
+                            "tags": ["chat", "browser"],
+                        },
                     )
                     msg = resp.choices[0].message
                     tool_calls = getattr(msg, "tool_calls", None) or []

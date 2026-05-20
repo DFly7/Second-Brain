@@ -70,9 +70,9 @@ async def send_message(
     if body.mode == "edit":
         from app.agents.edit_agent import run as run_edit
 
-        answer, cited = await run_edit(ws_id, body.message, history[:-1], db, user)
+        answer, cited = await run_edit(ws_id, body.message, history[:-1], db, user, session_id=session_id)
     else:
-        answer, cited = await run_query(ws_id, body.message, history[:-1], db, user)
+        answer, cited = await run_query(ws_id, body.message, history[:-1], db, user, session_id=session_id)
 
     _log.info(
         "chat_message_answered",
