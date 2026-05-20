@@ -5,7 +5,6 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
-import 'github-markdown-css/github-markdown-dark.css'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { fetchSourceFile, fetchSourceImage } from '../api/client'
@@ -194,7 +193,7 @@ function MarkdownPane({ source }: { source: SourceItem }) {
             {markdown}
           </pre>
         ) : (
-          <div className="markdown-body" style={{ maxWidth: 800 }}>
+          <article className="prose prose-invert prose-zinc max-w-3xl">
             <ReactMarkdown
               remarkPlugins={[remarkGfm, remarkMath]}
               rehypePlugins={[rehypeKatex]}
@@ -202,7 +201,7 @@ function MarkdownPane({ source }: { source: SourceItem }) {
             >
               {markdown ?? ''}
             </ReactMarkdown>
-          </div>
+          </article>
         )}
       </div>
     </div>

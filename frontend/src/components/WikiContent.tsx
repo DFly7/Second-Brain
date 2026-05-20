@@ -87,7 +87,7 @@ export default function WikiContent({ selectedSlug, onNavigate }: WikiContentPro
           className="min-h-[400px] resize-y font-mono text-[13px]"
         />
       ) : (
-        <div style={{ lineHeight: 1.7, fontSize: 14 }}>
+        <article className="prose prose-invert prose-zinc max-w-none px-8 py-6">
           <ReactMarkdown
             remarkPlugins={[remarkGfm, remarkMath]}
             rehypePlugins={[rehypeKatex]}
@@ -102,22 +102,13 @@ export default function WikiContent({ selectedSlug, onNavigate }: WikiContentPro
                       tabIndex={0}
                       onClick={() => onNavigate(slug)}
                       onKeyDown={(e) => e.key === 'Enter' && onNavigate(slug)}
-                      style={{ color: '#58a6ff', cursor: 'pointer', textDecoration: 'underline' }}
+                      className="cursor-pointer text-blue-400 underline"
                     >
                       {children}
                     </span>
                   )
                 }
                 return <a href={href} target="_blank" rel="noreferrer">{children}</a>
-              },
-              ul({ children }) {
-                return <ul style={{ margin: '6px 0', paddingLeft: 22 }}>{children}</ul>
-              },
-              ol({ children }) {
-                return <ol style={{ margin: '6px 0', paddingLeft: 22 }}>{children}</ol>
-              },
-              p({ children }) {
-                return <p style={{ margin: '6px 0' }}>{children}</p>
               },
             }}
           >
@@ -127,7 +118,7 @@ export default function WikiContent({ selectedSlug, onNavigate }: WikiContentPro
                 `[${display ?? slug}](wiki://${slug})`
             )}
           </ReactMarkdown>
-        </div>
+        </article>
       )}
     </div>
   )
