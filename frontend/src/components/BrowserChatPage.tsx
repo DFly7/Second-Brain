@@ -1,8 +1,15 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { MoreHorizontal } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -260,7 +267,33 @@ export default function BrowserChatPage() {
           <div ref={messagesEndRef} />
         </div>
 
-        <div className="shrink-0 space-y-2 border-t border-border p-3">
+        <div className="shrink-0 border-t border-border p-3 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-xs text-muted-foreground">Max turns for this message</label>
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-6 w-6 text-xs"
+                onClick={() => setMaxTurns(t => Math.max(1, t - 1))}
+                disabled={agentRunning}
+              >
+                −
+              </Button>
+              <span className="w-8 text-center text-sm tabular-nums">{maxTurns}</span>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-6 w-6 text-xs"
+                onClick={() => setMaxTurns(t => Math.min(100, t + 1))}
+                disabled={agentRunning}
+              >
+                +
+              </Button>
+            </div>
+          </div>
           <Textarea
             ref={inputRef}
             value={input}
@@ -276,41 +309,38 @@ export default function BrowserChatPage() {
             rows={3}
             className="min-h-0 resize-none text-sm"
           />
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 border-destructive/40 text-destructive hover:text-destructive"
-              onClick={handleDisconnect}
-            >
-              Disconnect
-            </Button>
-            <div className="flex items-center gap-1.5">
-              <label className="text-xs text-muted-foreground">Turns</label>
-              <Input
-                type="number"
-                min={1}
-                max={100}
-                value={maxTurns}
-                onChange={e => setMaxTurns(Math.max(1, Math.min(100, Number(e.target.value))))}
-                className="h-7 w-12 px-1.5 text-center text-xs"
-              />
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs"
-              onClick={handleRecover}
-              disabled={recovering || agentRunning}
-            >
-              {recovering ? 'Recovering…' : 'Recover Browser'}
-            </Button>
+          <div className="flex items-center justify-between gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground"
+                  disabled={agentRunning}
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem
+                  onClick={handleRecover}
+                  disabled={recovering || agentRunning}
+                >
+                  {recovering ? 'Recovering…' : 'Recover Browser'}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={handleDisconnect}
+                  className="text-destructive focus:text-destructive"
+                >
+                  Disconnect
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button
               type="button"
               size="sm"
-              className="h-7"
               onClick={handleSend}
               disabled={!input.trim() || agentRunning}
             >
