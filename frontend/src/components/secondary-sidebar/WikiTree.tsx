@@ -4,7 +4,6 @@ import { ChevronRight, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { usePages } from '@/hooks/useWiki'
-import { runHealthCheck } from '@/api/client'
 import { EmptyState } from '@/components/EmptyState'
 import { ListSkeleton } from '@/components/ListSkeleton'
 import { SecondarySidebar } from './SecondarySidebar'
@@ -244,7 +243,6 @@ export function WikiTree({
   const pageList = pages ?? []
   const [filter, setFilter] = useState('')
   const [collapsed, setCollapsedState] = useState<Record<string, boolean>>(getCollapsed)
-  const [healthRunning, setHealthRunning] = useState(false)
 
   const activeSlug = selectedSlugProp ?? searchParams.get('slug')
 
@@ -264,16 +262,6 @@ export function WikiTree({
     const next = { ...collapsed, [path]: !collapsed[path] }
     setCollapsedState(next)
     saveCollapsed(next)
-  }
-
-  async function handleHealthRun() {
-    if (healthRunning) return
-    setHealthRunning(true)
-    try {
-      await runHealthCheck()
-    } finally {
-      setTimeout(() => setHealthRunning(false), 3000)
-    }
   }
 
   const tree = useMemo(() => {
@@ -331,21 +319,6 @@ export function WikiTree({
             onSelect={onSelect}
           />
         ))}
-      </div>
-      <div className="shrink-0 border-t border-border p-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={handleHealthRun}
-          disabled={healthRunning}
-          className={cn(
-            'h-auto w-full px-2 py-1.5 text-[11px] tracking-wide',
-            healthRunning && 'text-muted-foreground/50',
-          )}
-        >
-          {healthRunning ? 'running health check…' : '⚕ health check'}
-        </Button>
       </div>
     </SecondarySidebar>
   )
