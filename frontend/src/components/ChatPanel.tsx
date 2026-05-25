@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Pencil, SquarePen, Clock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { sendMessage, listSessions, getSessionMessages } from '../api/client'
 import ChatConversation, { type Message } from './ChatConversation'
@@ -134,31 +136,65 @@ export default function ChatPanel({ onNavigate, activeSseEvent }: ChatPanelProps
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden border-l border-border bg-background">
-      <div className="flex h-10 shrink-0 items-center justify-between border-b border-border px-3">
-        <span className="text-sm text-muted-foreground">Chat</span>
-        <div className="flex gap-1.5">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs"
-            onClick={handleNewChat}
-            title="Start a new chat"
-          >
-            New Chat
-          </Button>
-          <Button
-            type="button"
-            variant={drawerOpen ? 'secondary' : 'outline'}
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => setDrawerOpen(v => !v)}
-            title="View chat history"
-          >
-            History
-          </Button>
+      <TooltipProvider delayDuration={300}>
+        <div className="flex h-10 shrink-0 items-center justify-between border-b border-border px-3">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Chat</span>
+            {loading && (
+              <span className="flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs text-primary">
+                <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+                thinking
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-0.5">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className={cn('h-7 w-7', editMode && 'text-amber-500')}
+                  onClick={() => setEditMode(v => !v)}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {editMode ? 'Edit mode — agent can write to wiki pages' : 'Read-only mode'}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={handleNewChat}
+                >
+                  <SquarePen className="h-3.5 w-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">New chat</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className={cn('h-7 w-7', drawerOpen && 'bg-muted text-foreground')}
+                  onClick={() => setDrawerOpen(v => !v)}
+                >
+                  <Clock className="h-3.5 w-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Chat history</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
-      </div>
+      </TooltipProvider>
       <div className="flex-1 overflow-y-auto">
         <ChatConversation
           messages={messages}
@@ -175,19 +211,6 @@ export default function ChatPanel({ onNavigate, activeSseEvent }: ChatPanelProps
         )}
       >
         <div className="flex items-end gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setEditMode(v => !v)}
-            title={editMode ? 'Switch to read-only query' : 'Allow the agent to edit wiki pages'}
-            className={cn(
-              'shrink-0 whitespace-nowrap',
-              editMode && 'border-amber-500/60 bg-amber-500/20 text-amber-500 hover:bg-amber-500/25',
-            )}
-          >
-            Edit Mode
-          </Button>
           <Textarea
             value={input}
             onChange={e => setInput(e.target.value)}
@@ -212,6 +235,9 @@ export default function ChatPanel({ onNavigate, activeSseEvent }: ChatPanelProps
             Send
           </Button>
         </div>
+        <p className="mt-1 text-right text-[10px] text-muted-foreground">
+          Enter to send · Shift+Enter for newline
+        </p>
       </div>
       <SessionDrawer
         open={drawerOpen}
