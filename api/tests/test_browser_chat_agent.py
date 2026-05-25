@@ -4,7 +4,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from app.agents.browser_chat_agent import BrowserClosedError, _dispatch, _extract_text, _safe_browser_post
+from app.agents.browser_chat_agent import (
+    BrowserClosedError,
+    _dispatch,
+    _extract_text,
+    _load_pa_context,
+    _safe_browser_post,
+)
 
 
 def _make_http_response(json_data: dict):
@@ -246,3 +252,70 @@ async def test_await_cloudflare_not_cleared(wiki):
     http = _make_http({"cleared": False, "error": "Cloudflare challenge did not clear"})
     result = await _dispatch("browser_await_cloudflare", {}, "sid", http, wiki, "chat-1", "u1")
     assert "did not clear" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_load_pa_context_seed_pages_read_in_full():
+    """system/pa/context, accounts, preferences are always fetched in full."""
+    wiki = MagicMock()
+    wiki.list_pages = AsyncMock(return_value=[
+        {"slug": "system/pa/context", "title": "", "summary": ""},
+        {"slug": "system/pa/accounts", "title": "", "summary": ""},
+        {"slug": "system/pa/preferences", "title": "", "summary": ""},
+    ])
+    wiki.read_page = AsyncMock(side_effect=lambda slug: f"content-of-{slug}")
+
+    result = await _load_pa_context(wiki)
+
+    assert "[system/pa/context]" in result
+    assert "content-of-system/pa/context" in result
+    assert "[system/pa/accounts]" in result
+    assert "content-of-system/pa/accounts" in result
+    assert "[system/pa/preferences]" in result
+    assert "content-of-system/pa/preferences" in result
+    assert wiki.read_page.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_load_pa_context_domain_pages_listed_by_slug_not_read():
+    """Domain pages beyond the seed set are listed by name only, not fetched."""
+    wiki = MagicMock()
+    wiki.list_pages = AsyncMock(return_value=[
+        {"slug": "system/pa/context", "title": "", "summary": ""},
+        {"slug": "system/pa/job-search", "title": "", "summary": ""},
+    ])
+    wiki.read_page = AsyncMock(side_effect=lambda slug: f"content-of-{slug}")
+
+    result = await _load_pa_context(wiki)
+
+    assert "system/pa/job-search" in result
+    assert "content-of-system/pa/job-search" not in result
+    # Only the seed page (context) was read in full
+    assert wiki.read_page.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_load_pa_context_missing_seed_pages_skipped():
+    """Seed pages that don't exist yet are not fetched and not mentioned."""
+    wiki = MagicMock()
+    wiki.list_pages = AsyncMock(return_value=[])
+    wiki.read_page = AsyncMock()
+
+    result = await _load_pa_context(wiki)
+
+    assert "<pa_context>" in result
+    assert "Current datetime:" in result
+    wiki.read_page.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_load_pa_context_includes_datetime_string():
+    """The pa_context block includes an ISO-8601 datetime."""
+    import re
+    wiki = MagicMock()
+    wiki.list_pages = AsyncMock(return_value=[])
+    wiki.read_page = AsyncMock()
+
+    result = await _load_pa_context(wiki)
+
+    assert re.search(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", result)

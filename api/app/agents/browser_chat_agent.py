@@ -1,5 +1,6 @@
 import json
 import uuid
+from datetime import datetime as _dt
 from pathlib import Path
 
 import httpx
@@ -37,6 +38,39 @@ _PROMPTS = Path(__file__).parent / "prompts"
 SYSTEM_PROMPT = (_PROMPTS / "browser_chat.md").read_text()
 
 _log = structlog.get_logger()
+
+_PA_SEED_SLUGS = ("system/pa/context", "system/pa/accounts", "system/pa/preferences")
+
+
+async def _load_pa_context(wiki_tools: AgentTools) -> str:
+    """Build a <pa_context> block from system/pa/* wiki pages.
+
+    Seed pages are always read in full. Domain pages (everything else under
+    system/pa/) are listed by slug only — the agent fetches them on demand
+    with read_page when relevant to the current task.
+    """
+    now = _dt.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    all_pages = await wiki_tools.list_pages()
+    pa_slugs = {p["slug"] for p in all_pages if p["slug"].startswith("system/pa/")}
+
+    lines: list[str] = ["<pa_context>", f"Current datetime: {now}", ""]
+
+    for slug in _PA_SEED_SLUGS:
+        if slug in pa_slugs:
+            content = await wiki_tools.read_page(slug)
+            lines += [f"[{slug}]", content, ""]
+
+    domain_slugs = sorted(s for s in pa_slugs if s not in set(_PA_SEED_SLUGS))
+    if domain_slugs:
+        lines.append(
+            "Additional domain pages (fetch with read_page if relevant to current task):"
+        )
+        for slug in domain_slugs:
+            lines.append(f"- {slug}")
+        lines.append("")
+
+    lines.append("</pa_context>")
+    return "\n".join(lines)
 
 
 def _extract_text(content: object) -> str:
@@ -82,9 +116,13 @@ async def run_turn(
         )
         tool_defs = BROWSER_TOOLS + wiki_tools.as_litellm_tools(allowed=WIKI_TOOLS)
 
+        pa_context = await _load_pa_context(wiki_tools)
+
         system_msg = {
             "role": "system",
-            "content": render_system_prompt(SYSTEM_PROMPT, model=settings.litellm_model),
+            "content": render_system_prompt(SYSTEM_PROMPT, model=settings.litellm_model)
+            + "\n\n"
+            + pa_context,
         }
         messages = [system_msg] + conversation_history
 
