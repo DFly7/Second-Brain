@@ -23,12 +23,17 @@ class MessageRequest(BaseModel):
     max_turns: int = 20
 
 
+class ConnectRequest(BaseModel):
+    prior_session_id: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # POST /browser-chat/sessions — Connect
 # ---------------------------------------------------------------------------
 
 @router.post("/sessions", status_code=201)
 async def connect(
+    body: ConnectRequest = ConnectRequest(),
     db: AsyncSession = Depends(get_db),
     user: str = Depends(get_current_user),
 ):
@@ -61,6 +66,23 @@ async def connect(
     db.add(sess)
     await db.commit()
     await db.refresh(sess)
+
+    if body.prior_session_id:
+        prior_msgs_result = await db.execute(
+            select(BrowserChatMessage)
+            .where(BrowserChatMessage.session_id == body.prior_session_id)
+            .order_by(BrowserChatMessage.created_at.asc())
+        )
+        for msg in prior_msgs_result.scalars().all():
+            db.add(
+                BrowserChatMessage(
+                    session_id=sess.id,
+                    role=msg.role,
+                    content=msg.content,
+                )
+            )
+        await db.commit()
+
     _log.info("browser_chat_connected", session_id=sess.id, browser_session_id=browser_session_id)
     return {"session_id": sess.id}
 

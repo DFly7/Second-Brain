@@ -112,6 +112,60 @@ def test_connect_409_when_active_session_exists(client):
         app.dependency_overrides.pop(get_db, None)
 
 
+def test_connect_with_prior_session_id_copies_messages(client):
+    mock_ws = _make_ws()
+    no_existing = MagicMock()
+    no_existing.scalar_one_or_none.return_value = None
+
+    # Prior messages returned by the second execute call
+    prior_msg_1 = MagicMock()
+    prior_msg_1.role = "user"
+    prior_msg_1.content = "go to google"
+
+    prior_msg_2 = MagicMock()
+    prior_msg_2.role = "assistant"
+    prior_msg_2.content = "Navigated to google.com"
+
+    prior_msgs_result = MagicMock()
+    prior_msgs_result.scalars.return_value.all.return_value = [prior_msg_1, prior_msg_2]
+
+    # execute returns no-existing on first call (active check), prior msgs on second call
+    session = MagicMock()
+    session.execute = AsyncMock(side_effect=[no_existing, prior_msgs_result])
+    session.commit = AsyncMock()
+    session.add = MagicMock()
+    session.refresh = AsyncMock()
+
+    async def override_db():
+        yield session
+
+    app.dependency_overrides[get_db] = override_db
+
+    try:
+        with patch("app.routes.browser_chat._ensure_workspace", new_callable=AsyncMock, return_value=mock_ws), \
+             patch("httpx.AsyncClient") as mock_http_cls:
+            mock_http = AsyncMock()
+            mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+            mock_http.__aexit__ = AsyncMock(return_value=False)
+            mock_resp = MagicMock()
+            mock_resp.raise_for_status = MagicMock()
+            mock_resp.json.return_value = {"session_id": "bsess-abc"}
+            mock_http.post = AsyncMock(return_value=mock_resp)
+            mock_http_cls.return_value = mock_http
+
+            def fake_add(obj):
+                if hasattr(obj, "browser_session_id"):
+                    obj.id = "sess-new"
+
+            session.add.side_effect = fake_add
+
+            r = client.post("/browser-chat/sessions", json={"prior_session_id": "sess-old"})
+            assert r.status_code == 201
+            assert session.add.call_count == 3
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
 # ---------------------------------------------------------------------------
 # POST /browser-chat/sessions/{id}/message
 # ---------------------------------------------------------------------------
