@@ -110,6 +110,7 @@ function AppShellLayout() {
   const isMobile = useIsMobile()
   const isWiki = useIsWiki()
   const { pathname } = useLocation()
+  const { setShowActivity } = useShellState()
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
 
@@ -147,7 +148,10 @@ function AppShellLayout() {
   return (
     <>
       <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
-        <IconRail onOpenHelp={() => setHelpOpen(true)} />
+        <IconRail
+          onOpenHelp={() => setHelpOpen(true)}
+          onShowActivity={() => setShowActivity(true)}
+        />
         {isMobile ? (
           <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <ShellContext.Provider value={shellUi}>
