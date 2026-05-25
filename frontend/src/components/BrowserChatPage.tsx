@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
@@ -55,6 +56,9 @@ export default function BrowserChatPage() {
   const [recovering, setRecovering] = useState(false)
   const [currentUrl, setCurrentUrl] = useState('')
   const [actions, setActions] = useState<ActionItem[]>([])
+  const [historicMessages, setHistoricMessages] = useState<BrowserChatMessage[]>([])
+  const [priorSessionCreatedAt, setPriorSessionCreatedAt] = useState<string | null>(null)
+  const [sessionParam] = useSearchParams()
   const [maxTurns, setMaxTurns] = useState(20)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -63,6 +67,36 @@ export default function BrowserChatPage() {
     getNovncUrl().then(setNovncUrl).catch(() => {})
     listBrowserChatSessions().then(setPastSessions).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    const paramId = sessionParam.get('session')
+    if (!paramId || connectionState !== 'disconnected') return
+
+    getBrowserChatSession(paramId).then(async detail => {
+      if (detail.status === 'active') {
+        setActiveSessionId(detail.id)
+        setMessages(detail.messages)
+        setHistoricMessages([])
+        setPriorSessionCreatedAt(null)
+        setCurrentUrl('')
+        setConnectionState('connected')
+      } else {
+        setConnectionState('connecting')
+        try {
+          const { session_id } = await connectBrowserChat(detail.id)
+          setActiveSessionId(session_id)
+          setHistoricMessages(detail.messages)
+          setPriorSessionCreatedAt(detail.created_at)
+          setMessages([])
+          setCurrentUrl('')
+          setConnectionState('connected')
+        } catch {
+          setConnectError('Failed to resume session.')
+          setConnectionState('disconnected')
+        }
+      }
+    }).catch(() => {})
+  }, [sessionParam, connectionState])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -115,6 +149,8 @@ export default function BrowserChatPage() {
   async function handleConnect() {
     setConnectError(null)
     setConnectionState('connecting')
+    setHistoricMessages([])
+    setPriorSessionCreatedAt(null)
     try {
       const { session_id } = await connectBrowserChat()
       setActiveSessionId(session_id)
@@ -136,6 +172,8 @@ export default function BrowserChatPage() {
     setConnectionState('disconnected')
     setActiveSessionId(null)
     setMessages([])
+    setHistoricMessages([])
+    setPriorSessionCreatedAt(null)
     setAgentRunning(false)
     listBrowserChatSessions().then(setPastSessions).catch(() => {})
   }
@@ -220,10 +258,47 @@ export default function BrowserChatPage() {
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto py-2">
-          {messages.length === 0 && (
+          {historicMessages.length === 0 && messages.length === 0 && (
             <p className="mt-10 px-3 text-center text-sm italic text-muted-foreground">
               Type a message to get started.
             </p>
+          )}
+          {historicMessages.map(msg =>
+            msg.role === 'user' ? (
+              <div key={msg.id} className="flex justify-end px-3 py-1">
+                <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-sm bg-muted px-3 py-2 text-sm text-foreground">
+                  {msg.content}
+                </div>
+              </div>
+            ) : (
+              <Card
+                key={msg.id}
+                className="mx-3 my-2 border-border bg-card p-3 text-sm leading-relaxed text-card-foreground"
+              >
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    p: ({ children }) => <p className="my-1">{children}</p>,
+                    ul: ({ children }) => <ul className="my-1 list-disc pl-5">{children}</ul>,
+                    ol: ({ children }) => <ol className="my-1 list-decimal pl-5">{children}</ol>,
+                    a: ({ href, children }) => <a href={href} target="_blank" rel="noreferrer" className="text-primary underline">{children}</a>,
+                    code: ({ children }) => <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{children}</code>,
+                    pre: ({ children }) => <pre className="my-2 overflow-x-auto rounded bg-muted p-2 font-mono text-xs">{children}</pre>,
+                  }}
+                >
+                  {msg.content}
+                </ReactMarkdown>
+              </Card>
+            ),
+          )}
+          {priorSessionCreatedAt && (
+            <div className="my-3 flex items-center gap-2 px-3">
+              <div className="h-px flex-1 bg-border" />
+              <span className="shrink-0 text-xs text-muted-foreground">
+                Resumed from {new Date(priorSessionCreatedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+              </span>
+              <div className="h-px flex-1 bg-border" />
+            </div>
           )}
           {messages.map(msg =>
             msg.role === 'user' ? (
