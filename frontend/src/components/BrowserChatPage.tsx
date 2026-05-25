@@ -265,9 +265,14 @@ export default function BrowserChatPage() {
             ref={inputRef}
             value={input}
             onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSend() }}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                handleSend()
+              }
+            }}
             disabled={agentRunning}
-            placeholder={agentRunning ? 'Agent is working…' : 'Tell the agent what to do… (⌘↵ to send)'}
+            placeholder={agentRunning ? 'Agent is working…' : 'Tell the agent what to do…'}
             rows={3}
             className="min-h-0 resize-none text-sm"
           />
