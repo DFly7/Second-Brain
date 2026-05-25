@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import glob
 import json
 import os
 import random
@@ -21,6 +22,23 @@ MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
 MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
 S3_BUCKET = os.getenv("S3_BUCKET", "wiki")
 
+PA_PROFILE_DIR = os.getenv("PA_PROFILE_DIR", "/data/pa-profile")
+
+
+def _clear_profile_locks(profile_dir: str) -> None:
+    """Remove Chrome singleton lock files left by a crashed or killed process."""
+    for name in ("SingletonLock", "SingletonCookie", "SingletonSocket", "lockfile"):
+        path = os.path.join(profile_dir, name)
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    for path in glob.glob(os.path.join(profile_dir, ".com.google.Chrome.*")):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
 _playwright = None
 _sessions: dict[str, dict] = {}
 
@@ -36,7 +54,7 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
         shutil.rmtree(s.get("video_dir") or "", ignore_errors=True)
-        shutil.rmtree(s.get("user_data_dir") or "", ignore_errors=True)
+        # Do NOT remove user_data_dir — it is the shared PA profile.
     await _playwright.stop()
 
 
@@ -135,14 +153,15 @@ async def _new_session_objects(video_dir: str, user_data_dir: str):
 async def session_new():
     session_id = str(uuid.uuid4())
     video_dir = tempfile.mkdtemp()
-    user_data_dir = tempfile.mkdtemp(prefix="pw-profile-")
-    context, page = await _new_session_objects(video_dir, user_data_dir)
+    os.makedirs(PA_PROFILE_DIR, exist_ok=True)
+    _clear_profile_locks(PA_PROFILE_DIR)
+    context, page = await _new_session_objects(video_dir, PA_PROFILE_DIR)
     await _inject_cursor(page)
     _sessions[session_id] = {
         "context": context,
         "page": page,
         "video_dir": video_dir,
-        "user_data_dir": user_data_dir,
+        "user_data_dir": PA_PROFILE_DIR,
     }
     return {"session_id": session_id}
 
@@ -153,7 +172,6 @@ async def session_recover(session_id: str):
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
     s = _sessions[session_id]
 
-    # Best-effort teardown of the dead context.
     ctx = s.get("context")
     if ctx is not None:
         try:
@@ -162,15 +180,15 @@ async def session_recover(session_id: str):
             pass
 
     video_dir = s.get("video_dir") or tempfile.mkdtemp()
-    user_data_dir = s.get("user_data_dir") or tempfile.mkdtemp(prefix="pw-profile-")
-    context, page = await _new_session_objects(video_dir, user_data_dir)
+    _clear_profile_locks(PA_PROFILE_DIR)
+    context, page = await _new_session_objects(video_dir, PA_PROFILE_DIR)
     await _inject_cursor(page)
 
     _sessions[session_id] = {
         "context": context,
         "page": page,
         "video_dir": video_dir,
-        "user_data_dir": user_data_dir,
+        "user_data_dir": PA_PROFILE_DIR,
     }
     return {"ok": True}
 
@@ -494,5 +512,5 @@ async def session_close(session_id: str):
 
     del _sessions[session_id]
     shutil.rmtree(s.get("video_dir") or "", ignore_errors=True)
-    shutil.rmtree(s.get("user_data_dir") or "", ignore_errors=True)
+    # Do NOT delete user_data_dir — it is the shared PA profile and must persist.
     return {"recording_url": recording_url}
