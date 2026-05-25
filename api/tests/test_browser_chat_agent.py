@@ -10,6 +10,7 @@ from app.agents.browser_chat_agent import (
     _extract_text,
     _load_pa_context,
     _safe_browser_post,
+    run_context_save,
 )
 
 
@@ -319,3 +320,43 @@ async def test_load_pa_context_includes_datetime_string():
     result = await _load_pa_context(wiki)
 
     assert re.search(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", result)
+
+
+@pytest.mark.asyncio
+async def test_run_context_save_completes_without_error_when_llm_returns_no_tool_calls(patch_broadcaster):
+    """run_context_save exits cleanly when the LLM responds with no tool calls."""
+    from unittest.mock import patch as upatch
+
+    no_tool_msg = MagicMock()
+    no_tool_msg.tool_calls = []
+    no_tool_msg.content = "Context saved."
+    no_tool_resp = MagicMock()
+    no_tool_resp.choices = [MagicMock(message=no_tool_msg)]
+
+    mock_db = AsyncMock()
+    mock_db.execute = AsyncMock(
+        return_value=MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[]))))
+    )
+    mock_db.__aenter__ = AsyncMock(return_value=mock_db)
+    mock_db.__aexit__ = AsyncMock(return_value=False)
+
+    with upatch("litellm.acompletion", new=AsyncMock(return_value=no_tool_resp)), \
+         upatch("app.agents.browser_chat_agent.AsyncSessionLocal", return_value=mock_db):
+        await run_context_save(workspace_id="ws-1", audience_user_id="u1")
+
+
+@pytest.mark.asyncio
+async def test_run_context_save_swallows_llm_exceptions(patch_broadcaster):
+    """run_context_save does not raise even if litellm throws."""
+    from unittest.mock import patch as upatch
+
+    mock_db = AsyncMock()
+    mock_db.execute = AsyncMock(
+        return_value=MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[]))))
+    )
+    mock_db.__aenter__ = AsyncMock(return_value=mock_db)
+    mock_db.__aexit__ = AsyncMock(return_value=False)
+
+    with upatch("litellm.acompletion", new=AsyncMock(side_effect=Exception("LLM error"))), \
+         upatch("app.agents.browser_chat_agent.AsyncSessionLocal", return_value=mock_db):
+        await run_context_save(workspace_id="ws-1", audience_user_id="u1")

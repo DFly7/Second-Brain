@@ -15,6 +15,7 @@ from app.agents.log_context import agent_run_context
 from app.agents.prompt_render import render_system_prompt
 from app.agents.tools import AgentTools
 from app.config import settings
+from app.database import AsyncSessionLocal
 from app.models import BrowserChatSession
 from app.sse import broadcaster
 
@@ -214,6 +215,81 @@ async def run_turn(
             _log.warning("browser_chat_browser_closed", session_id=chat_session_id)
 
         return reply_text
+
+
+async def run_context_save(
+    workspace_id: str,
+    audience_user_id: str,
+) -> None:
+    """Fire a silent agent turn that writes the session summary to system/pa/context.
+
+    Called on disconnect before the browser is torn down. Uses only wiki tools
+    (no browser). Never raises — failures are logged and swallowed.
+
+    Creates its own DB session to avoid sharing the route's transaction —
+    wiki tool commits must not leave the caller's session in an aborted state.
+    """
+    try:
+        async with AsyncSessionLocal() as db_session:
+            wiki_tools = AgentTools(
+                session=db_session,
+                workspace_id=workspace_id,
+                broadcaster=None,
+                context="browser_chat",
+                audience_user_id=audience_user_id,
+            )
+            tool_defs = wiki_tools.as_litellm_tools(allowed=WIKI_TOOLS)
+            pa_context = await _load_pa_context(wiki_tools)
+
+            messages: list[dict] = [
+                {
+                    "role": "system",
+                    "content": render_system_prompt(SYSTEM_PROMPT, model=settings.litellm_model)
+                    + "\n\n"
+                    + pa_context,
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        "[System: The user has disconnected. "
+                        "Write a concise summary of this session to system/pa/context immediately — "
+                        "what was accomplished, what is in progress, any loose ends. "
+                        "Use write_page or patch_page. Then stop.]"
+                    ),
+                },
+            ]
+
+            for _ in range(5):
+                resp = await litellm.acompletion(
+                    model=settings.litellm_model,
+                    messages=messages,
+                    tools=tool_defs,
+                    tool_choice="auto",
+                )
+                msg = resp.choices[0].message
+                tool_calls = getattr(msg, "tool_calls", None) or []
+                messages.append(assistant_message_for_litellm(msg))
+
+                if not tool_calls:
+                    break
+
+                tool_results = []
+                for tc in tool_calls:
+                    name = tc.function.name
+                    args = json.loads(tc.function.arguments or "{}")
+                    try:
+                        result_str = await wiki_tools.dispatch(name, args)
+                    except Exception as exc:
+                        result_str = f"Error: {exc}"
+                    tool_results.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": str(result_str),
+                    })
+                messages.extend(tool_results)
+
+    except Exception:
+        _log.warning("pa_context_save_failed", workspace_id=workspace_id)
 
 
 async def _dispatch(

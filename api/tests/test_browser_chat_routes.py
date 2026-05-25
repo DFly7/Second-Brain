@@ -277,6 +277,53 @@ def test_interrupt_sets_flag(client):
 # ---------------------------------------------------------------------------
 
 
+def test_disconnect_calls_context_save_before_browser_close(client):
+    """run_context_save is awaited before the browser session close call."""
+    mock_ws = _make_ws()
+    sess = _make_session()
+
+    session = MagicMock()
+    session.execute = AsyncMock(
+        return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=sess))
+    )
+    session.commit = AsyncMock()
+
+    call_order: list[str] = []
+
+    async def fake_context_save(**kwargs):
+        call_order.append("context_save")
+
+    async def override_db():
+        yield session
+
+    app.dependency_overrides[get_db] = override_db
+
+    try:
+        with patch("app.routes.browser_chat._ensure_workspace", new_callable=AsyncMock, return_value=mock_ws), \
+             patch("app.agents.browser_chat_agent.run_context_save", new=AsyncMock(side_effect=fake_context_save)), \
+             patch("httpx.AsyncClient") as mock_http_cls:
+            mock_http = AsyncMock()
+            mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+            mock_http.__aexit__ = AsyncMock(return_value=False)
+
+            async def fake_browser_close(url, **kwargs):
+                call_order.append("browser_close")
+                m = MagicMock()
+                m.raise_for_status = MagicMock()
+                return m
+
+            mock_http.post = AsyncMock(side_effect=fake_browser_close)
+            mock_http_cls.return_value = mock_http
+
+            r = client.post("/browser-chat/sessions/sess-1/disconnect")
+            assert r.status_code == 200
+            assert "context_save" in call_order
+            assert "browser_close" in call_order
+            assert call_order.index("context_save") < call_order.index("browser_close")
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
 def test_disconnect_marks_completed(client):
     mock_ws = _make_ws()
     mock_sess = _make_session()

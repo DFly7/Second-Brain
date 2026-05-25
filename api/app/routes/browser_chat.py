@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime
 
 import httpx
@@ -238,6 +239,18 @@ async def disconnect(
         raise HTTPException(status_code=404, detail="Session not found")
 
     if sess.browser_session_id:
+        from app.agents.browser_chat_agent import run_context_save
+        try:
+            await asyncio.wait_for(
+                run_context_save(
+                    workspace_id=ws.id,
+                    audience_user_id=user,
+                ),
+                timeout=30.0,
+            )
+        except (asyncio.TimeoutError, Exception):
+            _log.warning("pa_context_save_timeout", session_id=session_id)
+
         async with httpx.AsyncClient(base_url=settings.browser_agent_url, timeout=10.0) as http:
             try:
                 await http.post(f"/session/{sess.browser_session_id}/close")
