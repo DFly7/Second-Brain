@@ -27,6 +27,7 @@ WIKI_TOOLS = [
     "write_page",
     "create_page",
     "append_to_page",
+    "patch_page",
 ]
 
 BROWSER_TOOLS = [
