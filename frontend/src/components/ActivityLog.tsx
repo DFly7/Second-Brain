@@ -7,6 +7,7 @@ import {
   Sheet,
   SheetContent,
 } from '@/components/ui/sheet'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 const labels: Record<string, string> = {
   page_created: 'Page created',
@@ -73,28 +74,20 @@ export default function ActivityLog({
     a.createdAt < b.createdAt ? 1 : -1,
   )
 
-  const tabBtn = (id: typeof tab, label: string) => (
-    <Button
-      type="button"
-      variant={tab === id ? 'default' : 'outline'}
-      size="sm"
-      className="h-7 text-xs"
-      onClick={() => setTab(id)}
-    >
-      {label}
-    </Button>
-  )
-
   return (
     <Sheet open onOpenChange={(isOpen) => { if (!isOpen) onClose() }}>
       <SheetContent
         side="right"
         className="flex h-full w-[28rem] max-w-none flex-col gap-0 p-0 sm:max-w-none"
       >
-        <div className="flex items-center gap-2 border-b border-border px-4 py-3 pr-12">
-          {tabBtn('activity', 'Activity')}
-          {tabBtn('changes', 'Changes')}
-          {tabBtn('queue', 'Queue')}
+        <div className="flex items-center border-b border-border px-4 py-2 pr-12">
+          <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
+            <TabsList className="h-8">
+              <TabsTrigger value="activity" className="text-xs">Activity</TabsTrigger>
+              <TabsTrigger value="changes" className="text-xs">Changes</TabsTrigger>
+              <TabsTrigger value="queue" className="text-xs">Queue</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
         <div className="flex-1 overflow-y-auto p-4">
           {tab === 'activity' && (
