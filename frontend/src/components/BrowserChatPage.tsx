@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
@@ -492,7 +492,10 @@ export default function BrowserChatPage() {
                       s.status === 'active' ? 'bg-primary' : 'bg-muted-foreground',
                     )}
                   />
-                  <div className="min-w-0 flex-1">
+                  <Link
+                    to={`/browser-chat?session=${encodeURIComponent(s.id)}`}
+                    className="min-w-0 flex-1 hover:opacity-80"
+                  >
                     <p className="text-sm text-foreground">
                       {new Date(s.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
                     </p>
@@ -500,7 +503,7 @@ export default function BrowserChatPage() {
                       {s.status === 'active' ? 'Active' : 'Completed'}
                       {s.completed_at && ` · ${Math.round((new Date(s.completed_at).getTime() - new Date(s.created_at).getTime()) / 60000)}m`}
                     </p>
-                  </div>
+                  </Link>
                   {s.status === 'active' && (
                     <Button
                       type="button"
