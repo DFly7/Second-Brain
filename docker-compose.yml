@@ -53,6 +53,9 @@ services:
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
       - S3_BUCKET=wiki
+      - PA_PROFILE_DIR=/data/pa-profile
+    volumes:
+      - pa-profile:/data/pa-profile
     ports:
       - "6080:6080"
       - "8001:8001"
@@ -183,6 +186,7 @@ services:
 volumes:
   pgdata:
   minio_data:
+  pa-profile:
   # marker_models:   # uncomment when using local marker
   # authentik_pgdata:  # uncomment when using local authentik
   # authentik_media:

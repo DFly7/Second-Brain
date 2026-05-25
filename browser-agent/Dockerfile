@@ -2,6 +2,8 @@ FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV DISPLAY=:99
+ENV PA_PROFILE_DIR=/data/pa-profile
+RUN mkdir -p /data/pa-profile
 # Docker BuildKit sets TARGETARCH (arm64 on Pi, amd64 on x86). Override only if needed:
 #   docker compose build browser-agent --build-arg BROWSER_ARCH=arm64
 ARG TARGETARCH
