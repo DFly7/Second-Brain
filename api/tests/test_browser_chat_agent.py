@@ -342,7 +342,60 @@ async def test_run_context_save_completes_without_error_when_llm_returns_no_tool
 
     with upatch("litellm.acompletion", new=AsyncMock(return_value=no_tool_resp)), \
          upatch("app.agents.browser_chat_agent.AsyncSessionLocal", return_value=mock_db):
-        await run_context_save(workspace_id="ws-1", audience_user_id="u1")
+        await run_context_save(
+            workspace_id="ws-1",
+            audience_user_id="u1",
+            chat_session_id="sess-1",
+        )
+
+
+@pytest.mark.asyncio
+async def test_run_context_save_includes_session_history_in_llm_messages(patch_broadcaster):
+    """Session message history is injected between system prompt and disconnect instruction."""
+    from unittest.mock import patch as upatch
+
+    user_msg = MagicMock()
+    user_msg.role = "user"
+    user_msg.content = "Check my inbox"
+    assistant_msg = MagicMock()
+    assistant_msg.role = "assistant"
+    assistant_msg.content = "Opened Gmail."
+
+    no_tool_msg = MagicMock()
+    no_tool_msg.tool_calls = []
+    no_tool_msg.content = "Context saved."
+    no_tool_resp = MagicMock()
+    no_tool_resp.choices = [MagicMock(message=no_tool_msg)]
+
+    mock_db = AsyncMock()
+    mock_db.execute = AsyncMock(
+        return_value=MagicMock(
+            scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[user_msg, assistant_msg])))
+        )
+    )
+    mock_db.__aenter__ = AsyncMock(return_value=mock_db)
+    mock_db.__aexit__ = AsyncMock(return_value=False)
+
+    captured_messages: list[dict] = []
+
+    async def capture_completion(**kwargs):
+        captured_messages.extend(kwargs["messages"])
+        return no_tool_resp
+
+    with upatch("litellm.acompletion", new=AsyncMock(side_effect=capture_completion)), \
+         upatch("app.agents.browser_chat_agent.AsyncSessionLocal", return_value=mock_db), \
+         upatch("app.agents.browser_chat_agent._load_pa_context", new=AsyncMock(return_value="<pa_context></pa_context>")):
+        await run_context_save(
+            workspace_id="ws-1",
+            audience_user_id="u1",
+            chat_session_id="sess-1",
+        )
+
+    assert captured_messages[0]["role"] == "system"
+    assert captured_messages[1] == {"role": "user", "content": "Check my inbox"}
+    assert captured_messages[2] == {"role": "assistant", "content": "Opened Gmail."}
+    assert captured_messages[3]["role"] == "user"
+    assert "disconnected" in captured_messages[3]["content"].lower()
 
 
 @pytest.mark.asyncio
@@ -359,4 +412,8 @@ async def test_run_context_save_swallows_llm_exceptions(patch_broadcaster):
 
     with upatch("litellm.acompletion", new=AsyncMock(side_effect=Exception("LLM error"))), \
          upatch("app.agents.browser_chat_agent.AsyncSessionLocal", return_value=mock_db):
-        await run_context_save(workspace_id="ws-1", audience_user_id="u1")
+        await run_context_save(
+            workspace_id="ws-1",
+            audience_user_id="u1",
+            chat_session_id="sess-1",
+        )

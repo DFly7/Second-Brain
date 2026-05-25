@@ -292,6 +292,7 @@ def test_disconnect_calls_context_save_before_browser_close(client):
 
     async def fake_context_save(**kwargs):
         call_order.append("context_save")
+        assert kwargs.get("chat_session_id") == "sess-1"
 
     async def override_db():
         yield session

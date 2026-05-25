@@ -245,6 +245,7 @@ async def disconnect(
                 run_context_save(
                     workspace_id=ws.id,
                     audience_user_id=user,
+                    chat_session_id=session_id,
                 ),
                 timeout=30.0,
             )

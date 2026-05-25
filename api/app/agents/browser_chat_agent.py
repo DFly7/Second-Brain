@@ -16,7 +16,7 @@ from app.agents.prompt_render import render_system_prompt
 from app.agents.tools import AgentTools
 from app.config import settings
 from app.database import AsyncSessionLocal
-from app.models import BrowserChatSession
+from app.models import BrowserChatMessage, BrowserChatSession
 from app.sse import broadcaster
 
 
@@ -220,6 +220,7 @@ async def run_turn(
 async def run_context_save(
     workspace_id: str,
     audience_user_id: str,
+    chat_session_id: str,
 ) -> None:
     """Fire a silent agent turn that writes the session summary to system/pa/context.
 
@@ -231,6 +232,16 @@ async def run_context_save(
     """
     try:
         async with AsyncSessionLocal() as db_session:
+            result = await db_session.execute(
+                select(BrowserChatMessage)
+                .where(BrowserChatMessage.session_id == chat_session_id)
+                .order_by(BrowserChatMessage.created_at.asc())
+            )
+            history = [
+                {"role": m.role, "content": m.content}
+                for m in result.scalars().all()
+            ]
+
             wiki_tools = AgentTools(
                 session=db_session,
                 workspace_id=workspace_id,
@@ -248,6 +259,7 @@ async def run_context_save(
                     + "\n\n"
                     + pa_context,
                 },
+                *history,
                 {
                     "role": "user",
                     "content": (
