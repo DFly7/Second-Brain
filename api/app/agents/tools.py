@@ -32,6 +32,10 @@ _CHANGELOG_EXCLUDED = frozenset({
     "meta/deleted-log",
 })
 
+
+def _is_changelog_excluded(slug: str) -> bool:
+    return slug in _CHANGELOG_EXCLUDED or slug.startswith("system/pa/")
+
 _LARGE_ARG_KEYS = frozenset({
     "body_md",
     "content",
@@ -160,7 +164,7 @@ class AgentTools:
         await self.session.commit()
         await self.session.refresh(page)
         await self.update_index(slug, page.title, page.summary)
-        if not self._suppress_changelog and slug not in _CHANGELOG_EXCLUDED:
+        if not self._suppress_changelog and not _is_changelog_excluded(slug):
             await self._append_changelog("created" if was_new else "updated", f"[[{slug}]]")
         return f"Page '{slug}' saved."
 

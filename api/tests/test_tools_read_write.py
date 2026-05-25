@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.tools import AgentTools
+from app.agents.tools import AgentTools, _is_changelog_excluded
 from app.models import Page
 
 
@@ -17,6 +17,17 @@ def session():
 @pytest.fixture
 def tools(session):
     return AgentTools(session=session, workspace_id="ws-1", broadcaster=None)
+
+
+def test_is_changelog_excluded_returns_true_for_pa_pages():
+    assert _is_changelog_excluded("system/pa/context") is True
+    assert _is_changelog_excluded("system/pa/accounts") is True
+    assert _is_changelog_excluded("system/pa/job-search") is True
+
+
+def test_is_changelog_excluded_returns_false_for_regular_pages():
+    assert _is_changelog_excluded("projects/alpha") is False
+    assert _is_changelog_excluded("system/other") is False
 
 
 # ---------------------------------------------------------------------------
