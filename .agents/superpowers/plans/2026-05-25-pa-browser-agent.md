@@ -533,17 +533,16 @@ async def test_run_context_save_completes_without_error_when_llm_returns_no_tool
     no_tool_resp = MagicMock()
     no_tool_resp.choices = [MagicMock(message=no_tool_msg)]
 
-    db = AsyncMock()
-    db.execute = AsyncMock(
+    mock_db = AsyncMock()
+    mock_db.execute = AsyncMock(
         return_value=MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[]))))
     )
+    mock_db.__aenter__ = AsyncMock(return_value=mock_db)
+    mock_db.__aexit__ = AsyncMock(return_value=False)
 
-    with upatch("litellm.acompletion", new=AsyncMock(return_value=no_tool_resp)):
-        await run_context_save(
-            workspace_id="ws-1",
-            db_session=db,
-            audience_user_id="u1",
-        )
+    with upatch("litellm.acompletion", new=AsyncMock(return_value=no_tool_resp)), \
+         upatch("app.agents.browser_chat_agent.AsyncSessionLocal", return_value=mock_db):
+        await run_context_save(workspace_id="ws-1", audience_user_id="u1")
 
 
 @pytest.mark.asyncio
@@ -551,17 +550,16 @@ async def test_run_context_save_swallows_llm_exceptions(patch_broadcaster):
     """run_context_save does not raise even if litellm throws."""
     from unittest.mock import patch as upatch
 
-    db = AsyncMock()
-    db.execute = AsyncMock(
+    mock_db = AsyncMock()
+    mock_db.execute = AsyncMock(
         return_value=MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[]))))
     )
+    mock_db.__aenter__ = AsyncMock(return_value=mock_db)
+    mock_db.__aexit__ = AsyncMock(return_value=False)
 
-    with upatch("litellm.acompletion", new=AsyncMock(side_effect=Exception("LLM error"))):
-        await run_context_save(
-            workspace_id="ws-1",
-            db_session=db,
-            audience_user_id="u1",
-        )
+    with upatch("litellm.acompletion", new=AsyncMock(side_effect=Exception("LLM error"))), \
+         upatch("app.agents.browser_chat_agent.AsyncSessionLocal", return_value=mock_db):
+        await run_context_save(workspace_id="ws-1", audience_user_id="u1")
 ```
 
 - [ ] **Step 2: Run to confirm they fail**
@@ -574,76 +572,85 @@ Expected: `ImportError` — `run_context_save` does not exist yet.
 
 - [ ] **Step 3: Implement `run_context_save` in `browser_chat_agent.py`**
 
-Add after the `run_turn` function:
+First add this import at the top of `browser_chat_agent.py` (alongside the other app imports):
+
+```python
+from app.database import AsyncSessionLocal
+```
+
+Then add after the `run_turn` function:
 
 ```python
 async def run_context_save(
     workspace_id: str,
-    db_session: AsyncSession,
     audience_user_id: str,
 ) -> None:
     """Fire a silent agent turn that writes the session summary to system/pa/context.
 
     Called on disconnect before the browser is torn down. Uses only wiki tools
     (no browser). Never raises — failures are logged and swallowed.
+
+    Creates its own DB session to avoid sharing the route's transaction —
+    wiki tool commits must not leave the caller's session in an aborted state.
     """
     try:
-        wiki_tools = AgentTools(
-            session=db_session,
-            workspace_id=workspace_id,
-            broadcaster=None,
-            context="browser_chat",
-            audience_user_id=audience_user_id,
-        )
-        tool_defs = wiki_tools.as_litellm_tools(allowed=WIKI_TOOLS)
-        pa_context = await _load_pa_context(wiki_tools)
-
-        messages: list[dict] = [
-            {
-                "role": "system",
-                "content": render_system_prompt(SYSTEM_PROMPT, model=settings.litellm_model)
-                + "\n\n"
-                + pa_context,
-            },
-            {
-                "role": "user",
-                "content": (
-                    "[System: The user has disconnected. "
-                    "Write a concise summary of this session to system/pa/context immediately — "
-                    "what was accomplished, what is in progress, any loose ends. "
-                    "Use write_page or patch_page. Then stop.]"
-                ),
-            },
-        ]
-
-        for _ in range(5):
-            resp = await litellm.acompletion(
-                model=settings.litellm_model,
-                messages=messages,
-                tools=tool_defs,
-                tool_choice="auto",
+        async with AsyncSessionLocal() as db_session:
+            wiki_tools = AgentTools(
+                session=db_session,
+                workspace_id=workspace_id,
+                broadcaster=None,
+                context="browser_chat",
+                audience_user_id=audience_user_id,
             )
-            msg = resp.choices[0].message
-            tool_calls = getattr(msg, "tool_calls", None) or []
-            messages.append(assistant_message_for_litellm(msg))
+            tool_defs = wiki_tools.as_litellm_tools(allowed=WIKI_TOOLS)
+            pa_context = await _load_pa_context(wiki_tools)
 
-            if not tool_calls:
-                break
+            messages: list[dict] = [
+                {
+                    "role": "system",
+                    "content": render_system_prompt(SYSTEM_PROMPT, model=settings.litellm_model)
+                    + "\n\n"
+                    + pa_context,
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        "[System: The user has disconnected. "
+                        "Write a concise summary of this session to system/pa/context immediately — "
+                        "what was accomplished, what is in progress, any loose ends. "
+                        "Use write_page or patch_page. Then stop.]"
+                    ),
+                },
+            ]
 
-            tool_results = []
-            for tc in tool_calls:
-                name = tc.function.name
-                args = json.loads(tc.function.arguments or "{}")
-                try:
-                    result_str = await wiki_tools.dispatch(name, args)
-                except Exception as exc:
-                    result_str = f"Error: {exc}"
-                tool_results.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": str(result_str),
-                })
-            messages.extend(tool_results)
+            for _ in range(5):
+                resp = await litellm.acompletion(
+                    model=settings.litellm_model,
+                    messages=messages,
+                    tools=tool_defs,
+                    tool_choice="auto",
+                )
+                msg = resp.choices[0].message
+                tool_calls = getattr(msg, "tool_calls", None) or []
+                messages.append(assistant_message_for_litellm(msg))
+
+                if not tool_calls:
+                    break
+
+                tool_results = []
+                for tc in tool_calls:
+                    name = tc.function.name
+                    args = json.loads(tc.function.arguments or "{}")
+                    try:
+                        result_str = await wiki_tools.dispatch(name, args)
+                    except Exception as exc:
+                        result_str = f"Error: {exc}"
+                    tool_results.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": str(result_str),
+                    })
+                messages.extend(tool_results)
 
     except Exception:
         _log.warning("pa_context_save_failed", workspace_id=workspace_id)
@@ -751,7 +758,6 @@ async def disconnect(
             await asyncio.wait_for(
                 run_context_save(
                     workspace_id=ws.id,
-                    db_session=db,
                     audience_user_id=user,
                 ),
                 timeout=30.0,
@@ -911,6 +917,7 @@ git commit -m "feat(pa): PA identity, memory rules, and tone in browser_chat sys
 - [x] **Seed page lazy-load** — `_load_pa_context` always reads 3 seeds in full; domain pages are names only. ✓
 - [x] **Datetime injection** — `_dt.utcnow()` injected into every `<pa_context>` block. ✓
 - [x] **run_context_save is silent** — `broadcaster=None`, no SSE events, exceptions swallowed with a log warning. ✓
+- [x] **run_context_save owns its own DB session** — uses `AsyncSessionLocal()` internally so wiki tool commits cannot abort the disconnect route's transaction. ✓
 - [x] **Disconnect order** — `run_context_save` awaited inside `asyncio.wait_for(timeout=30)`, then browser close, then DB commit. ✓
 - [x] **Changelog exclusion** — `_is_changelog_excluded` covers exact matches (`_CHANGELOG_EXCLUDED`) plus `system/pa/` prefix. ✓
 - [x] **No type inconsistencies** — `_load_pa_context` used in both `run_turn` and `run_context_save` with the same `AgentTools` arg. ✓
