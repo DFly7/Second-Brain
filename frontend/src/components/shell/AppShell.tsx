@@ -17,6 +17,7 @@ import { toast } from '@/lib/toast'
 import { shortcuts as shortcutsRegistry } from '@/components/help/shortcuts'
 import { CommandPalette } from '@/components/command-palette/CommandPalette'
 import { HelpOverlay } from '@/components/help/HelpOverlay'
+import ActivityLog from '@/components/ActivityLog'
 
 function useIsWiki() {
   const { pathname } = useLocation()
@@ -110,7 +111,7 @@ function AppShellLayout() {
   const isMobile = useIsMobile()
   const isWiki = useIsWiki()
   const { pathname } = useLocation()
-  const { setShowActivity } = useShellState()
+  const { showActivity, setShowActivity, queue, queueActions } = useShellState()
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
 
@@ -170,6 +171,13 @@ function AppShellLayout() {
       </div>
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
       <HelpOverlay open={helpOpen} onOpenChange={setHelpOpen} />
+      {showActivity && (
+        <ActivityLog
+          onClose={() => setShowActivity(false)}
+          queue={queue}
+          onClearQueue={() => queueActions.clear()}
+        />
+      )}
     </>
   )
 }

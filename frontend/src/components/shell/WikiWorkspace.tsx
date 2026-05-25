@@ -1,11 +1,9 @@
 import { useState } from 'react'
-import { logout } from '@/auth'
 import { Button } from '@/components/ui/button'
 import { WikiTree } from '@/components/secondary-sidebar/WikiTree'
 import WikiContent from '@/components/WikiContent'
 import ChatPanel from '@/components/ChatPanel'
 import IngestModal from '@/components/IngestModal'
-import ActivityLog from '@/components/ActivityLog'
 import { ContextBar } from '@/components/shell/ContextBar'
 import { useShell } from '@/components/shell/ShellContext'
 import { useShellState } from '@/components/shell/ShellStateContext'
@@ -17,9 +15,6 @@ export default function WikiWorkspace() {
   const {
     selectedSlug,
     highlightedSlug,
-    agentStatus,
-    showActivity,
-    setShowActivity,
     showIngest,
     setShowIngest,
     queue,
@@ -46,58 +41,24 @@ export default function WikiWorkspace() {
   ]
 
   const contextActions = (
-    <>
-      {agentStatus && (
-        <span className="text-xs text-primary">⟳ {agentStatus}</span>
-      )}
-      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setShowIngest(true)}>
-        + Ingest
-      </Button>
-      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => logout()}>
-        Sign out
-      </Button>
-    </>
+    <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setShowIngest(true)}>
+      + Ingest
+    </Button>
   )
 
-  const activityRow = (
-    <div className="flex shrink-0 justify-end border-b border-border bg-background px-4 py-1">
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="h-6 text-xs"
-        onClick={() => setShowActivity(!showActivity)}
-      >
-        Activity
-      </Button>
-    </div>
-  )
-
-  const modals = (
-    <>
-      {showActivity && (
-        <ActivityLog
-          onClose={() => setShowActivity(false)}
-          queue={queue}
-          onClearQueue={() => queueActions.clear()}
-        />
-      )}
-      {showIngest && (
-        <IngestModal
-          onClose={() => setShowIngest(false)}
-          queue={queue}
-          onUpsertQueueItems={items => queueActions.upsertMany(items)}
-          onPatchQueueById={(id, patch) => queueActions.patchById(id, patch)}
-        />
-      )}
-    </>
+  const modals = showIngest && (
+    <IngestModal
+      onClose={() => setShowIngest(false)}
+      queue={queue}
+      onUpsertQueueItems={items => queueActions.upsertMany(items)}
+      onPatchQueueById={(id, patch) => queueActions.patchById(id, patch)}
+    />
   )
 
   if (isMobile) {
     return (
       <div className="flex h-full flex-col overflow-hidden">
         <ContextBar breadcrumbs={breadcrumbs} actions={contextActions} onOpenPalette={openPalette} />
-        {activityRow}
         <div className="min-h-0 flex-1 overflow-hidden">
           {activeTab === 'pages' && (
             <WikiTree
@@ -147,7 +108,6 @@ export default function WikiWorkspace() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <ContextBar breadcrumbs={breadcrumbs} actions={contextActions} onOpenPalette={openPalette} />
-      {activityRow}
       <div className="min-h-0 flex-1 overflow-hidden">
         <WikiContent selectedSlug={selectedSlug} onNavigate={onSelectSlug} />
       </div>
