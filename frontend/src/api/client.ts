@@ -328,8 +328,12 @@ export interface BrowserChatSessionDetail extends BrowserChatSession {
   messages: BrowserChatMessage[]
 }
 
-export async function connectBrowserChat(): Promise<{ session_id: string }> {
-  const r = await fetchWithAuth(`${BASE}/browser-chat/sessions`, { method: 'POST' })
+export async function connectBrowserChat(priorSessionId?: string): Promise<{ session_id: string }> {
+  const r = await fetchWithAuth(`${BASE}/browser-chat/sessions`, {
+    method: 'POST',
+    headers: priorSessionId ? jsonHeaders() : undefined,
+    body: priorSessionId ? JSON.stringify({ prior_session_id: priorSessionId }) : undefined,
+  })
   if (!r.ok) throw new Error(`connectBrowserChat failed: ${r.status}`)
   return r.json()
 }
