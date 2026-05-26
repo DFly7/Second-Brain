@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     authentik_client_id: str = ""
     authentik_token_url: str = ""
     authentik_redirect_uri: str = ""
-    litellm_model: str = "gemini/gemini-2.0-flash"
+    litellm_model: str = "gemini/gemini-3-flash-preview"
     gemini_api_key: str | None = None
     s3_endpoint: str = "http://minio:9000"
     s3_bucket: str = "wiki"
