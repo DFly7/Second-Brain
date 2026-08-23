@@ -77,4 +77,4 @@ Single-user web app: ingest documents and notes, let an LLM merge them into a **
 
 ## License / status
 
-Private / personal project unless you add a license file.
+Personal project. No open-source licence is currently granted.
